@@ -531,15 +531,11 @@ class Bridge:
                 return text_result(
                     {"launched": False, "already": pids, **self.game_status()}
                 )
+            # Another install's game may run beside this one's (DAOLib's work on EA's
+            # executable does, with plugins of its own): it holds none of this install's
+            # files and has no Eluvian, so it does not stop a launch. The answer names it,
+            # since the two share Documents\\BioWare\\Dragon Age (saves, settings).
             others = self.processes.others()
-            if others:
-                # Two installs share Documents\BioWare\Dragon Age: saves, settings, logs.
-                return text_result(
-                    "game_launch: a game from another install is running "
-                    f"({others[0]['exe']}, pid {others[0]['pid']}), not {self.processes.exe}. "
-                    "It is not this bridge's to close; close it yourself, then launch.",
-                    is_error=True,
-                )
             if not self.processes.exe.exists():
                 return text_result(
                     f"game_launch: no {self.processes.exe}", is_error=True
@@ -572,6 +568,8 @@ class Bridge:
         self.game_tools()  # lists the game's tools now it serves, and says so if they changed
         self.send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
         answer = {"launched": True, "pid": pid, "health": health}
+        if others:
+            answer["otherInstalls"] = others
         save = arguments.get("load")
         if isinstance(save, dict):
             loaded = self.load_save(save, deadline)

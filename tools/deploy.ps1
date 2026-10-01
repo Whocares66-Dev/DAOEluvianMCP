@@ -33,7 +33,19 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 
 if (-not (Test-Path (Join-Path $Game 'DAOrigins.exe'))) { throw "No DAOrigins.exe in $Game" }
-if (Get-Process -Name DAOrigins -ErrorAction SilentlyContinue) { throw 'DAOrigins.exe is running; close it first' }
+# The game holds its plugins open. Another install of the game has the same
+# process name (EA's beside GOG's, 2026-10-01), so a running one is asked
+# where it runs from, as DAOLib's deploy.ps1 asks: only this install's
+# blocks the copy. One whose path cannot be read is taken for this install's.
+$exe = Join-Path $Game 'DAOrigins.exe'
+foreach ($running in @(Get-Process -Name DAOrigins -ErrorAction SilentlyContinue)) {
+    $from = $running.Path
+    if (-not $from -or [string]::Equals($from, $exe, [StringComparison]::OrdinalIgnoreCase)) {
+        $where = if ($from) { $from } else { 'a path that cannot be read' }
+        throw "DAOrigins.exe is running from $where (process $($running.Id)); close it first"
+    }
+    Show-Info "another install's game is running, from $from (process $($running.Id)); it does not hold this install's files"
+}
 
 $plugins = Join-Path $Game 'daolib\plugins'
 $plugin = Join-Path $plugins 'eluvian.dll'

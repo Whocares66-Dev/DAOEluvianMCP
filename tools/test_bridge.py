@@ -283,15 +283,16 @@ class BridgeTest(unittest.TestCase):
     def test_another_installs_game_is_neither_joined_nor_closed(self) -> None:
         self.processes.pids.clear()
         self.processes.other.append({"pid": 7, "exe": r"C:\EA\bin_ship\daorigins.exe"})
-        result = self.call("game_launch")
-        self.assertTrue(result["isError"])
-        self.assertIn("another install", result["content"][0]["text"])
-        self.assertEqual(self.processes.started, 0)
         status = self.call("game_status")["structuredContent"]
         self.assertFalse(status["running"])
         self.assertEqual(status["otherInstalls"][0]["pid"], 7)
         self.assertFalse(self.call("game_quit")["structuredContent"]["quit"])
         self.assertEqual(self.processes.closed, [])
+        # It does not stop this install's game from starting, and the answer names it.
+        result = self.call("game_launch")
+        self.assertFalse(result["isError"])
+        self.assertEqual(self.processes.started, 1)
+        self.assertEqual(result["structuredContent"]["otherInstalls"][0]["pid"], 7)
 
     def test_a_process_is_this_installs_by_its_file_not_its_name(self) -> None:
         exe = Path(r"C:\Games\GOG\bin_ship\DAOrigins.exe")
