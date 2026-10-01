@@ -51,11 +51,24 @@ bool WaitReadable(SOCKET socket, const std::atomic<bool> &running)
     return false;
 }
 
-bool SendAll(SOCKET socket, std::string_view bytes)
+// How long one send may wait for a client to take bytes. A client that
+// asked for a large answer and stopped reading would otherwise hold its
+// thread, and its place among the connections, for ever, and Stop with it
+// (a review's finding). SO_SNDTIMEO on the socket: a send that waits this
+// long fails, and the connection is closed.
+constexpr DWORD kSendWaitMs = 5'000;
+
+// Sends everything, in pieces small enough to look between them whether the
+// server is stopping; false if the client stopped taking them, or it is.
+bool SendAll(SOCKET socket, std::string_view bytes, const std::atomic<bool> &running)
 {
     while (!bytes.empty())
     {
-        const int chunk = static_cast<int>(std::min<std::size_t>(bytes.size(), 1 << 20));
+        if (!running)
+        {
+            return false;
+        }
+        const int chunk = static_cast<int>(std::min<std::size_t>(bytes.size(), 64 * 1024));
         const int sent =
             send(socket, bytes.data(), chunk, 0); // NOLINT(bugprone-suspicious-stringview-data-usage): sized
         if (sent <= 0)
@@ -152,12 +165,14 @@ void HttpServer::Accept()
         Reap();
         const BOOL noDelay = TRUE;
         setsockopt(client, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char *>(&noDelay), sizeof noDelay);
+        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&kSendWaitMs), sizeof kSendWaitMs);
 
         const std::lock_guard lock(mutex_);
         if (connections_.size() >= kMaxConnections)
         {
             SendAll(client,
-                    Serialize(HttpResponse::OfJson(503, Json{{"error", "too many connections to the bench"}}), false));
+                    Serialize(HttpResponse::OfJson(503, Json{{"error", "too many connections to the bench"}}), false),
+                    running_);
             closesocket(client);
             continue;
         }
@@ -197,7 +212,7 @@ void HttpServer::Serve(const std::shared_ptr<Connection> &connection)
                 response = HttpResponse::OfJson(500, Json{{"error", std::string("the bench failed: ") + e.what()}});
             }
             const bool keepAlive = request.keepAlive && running_;
-            if (!SendAll(connection->socket, Serialize(response, keepAlive)) || !keepAlive)
+            if (!SendAll(connection->socket, Serialize(response, keepAlive), running_) || !keepAlive)
             {
                 open = false;
                 break;
@@ -206,7 +221,7 @@ void HttpServer::Serve(const std::shared_ptr<Connection> &connection)
         }
         if (status == HttpParser::Status::Error)
         {
-            SendAll(connection->socket, Serialize(parser.ErrorResponse(), false));
+            SendAll(connection->socket, Serialize(parser.ErrorResponse(), false), running_);
             break;
         }
     }

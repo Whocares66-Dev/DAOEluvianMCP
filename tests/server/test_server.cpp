@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <string>
+#include <thread>
 
 using namespace eluvian;
 using namespace std::chrono_literals;
@@ -186,6 +187,24 @@ TEST_CASE("a port in use moves to the next", "[server]")
     CHECK(port != f.port);
     HttpServer third([](const HttpRequest &) { return HttpResponse::OfJson(200, Json::object()); });
     CHECK(third.Start(f.port, 1) == 0);
+}
+
+TEST_CASE("a client that asks for a large answer and stops reading does not hold Stop", "[server]")
+{
+    // More than the socket's buffers hold, so the server's send must wait on
+    // a client that never takes it.
+    const std::string large(48 * 1024 * 1024, 'x');
+    HttpServer server([&large](const HttpRequest &) { return HttpResponse{200, "text/plain", large, {}}; });
+    const auto port = server.Start(0, 1);
+    REQUIRE(port != 0);
+    Client deaf(port);
+    REQUIRE(deaf.Connected());
+    deaf.SendRaw("GET /large HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+    std::this_thread::sleep_for(300ms); // the server is sending by now, into full buffers
+
+    const auto start = std::chrono::steady_clock::now();
+    server.Stop();
+    CHECK(std::chrono::steady_clock::now() - start < 10s);
 }
 
 TEST_CASE("Stop returns with a client still connected", "[server]")
