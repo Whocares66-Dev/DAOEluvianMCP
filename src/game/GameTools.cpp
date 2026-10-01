@@ -853,8 +853,9 @@ void AddStage(Bench &bench, const Watch &watch)
             "remove_effects takes them off (by `effect`, `ability`, `creator`, or all); health sets its "
             "current health to `value`; kill deals it more damage than it has; spawn makes a creature from "
             "`template` (a creature resource, as its tag reads, e.g. \"bhn200cr_howe_soldier\") at `point` "
-            "facing `facing` degrees, in the controlled creature's area. Answers the creature after: its "
-            "effects, health or id. The effects are the engine's bare ones, applied as scripts apply them; "
+            "facing `facing` degrees, in the controlled creature's area. Answers `creature` as the change "
+            "leaves it (health, dead, its command), and the effects for an effect. The effects are the engine's bare "
+            "ones, applied as scripts apply them; "
             "a death or a fall comes a frame or more later, so wait_for eluvian.creature.died.",
             Json{{"type", "object"},
                  {"properties",
@@ -957,8 +958,12 @@ void AddStage(Bench &bench, const Watch &watch)
                 api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *damage.get(), id, 0.0F,
                                                 kInvalidObject, 0);
                 answer["dealt"] = health + 1000;
-                answer["note"] = "the death comes a frame or more later: wait_for eluvian.creature.died from cursor";
+                answer["note"] = "the death comes a frame or more later, so `creature` still lives here: "
+                                 "wait_for eluvian.creature.died from `cursor`";
             }
+            // The creature as the change leaves it, in every answer (a tester
+            // reading `creature.dead` after a kill found no field, 2026-09-30).
+            answer["creature"] = Summary(id, api::GetHero(), PartyOf(api::GetHero()));
             return answer;
         });
 }
