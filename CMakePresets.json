@@ -1,0 +1,100 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "CMAKE_CXX_FLAGS": "/EHsc",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "x86",
+            "hidden": true,
+            "inherits": ["base"],
+            "architecture": {
+                "value": "x86",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x86-windows-static-md",
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+                "VCPKG_MANIFEST_FEATURES": "tests"
+            }
+        },
+        {
+            "name": "debug",
+            "inherits": ["x86"],
+            "displayName": "Debug (plugin and tests)",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "release",
+            "inherits": ["x86"],
+            "displayName": "Release (plugin and tests)",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name": "debug-asan",
+            "inherits": ["debug"],
+            "displayName": "Debug + AddressSanitizer, for the tests",
+            "cacheVariables": { "EL_SANITIZE": "ON" }
+        },
+        {
+            "name": "debug-analyze",
+            "inherits": ["debug"],
+            "displayName": "Debug under MSVC's static analyser (/analyze)",
+            "cacheVariables": { "EL_ANALYZE": "ON" }
+        },
+        {
+            "name": "core",
+            "inherits": ["x86"],
+            "displayName": "Core only: the rules and their tests, no plugin, no DAOLib",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "EL_BUILD_PLUGIN": "OFF" }
+        },
+        {
+            "name": "core-asan",
+            "inherits": ["core"],
+            "displayName": "Core only, under AddressSanitizer",
+            "cacheVariables": { "EL_SANITIZE": "ON" }
+        },
+        {
+            "name": "core-cov",
+            "inherits": ["base"],
+            "displayName": "Core only, clang-cl, test coverage (64-bit: LLVM ships the profile runtime for x64 only)",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_COMPILER": "clang-cl.exe",
+                "EL_BUILD_PLUGIN": "OFF",
+                "EL_COVERAGE": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "debug", "configurePreset": "debug" },
+        { "name": "release", "configurePreset": "release" },
+        { "name": "debug-asan", "configurePreset": "debug-asan" },
+        { "name": "debug-analyze", "configurePreset": "debug-analyze" },
+        { "name": "core", "configurePreset": "core" },
+        { "name": "core-asan", "configurePreset": "core-asan" },
+        { "name": "core-cov", "configurePreset": "core-cov" }
+    ],
+    "testPresets": [
+        { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },
+        { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+        { "name": "debug-asan", "configurePreset": "debug-asan", "output": { "outputOnFailure": true } },
+        { "name": "debug-analyze", "configurePreset": "debug-analyze", "output": { "outputOnFailure": true } },
+        { "name": "core", "configurePreset": "core", "output": { "outputOnFailure": true } },
+        { "name": "core-asan", "configurePreset": "core-asan", "output": { "outputOnFailure": true } },
+        { "name": "core-cov", "configurePreset": "core-cov", "output": { "outputOnFailure": true } }
+    ]
+}

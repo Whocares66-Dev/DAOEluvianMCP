@@ -1,0 +1,8 @@
+# gersemi: the CMake formatter, run by the build's format and format-check
+# targets (DAOLib's cmake/Quality.cmake). Its stock style, as DAOLib's. The
+# definitions teach it the commands we call from DAOLib, so it lays out their
+# arguments by keyword.
+definitions:
+  - CMakeLists.txt
+  - extern/DAOLib/cmake/DAOLib.cmake
+warn_about_unknown_commands: false

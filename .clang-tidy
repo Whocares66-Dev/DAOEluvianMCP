@@ -1,0 +1,71 @@
+# clang-tidy configuration.
+#
+# Correctness and performance checks only. Nothing here is a style opinion:
+# modernize-*, readability-*, google-*, llvm-*, hicpp-* and the like are left
+# at their default (off), and formatting is clang-format's job with a stock
+# style. The bar for a check being here is that a finding is a plausible bug
+# or a real cost, not a matter of taste.
+#
+# Run:  cmake --build --preset debug --target tidy   (see cmake/Quality.cmake)
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-throwing-static-initialization,
+  clang-analyzer-*,
+  -clang-analyzer-core.FixedAddressDereference,
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  concurrency-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-virtual-class-destructor,
+  cppcoreguidelines-rvalue-reference-param-not-moved,
+  cppcoreguidelines-misleading-capture-default-by-value,
+  misc-*,
+  -misc-const-correctness,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -misc-use-anonymous-namespace,
+  -misc-no-recursion,
+  -misc-unused-parameters,
+  performance-*,
+  -performance-no-int-to-ptr,
+  -performance-enum-size,
+  portability-*,
+  -portability-avoid-pragma-once
+
+# Excluded, and why:
+#   bugprone-easily-swappable-parameters   a design lint, fires on (int, int)
+#   bugprone-throwing-static-initialization   a static that can throw here is
+#                                          a standard container or Catch2's
+#                                          registration; nothing to recover to
+#   clang-analyzer-core.FixedAddressDereference   reading the game at an
+#                                          address from Addresses.h is what
+#                                          this library IS
+#   clang-analyzer-optin.core.EnumCastOutOfRange   fires inside MSVC's own
+#                                          <filesystem> and Catch2, out of
+#                                          reach of any NOLINT of ours
+#   performance-no-int-to-ptr              an address cast is what a hook or
+#                                          an offset read of an engine struct IS
+#   performance-enum-size                  "make the enum a byte": an engine
+#                                          enum's size is the engine's, and
+#                                          ours are too few to matter
+#   misc-const-correctness                 style; also very noisy
+#   misc-include-cleaner                   include hygiene, not correctness
+#   misc-non-private-member-variables-in-classes   style; engine layouts are
+#                                          public fields by nature
+#   misc-use-anonymous-namespace           style (static vs anonymous namespace)
+#   misc-no-recursion                      recursion is fine
+#   misc-unused-parameters                 the compiler already warns (C4100)
+#   portability-avoid-pragma-once          every header here uses #pragma once,
+#                                          and MSVC and clang-cl both keep it
+
+# Our headers anywhere under src. The lint target passes this checkout's src
+# as an absolute path instead (cmake/Quality.cmake), which is stricter; this
+# is for clang-tidy run from this file alone, an editor's.
+HeaderFilterRegex: 'src[/\\]'
+FormatStyle: file
+
+# A finding fails the run. Without this clang-tidy exits 0 on warnings, the
+# build's per-file stamp is touched, and the NEXT run reports nothing while
+# the findings are still there.
+WarningsAsErrors: '*'

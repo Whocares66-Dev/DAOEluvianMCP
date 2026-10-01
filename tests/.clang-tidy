@@ -1,0 +1,6 @@
+# The tests, relaxed from the root .clang-tidy where a test's shape is the
+# point: Catch2 macros expand to code the analyser walks on every REQUIRE.
+InheritParentConfig: true
+Checks: >
+  -bugprone-chained-comparison,
+  -bugprone-unchecked-optional-access
