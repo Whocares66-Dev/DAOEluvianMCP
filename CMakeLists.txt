@@ -121,6 +121,7 @@ add_library(
     el_core
     STATIC
     src/core/Args.cpp
+    src/core/Base64.cpp
     src/core/Bench.cpp
     src/core/EventBus.cpp
     src/core/FrameQueue.cpp

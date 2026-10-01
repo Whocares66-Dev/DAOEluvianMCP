@@ -21,6 +21,7 @@ add_executable(
     el_tests
     quiet_crt.cpp
     test_args.cpp
+    test_base64.cpp
     test_bench.cpp
     test_events.cpp
     test_frame_queue.cpp
