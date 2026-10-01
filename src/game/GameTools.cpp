@@ -27,6 +27,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -552,6 +553,61 @@ void AddInspect(Bench &bench, const Watch &watch)
 
     bench.Tools().AddKind(
         "inspect",
+        KindSpec{"placeables",
+                 "The doors, chests, levers and other placeables in the area (or within `radius` of `near`), "
+                 "nearest first: id, name, tag, template, position, distance, `state` (the placeable's own "
+                 "number: a door's or a chest's changes when it opens), whether it is active and can be "
+                 "interacted with, what its tooltip says, and its lock: whether it needs a key, the key's tag, "
+                 "and the level to pick it. order action=use uses one."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+            if (around == kInvalidObject)
+            {
+                throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+            }
+            const auto from = api::GetPosition(around);
+            const auto radius = args.Number("radius", -1);
+            const bool includeInactive = args.Bool("includeInactive", false);
+            std::vector<std::pair<float, Json>> found;
+            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
+            {
+                if (api::GetObjectType(id) != k::OBJECT_TYPE_PLACEABLE)
+                {
+                    continue;
+                }
+                const bool active = api::GetObjectActive(id) != 0;
+                const auto position = api::GetPosition(id);
+                const float distance = Distance(from, position);
+                if ((!includeInactive && !active) || (radius >= 0 && distance > radius))
+                {
+                    continue;
+                }
+                Json placeable = Brief(id);
+                placeable["template"] = Narrow(api::GetResRef(id));
+                placeable["position"] = VectorJson(position);
+                placeable["distance"] = distance;
+                placeable["state"] = api::GetPlaceableState(id);
+                placeable["active"] = active;
+                placeable["interactive"] = api::GetObjectInteractive(id) != 0;
+                placeable["popup"] = Narrow(api::GetPlaceablePopupText(id));
+                placeable["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
+                                         {"keyTag", Narrow(api::GetPlaceableKeyTag(id))},
+                                         {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
+                found.emplace_back(distance, std::move(placeable));
+            }
+            std::ranges::sort(found, {}, &std::pair<float, Json>::first);
+            Json placeables = Json::array();
+            for (auto &[distance, placeable] : found)
+            {
+                placeables.push_back(std::move(placeable));
+            }
+            return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"placeables", std::move(placeables)}};
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
         KindSpec{"creatures",
                  "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
                  "(party, hostile, neutral), position, distance, dead, health and mana or stamina, combat state, "
@@ -856,6 +912,12 @@ std::int32_t AbilityArg(const Args &args)
 
 // Through the engine's own click functions (dao/Orders.h): the command
 // player-issued, queued as a click queues it. Any creature may obey.
+// PLACEABLE_ACTION_* from 1 (script.ldf), by the names a tester writes.
+constexpr std::array<std::string_view, 17> kPlaceableActionNames = {
+    "open",      "close",  "unlock",         "destroy",      "use",    "examine",     "disarm",          "flip_cover",
+    "use_cover", "dialog", "open_inventory", "trigger_trap", "topple", "leave_cover", "area_transition", "turn_left",
+    "turn_right"};
+
 bool OrderByCommand(const Args &args, const std::string &action, ObjectId who, Json &answer)
 {
     if (action == "attack")
@@ -880,9 +942,25 @@ bool OrderByCommand(const Args &args, const std::string &action, ObjectId who, J
         answer["target"] = Brief(target);
         return dao::orders::UseAbility(who, ability, target, item, point);
     }
+    // The command carries one PLACEABLE_ACTION, and the object does nothing
+    // for one it does not take: USE left a chest and a door in the Elven
+    // Ruins shut, the command ending COMMAND_FAILED, where a click (which
+    // chooses the object's own action) opened both (computer-use-agent,
+    // then here, 2026-10-01). So the action is the caller's to name.
     const ObjectId target = args.Id("target", "a placeable or other object to use");
     answer["target"] = Brief(target);
-    return dao::orders::UseObject(who, target);
+    const auto name = args.String("objectAction", "use");
+    const auto found = std::ranges::find(kPlaceableActionNames, name);
+    if (found == kPlaceableActionNames.end())
+    {
+        throw ToolError(std::format("order: no `objectAction` \"{}\"; open, close, unlock, use, examine, disarm, "
+                                    "dialog, open_inventory, trigger_trap, topple and area_transition are the "
+                                    "usual ones",
+                                    name));
+    }
+    answer["objectAction"] = name;
+    return dao::orders::UseObject(who, target,
+                                  static_cast<dao::script::PlaceableAction>(found - kPlaceableActionNames.begin() + 1));
 }
 
 // Through explore mode's own click messages, so the click's front half runs
@@ -945,8 +1023,10 @@ void AddOrder(Bench &bench, const Watch &watch)
     bench.Tools().Add(
         ToolSpec{"order",
                  "Give an order as the player does, by id. `action`: attack `target`; move to `point`; ability "
-                 "`ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable). "
-                 "`via`: \"command\" (the default) gives it through the engine's own click functions, so the "
+                 "`ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable: a "
+                 "door, a chest, a lever). "
+                 "`via`: \"command\" (the default, but for use by the controlled creature) gives it through "
+                 "the engine's own click functions, so the "
                  "command is player-issued and anything watching the command queue sees one; any creature "
                  "`id` may obey. \"click\" sends explore mode's click message instead (the primary action on the "
                  "target as if the cursor were over it; an ability as the quickbar uses it, with `target` "
@@ -955,7 +1035,10 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "it is the controlled creature's, and cannot move. (Seen 2026-09-30: an ability by click works, the "
                  "mod asking for its target when none is given. An attack or use by click is the primary action "
                  "of every party member selected in the interface, and its answer cannot say whether anyone "
-                 "obeyed: the events from `cursor` do.) Answers whether the order was taken, and "
+                 "obeyed: the events from `cursor` do.) A use goes by click when the controlled creature is to "
+                 "do it, since a click chooses what the object takes (a chest and a door wanted open, and did "
+                 "nothing for use, their command ending COMMAND_FAILED); by command it does `objectAction`, "
+                 "default use. Answers whether the order was taken, and "
                  "`cursor`: wait_for from it for what came of it (eluvian.command.started and ended, and a mod's "
                  "own events).",
                  Json{{"type", "object"},
@@ -970,13 +1053,19 @@ void AddOrder(Bench &bench, const Watch &watch)
                          {{"type", "string"},
                           {"enum", {"command", "click"}},
                           {"description", "command (default): the engine's click functions. click: explore "
-                                          "mode's click message"}}}}},
+                                          "mode's click message (the default for use by the controlled "
+                                          "creature)"}}},
+                        {"objectAction",
+                         {{"type", "string"},
+                          {"description", "action=use by command: what to do with the object: open, close, "
+                                          "unlock, use (default), examine, disarm, dialog, open_inventory, "
+                                          "trigger_trap, topple, area_transition, and the rest of "
+                                          "PLACEABLE_ACTION_*"}}}}},
                       {"required", {"action"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "order");
             const auto action = args.Choice("action", {"attack", "move", "ability", "use"});
-            const auto via = args.Choice("via", {"command", "click"}, "command");
             RequireWorld(watch, "order");
             const ObjectId controlled = api::GetMainControlled();
             const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(controlled);
@@ -984,6 +1073,8 @@ void AddOrder(Bench &bench, const Watch &watch)
             {
                 throw ToolError("order: nobody is controlled and no `id` was given");
             }
+            const bool useByClick = action == "use" && who == controlled && !args.Has("objectAction");
+            const auto via = args.Choice("via", {"command", "click"}, useByClick ? "click" : "command");
             if (via == "click" && who != controlled)
             {
                 throw ToolError(std::format("order: a click is the controlled creature's ({}); via \"command\" "
