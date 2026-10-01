@@ -835,6 +835,16 @@ void AddInspect(Bench &bench, const Watch &watch)
                                        : "a move there ends COMMAND_FAILED_PATH_ACTION_REQUIRED; order action=use "
                                          "on `blocker` first (a shut door opens), then move";
                 }
+                else if (!search.path && search.blocker != kInvalidObject)
+                {
+                    // Not the pathfinder's own word: where a search gives up
+                    // part way, DAOLib names the placeable lying across the
+                    // way just ahead of where it stopped (c8d7270). A strong
+                    // hint, not a fact.
+                    walk["blocker"] = Brief(search.blocker);
+                    walk["note"] = "the search gave up short of something lying across the way: likely `blocker`, "
+                                   "a shut door perhaps. order action=use on it, then ask again or move";
+                }
                 // For DAOLib's own reading of a search that went wrong: each
                 // slice's answer and the search's line for a log.
                 if (args.Bool("trace", false))

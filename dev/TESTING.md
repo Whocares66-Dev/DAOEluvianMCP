@@ -204,3 +204,9 @@ The walk search on DAOLib `2f549df`, 2026-10-01, 05:55 (the ruins, loaded only):
 - Standing 1.2 m from the shut door 0x1f1: `walk` to creatures beyond it answered "something is in the way" with `blocker` 0x1f1, the door, and the note to use it first. That is the answer a test needs before a move that would end COMMAND_FAILED_PATH_ACTION_REQUIRED.
 - From the entrance, 53 m short of that door: still "gave up part way" with no `blocker`; the search's probes past the give-up ended without the pathfinder's 6. Sent to lib-agent with the answers.
 - A move after the searches ended success; no save was written.
+
+The door in the way named from afar, 2026-10-01, 06:05 (DAOLib `c8d7270`; the ruins' entrance, loaded only):
+
+- `walk` to three creatures behind shut doors, 80 to 143 m off: "gave up part way" at 53.4 m as before, and now `blocker` 0x1f1, the door 1.2 m past where the search stopped, with the note that it is likely what is in the way. One search of 25 slices; the calls took 42 to 48 ms, a found walk of 44 m 25 to 45 ms.
+- With the pathfinder's own answer (standing at the door) `blocker` is its word; where the search gave up it is what lies across the way just ahead, a strong hint. The tool's note says which.
+- A move after the searches ended success; no save was written.
