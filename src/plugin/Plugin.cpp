@@ -27,12 +27,14 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <fstream>
+#include <string>
 #include <string_view>
 
 namespace
@@ -45,7 +47,9 @@ constexpr std::uint16_t kDefaultPort = 8930;
 constexpr int kPortTries = 10;
 
 constexpr std::string_view kInstructions =
-    "Eluvian serves a running Dragon Age: Origins. Start with `health` (is the game up, in which mode), then "
+    "Eluvian serves a running Dragon Age: Origins. Start with `health` (is the game up, in which mode, and "
+    "`owner`: who started it; a game that is not yours is another's test or the player's own, to read but not to "
+    "drive), then "
     "`inspect kind=game`. Creatures are named by id strings like \"0x7d9\", as the logs write them; `inspect "
     "kind=creatures` lists them with positions, sides and health, `inspect kind=creature` gives one with its "
     "effects. Act, then wait: `order` answers with a `cursor`, and `wait_for` from that cursor returns the event "
@@ -56,6 +60,26 @@ constexpr std::string_view kInstructions =
     "cutscene) is read with `inspect kind=dialogue` and answered with `dialogue`. Calls run on the game's frame: while "
     "an area loads they are "
     "refused, and if frames stop they time out; `health` says which.";
+
+// Who started this game, as the launcher said in ELUVIAN_OWNER: a test's
+// agent, by the name it goes by. Several agents share one game and one
+// port, and each had to ask the others whose a running game was; one
+// acted on another's by mistake (2026-10-01). Empty when the game was
+// started by hand: the player's own, and not a test's to drive or close.
+std::string OwnerSetting()
+{
+    char *text = nullptr;
+    std::size_t size = 0;
+    if (_dupenv_s(&text, &size, "ELUVIAN_OWNER") != 0 || text == nullptr)
+    {
+        return {};
+    }
+    std::string owner(text);
+    std::free(text);
+    std::erase_if(owner, [](unsigned char c) { return c < 0x20 || c > 0x7E; });
+    owner.resize(std::min<std::size_t>(owner.size(), 64));
+    return owner;
+}
 
 // A whole number from the environment, within [low, high]; `fallback` when
 // the variable is not set, or is not such a number (said in the log).
@@ -182,7 +206,11 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     AddLogTool(g->bench, dao::LogDirectory());
     AddScenarioTool(g->bench);
     game::AddHealthTool(g->bench, g->watch, [] {
-        return Json{{"port", g->port}, {"version", EL_VERSION_STRING}, {"plugins", plugin::RegisteredByPlugins()}};
+        static const std::string owner = OwnerSetting();
+        return Json{{"port", g->port},
+                    {"version", EL_VERSION_STRING},
+                    {"owner", owner.empty() ? Json(nullptr) : Json(owner)},
+                    {"plugins", plugin::RegisteredByPlugins()}};
     });
     game::AddGameTools(g->bench, g->watch);
     game::AddEngineEvents(g->bench);

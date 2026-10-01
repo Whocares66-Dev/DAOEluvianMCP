@@ -352,12 +352,19 @@ BRIDGE_TOOLS = [
             "first's way), and wait until Eluvian serves at the main menu; answers its health. "
             "With `load` (a save as game_saves lists them: character, kind, number), it then "
             "loads that save without the menus and waits until the world is there, so a test "
-            "starts where it means to. Deploy first: the game holds its plugins open while it runs."
+            "starts where it means to. Pass `owner`, the name you go by: health then says who "
+            "started the game, so another agent knows it is not its own. If a game already runs "
+            "the answer is `launched` false with whose it is: check that before you act. Deploy "
+            "first: the game holds its plugins open while it runs."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "waitSeconds": {"type": "integer", "minimum": 0, "maximum": 600},
+                "owner": {
+                    "type": "string",
+                    "description": "Who starts it: your agent's name, shown by health",
+                },
                 "logLevel": {
                     "type": "string",
                     "enum": ["trace", "debug", "info", "warn", "error"],
@@ -522,15 +529,30 @@ class Bridge:
         environment = {}
         if isinstance(arguments.get("logLevel"), str):
             environment["DAOLIB_LOG_LEVEL"] = arguments["logLevel"]
+        # Who starts it, for health's `owner`: agents share one game, and whose a running one
+        # is was asked again and again, and once got wrong (2026-10-01).
+        owner = arguments.get("owner")
+        environment["ELUVIAN_OWNER"] = owner if isinstance(owner, str) else ""
         # Looking for a game and starting one are a single step, under a lock: requests run
         # on threads of their own, and two launches at once each saw no game and each started
         # one (a review's finding). The lock is the machine's, so two bridges agree too.
         with self.launching:
             pids = self.processes.running()
             if pids:
-                return text_result(
-                    {"launched": False, "already": pids, **self.game_status()}
+                status = self.game_status()
+                health = status.get("eluvian")
+                theirs = health.get("owner") if isinstance(health, dict) else None
+                whose = (
+                    f"started by {theirs}"
+                    if theirs
+                    else "started by hand or by an older bridge: likely the player's own"
                 )
+                if not (isinstance(owner, str) and owner and owner == theirs):
+                    status["note"] = (
+                        f"NOT launched: a game is already running, {whose}. It is not yours to "
+                        "drive or close; read it if you must, and wait for it to end."
+                    )
+                return text_result({"launched": False, "already": pids, **status})
             # Another install's game may run beside this one's (DAOLib's work on EA's
             # executable does, with plugins of its own): it holds none of this install's
             # files and has no Eluvian, so it does not stop a launch. The answer names it,

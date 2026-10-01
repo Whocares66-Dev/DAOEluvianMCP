@@ -229,12 +229,26 @@ class BridgeTest(unittest.TestCase):
         self.assertFalse(result["launched"])
         self.assertEqual(self.processes.started, 0)
 
+    def test_a_launch_names_its_owner_and_a_second_is_told_whose_the_game_is(
+        self,
+    ) -> None:
+        self.processes.pids.clear()
+        self.call("game_launch", {"owner": "tester-a"})
+        self.assertEqual(self.processes.environment["ELUVIAN_OWNER"], "tester-a")
+        second = self.call("game_launch", {"owner": "tester-b"})
+        self.assertFalse(second["structuredContent"]["launched"])
+        self.assertIn("NOT launched", second["structuredContent"]["note"])
+        self.assertEqual(self.processes.started, 1)
+
     def test_launch_starts_the_game_and_waits_until_it_serves(self) -> None:
         self.processes.pids.clear()
         result = self.call("game_launch", {"logLevel": "debug"})
         self.assertFalse(result["isError"])
         self.assertEqual(result["structuredContent"]["health"]["state"], "running")
-        self.assertEqual(self.processes.environment, {"DAOLIB_LOG_LEVEL": "debug"})
+        self.assertEqual(
+            self.processes.environment,
+            {"DAOLIB_LOG_LEVEL": "debug", "ELUVIAN_OWNER": ""},
+        )
         self.assertIn(
             {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
         )
