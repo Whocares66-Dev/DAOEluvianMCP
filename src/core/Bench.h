@@ -31,7 +31,7 @@ struct BenchOptions
     // How long a frame tool's call may wait for a frame to take it.
     std::chrono::milliseconds frameTimeout{5000};
     std::size_t eventCapacity = 4096;
-    EventBus::FrameSource frame; // stamps each event with the frame it came in
+    EventBus::FrameSource frame = {}; // stamps each event with the frame it came in
 };
 
 class Bench

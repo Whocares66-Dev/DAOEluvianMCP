@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.21)
 
 project(DAOEluvianMCP VERSION 0.2.0 LANGUAGES CXX)
 
+# C++20 for what the build fetches too: Catch2 compiled as its own default
+# has no printer for std::string_view, which the tests then lack at link
+# (core-cov, where Catch2 is fetched rather than vcpkg's).
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 option(
     EL_BUILD_PLUGIN
     "Build eluvian.dll and its server (needs DAOLib and the game's 32-bit architecture)"
