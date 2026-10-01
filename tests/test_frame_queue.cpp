@@ -120,3 +120,12 @@ TEST_CASE("calls from many threads all come back", "[queue]")
     }
     CHECK(sum == 36);
 }
+
+TEST_CASE("a call with no value runs on the frame thread too", "[queue]")
+{
+    FrameQueue queue;
+    const FrameThread frames(queue);
+    std::atomic<bool> ran{false};
+    queue.RunAndWait([&ran] { ran = true; }, 2s);
+    CHECK(ran);
+}

@@ -5,7 +5,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <stdexcept>
 #include <string>
+#include <thread>
 
 using namespace eluvian;
 using Catch::Matchers::ContainsSubstring;
@@ -153,4 +155,62 @@ TEST_CASE("a run within its budget does not time out", "[scenario]")
     CHECK(answer["ok"] == true);
     CHECK(answer["timedOut"] == false);
     CHECK_THROWS_AS(f.Run(Json{{"budgetMs", 0}, {"steps", {{{"tool", "attack"}}}}}), ToolError);
+}
+
+TEST_CASE("the rarer failures of a step each say what happened", "[scenario]")
+{
+    Fixture f;
+    f.bench.Tools().Add(ToolSpec{"crash", "Crash.", {}, Thread::Listener},
+                        [](const Json &) -> ToolResult { throw std::logic_error("a bug"); });
+    const auto errorOf = [&f](const Json &steps) {
+        const auto answer = f.Run(Json{{"steps", steps}});
+        return answer["steps"].back()["error"].get<std::string>();
+    };
+    const Json health = {{"tool", "health"}, {"as", "h"}};
+    CHECK_THAT(
+        errorOf(Json::array({health, Json{{"expect", {{"from", "h"}, {"pointer", "no slash"}, {"exists", true}}}}})),
+        ContainsSubstring("not a JSON pointer"));
+    CHECK_THAT(
+        errorOf(Json::array({health, Json{{"expect", {{"from", "h"}, {"pointer", "/max"}, {"notEquals", 146}}}}})),
+        ContainsSubstring("expected anything but 146"));
+    CHECK_THAT(
+        errorOf(Json::array({health, Json{{"expect", {{"from", "h"}, {"pointer", "/max"}, {"atLeast", "many"}}}}})),
+        ContainsSubstring("expected a number atLeast"));
+    CHECK_THAT(errorOf(Json::array({health, Json{{"expect", {{"pointer", "/max"}}}}})),
+               ContainsSubstring("`expect` needs `from`"));
+    CHECK_THAT(errorOf(Json::array({Json{{"tool", "crash"}}})), ContainsSubstring("failed inside the bench: a bug"));
+}
+
+TEST_CASE("a frame tool with no frame fails its step and says the frame is not running", "[scenario]")
+{
+    Bench bench(BenchOptions{std::chrono::milliseconds(10)});
+    AddScenarioTool(bench);
+    bench.Tools().Add(ToolSpec{"order", "Needs a frame."}, [](const Json &) -> ToolResult { return 1; });
+    const auto answer = bench.Invoke("scenario", Json{{"steps", {{{"tool", "order"}}}}}).data;
+    CHECK(answer["ok"] == false);
+    CHECK_THAT(answer["steps"][0]["error"].get<std::string>(), ContainsSubstring("the game's frame is not running"));
+}
+
+TEST_CASE("a step with no time left does not start, and one that ran past it says so", "[scenario]")
+{
+    Fixture f;
+    f.bench.Tools().Add(ToolSpec{"slow", "Takes a while.", {}, Thread::Listener}, [](const Json &) -> ToolResult {
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        return Json{{"done", true}};
+    });
+    // The slow tool is waited for, since it cannot be taken back; the step
+    // after it has no time and does not start.
+    const auto answer = f.Run(Json{{"budgetMs", 20}, {"steps", {{{"tool", "slow"}}, {{"tool", "attack"}}}}});
+    CHECK(answer["timedOut"] == true);
+    CHECK(answer["stepsRun"] == 1);
+    CHECK(answer["steps"][0]["ok"] == true);
+    CHECK_THAT(answer["steps"][0]["note"].get<std::string>(), ContainsSubstring("ran past the scenario's time"));
+    CHECK(f.attacks == 0);
+
+    // A sleep longer than what is left is cut short, fails, and ends the run: the step after it does not start.
+    const auto second = f.Run(Json{{"budgetMs", 30}, {"steps", {{{"sleepMs", 500}}, {{"tool", "attack"}}}}});
+    CHECK(second["timedOut"] == true);
+    CHECK(second["stepsRun"] == 1);
+    CHECK_THAT(second["steps"].back()["error"].get<std::string>(), ContainsSubstring("into a sleep of 500 ms"));
+    CHECK(f.attacks == 0);
 }

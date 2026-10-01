@@ -183,3 +183,65 @@ TEST_CASE("a page from elsewhere is refused", "[http]")
     CHECK(routes.Send("POST", "/mcp", "{}", "https://example.com").status == 403);
     CHECK(routes.Send("GET", "/api/health", {}, "http://localhost:5173").status == 200);
 }
+
+TEST_CASE("each status is written with its phrase", "[http]")
+{
+    const auto line = [](int status) {
+        const auto bytes = Serialize(HttpResponse::OfJson(status, Json::object()), false);
+        return bytes.substr(0, bytes.find("\r\n"));
+    };
+    CHECK(line(400) == "HTTP/1.1 400 Bad Request");
+    CHECK(line(403) == "HTTP/1.1 403 Forbidden");
+    CHECK(line(404) == "HTTP/1.1 404 Not Found");
+    CHECK(line(405) == "HTTP/1.1 405 Method Not Allowed");
+    CHECK(line(413) == "HTTP/1.1 413 Content Too Large");
+    CHECK(line(431) == "HTTP/1.1 431 Request Header Fields Too Large");
+    CHECK(line(500) == "HTTP/1.1 500 Internal Server Error");
+    CHECK(line(501) == "HTTP/1.1 501 Not Implemented");
+    CHECK(line(503) == "HTTP/1.1 503 Service Unavailable");
+    CHECK(line(504) == "HTTP/1.1 504 Gateway Timeout");
+    CHECK(line(418) == "HTTP/1.1 418 Status");
+}
+
+TEST_CASE("header values lose the space around them, and escapes read in either case", "[http]")
+{
+    HttpParser parser;
+    REQUIRE(parser.Feed("GET /a%2fb?q=%2A%2a HTTP/1.1\r\nX-Padded:   value \t \r\n\r\n") == Status::Complete);
+    const auto request = parser.Take();
+    CHECK(request.Header("x-padded") == "value");
+    CHECK(request.path == "/a/b");
+    CHECK(request.query == Query{{"q", "**"}});
+}
+
+TEST_CASE("a parser that failed stays failed", "[http]")
+{
+    HttpParser parser;
+    REQUIRE(parser.Feed("NONSENSE\r\n\r\n") == Status::Error);
+    CHECK(parser.Feed("GET / HTTP/1.1\r\n\r\n") == Status::Error);
+    CHECK(parser.Parse() == Status::Error);
+    CHECK(parser.ErrorResponse().status == 400);
+}
+
+TEST_CASE("a head that ends past the limit is refused though it ends", "[http]")
+{
+    HttpParser parser;
+    const std::string head = "GET / HTTP/1.1\r\nX-Long: " + std::string(HttpParser::kMaxHead, 'a') + "\r\n\r\n";
+    REQUIRE(parser.Feed(head) == Status::Error);
+    CHECK(parser.ErrorResponse().status == 431);
+}
+
+TEST_CASE("a chunked body waits for its trailers, and has a limit", "[http]")
+{
+    HttpParser parser;
+    CHECK(parser.Feed("POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\nX-Trailer: 1\r\n") ==
+          Status::NeedMore);
+    CHECK(parser.Feed("\r\n") == Status::Complete);
+    CHECK(parser.Take().body == "{}");
+
+    HttpParser large;
+    // A first chunk within the limit, a second that would pass it: refused
+    // on its size line, before its bytes come.
+    REQUIRE(large.Feed("POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n1000001\r\n") ==
+            Status::Error);
+    CHECK(large.ErrorResponse().status == 413);
+}
