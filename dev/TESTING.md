@@ -234,3 +234,5 @@ A key's message without the key, 2026-10-01, 08:58 (DAOLib `0632df5`; the ruins,
 - `order action=use` on the door, the Bereskarn's fight, then on the mirror: the mirror's conversation, an area's load in the middle of it, the camp's conversation with Fenarel and the keeper, 38 lines in all, each continued or answered with its first reply by the same loop, to explore mode in the Dalish Camp. The origin's "cutscenes" here are conversations: the game's mode read dialog throughout and never cutscene, so `dialogue action=skip_cutscene` is still not seen.
 - The game autosaved at the mirror room's door (AutoSave_4), which the user has said is no concern.
 - `screenshot source=game` now answers the picture written again as a plain JPEG (the game's own carries an Exif header a reader rejected).
+
+`travel` to a thing that fills its own place, 2026-10-01, 10:00 (eluvian.dll of `dd5a424`): to the shut door 0x1f1 from the ruins' entrance, 53.5 m: stopped for the spiders' fight, then arrived, 0.5 m; to the chest 0x1fd: arrived, 1.09 m. `tools/smoke.py` on the same build: 38 of 38.
