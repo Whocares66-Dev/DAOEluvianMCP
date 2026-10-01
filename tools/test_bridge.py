@@ -57,6 +57,15 @@ class FakeGame(BaseHTTPRequestHandler):
         args = json.loads(self.rfile.read(length) or b"{}")
         if self.path == "/api/tool/echo":
             self.answer(200, {"args": args})
+        elif self.path == "/api/tool/game":
+            # A load, as Eluvian's game tool answers it; no such save for "Nobody".
+            if args.get("character") == "Nobody":
+                self.answer(400, {"error": "game: no such save to load"})
+            else:
+                self.answer(200, {"asked": True, "save": args, "cursor": 7})
+        elif self.path == "/api/tool/wait_for":
+            event = {"seq": 9, "topic": args.get("topic"), "payload": {"number": 2}}
+            self.answer(200, {"found": args.get("since") == 7, "event": event})
         elif self.path == "/api/tool/refuse":
             self.answer(400, {"error": "refuse: not now"})
         elif self.path == "/api/tool/picture":
@@ -215,6 +224,24 @@ class BridgeTest(unittest.TestCase):
         self.assertIn(
             {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
         )
+
+    def test_launch_into_a_save_asks_for_it_and_waits_for_the_world(self) -> None:
+        self.processes.pids.clear()
+        save = {"character": "Aedan", "kind": "manual", "number": 2}
+        result = self.call("game_launch", {"load": save})
+        self.assertFalse(result["isError"])
+        loaded = result["structuredContent"]["loaded"]
+        self.assertEqual(loaded["save"], {"action": "load", **save})
+        self.assertEqual(loaded["event"]["topic"], "eluvian.game.loaded")
+
+    def test_a_save_the_game_does_not_take_is_an_error_that_says_why(self) -> None:
+        self.processes.pids.clear()
+        result = self.call(
+            "game_launch", {"load": {"character": "Nobody"}, "waitSeconds": 0}
+        )
+        self.assertTrue(result["isError"])
+        self.assertIn("no such save to load", result["content"][0]["text"])
+        self.assertEqual(self.processes.started, 1)  # the game was started all the same
 
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})

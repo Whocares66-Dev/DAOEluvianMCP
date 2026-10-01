@@ -308,7 +308,9 @@ BRIDGE_TOOLS = [
         "description": (
             "Start DAOrigins.exe, never a second one (a second game's logs and port get in the "
             "first's way), and wait until Eluvian serves at the main menu; answers its health. "
-            "Deploy first: the game holds its plugins open while it runs."
+            "With `load` (a save as game_saves lists them: character, kind, number), it then "
+            "loads that save without the menus and waits until the world is there, so a test "
+            "starts where it means to. Deploy first: the game holds its plugins open while it runs."
         ),
         "inputSchema": {
             "type": "object",
@@ -317,6 +319,15 @@ BRIDGE_TOOLS = [
                 "logLevel": {
                     "type": "string",
                     "enum": ["trace", "debug", "info", "warn", "error"],
+                },
+                "load": {
+                    "type": "object",
+                    "description": "The save to start in",
+                    "properties": {
+                        "character": {"type": "string"},
+                        "kind": {"type": "string", "enum": ["manual", "auto", "quick"]},
+                        "number": {"type": "integer"},
+                    },
                 },
             },
         },
@@ -502,7 +513,57 @@ class Bridge:
             self.sleep(1)
         self.game_tools()  # lists the game's tools now it serves, and says so if they changed
         self.send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
-        return text_result({"launched": True, "pid": pid, "health": health})
+        answer = {"launched": True, "pid": pid, "health": health}
+        save = arguments.get("load")
+        if isinstance(save, dict):
+            loaded = self.load_save(save, deadline)
+            answer["loaded"] = loaded
+            answer["health"] = self.health()
+            if "error" in loaded:
+                return text_result(json.dumps(answer), is_error=True)
+        return text_result(answer)
+
+    def load_save(self, save: dict, deadline: float) -> dict:
+        """Asks the game for a save, as its `game` tool's load does, and waits for the world:
+        from the main menu a load took 14 s in play (2026-10-01). The menu may not take a
+        load in its first moments, so a refusal is asked again until the deadline."""
+        wanted = {
+            key: save[key] for key in ("character", "kind", "number") if key in save
+        }
+        refusal = "the game did not answer"
+        while True:
+            try:
+                status, body = self.game.request(
+                    "POST", "/api/tool/game", {"action": "load", **wanted}, timeout=30
+                )
+            except (Unreachable, StillWaiting) as error:
+                status, body = 0, {"error": str(error)}
+            if status == 200 and isinstance(body, dict) and body.get("asked"):
+                break
+            refusal = body.get("error", refusal) if isinstance(body, dict) else refusal
+            if time.monotonic() >= deadline:
+                return {"error": f"the load was not taken: {refusal}"}
+            self.sleep(2)
+        wait_ms = int(max(1.0, min(deadline - time.monotonic(), 290)) * 1000)
+        try:
+            status, event = self.game.request(
+                "POST",
+                "/api/tool/wait_for",
+                {
+                    "topic": "eluvian.game.loaded",
+                    "since": body.get("cursor", 0),
+                    "timeoutMs": wait_ms,
+                },
+                timeout=wait_ms / 1000 + MARGIN_SECONDS,
+            )
+        except (Unreachable, StillWaiting) as error:
+            return {"error": f"asked, but the wait for the load failed: {error}"}
+        if status == 200 and isinstance(event, dict) and event.get("found"):
+            return {"save": body.get("save"), "event": event.get("event")}
+        return {
+            "error": "the game was asked and no eluvian.game.loaded came in time; it may have "
+            "declined, or still be loading: health says"
+        }
 
     def game_quit(self, arguments: dict) -> dict:
         pids = self.processes.running()
