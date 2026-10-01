@@ -271,3 +271,5 @@ A cutscene played and skipped, 2026-10-01, 14:25 (DAOLib `4757f0e`; the ruins' e
 - No save was written. The origin's own playing of that mirror scene had gone by as a conversation's mode in the morning's run; started by the scripts' LoadCutscene it is the cutscene mode.
 
 A pre-rendered movie played and skipped, 2026-10-01, 14:35 (the same place, one call at a time): `script` calling PlayMovie with `bed100cs_duncan_finds_pc.bik` put the game in mode movie within half a second, `inspect kind=dialogue` saying `movie` true and `cutscene` false; `dialogue action=skip_cutscene` two seconds in answered `skipped` movie and the mode was explore again within half a second; the hero walked after. With that every call of DAOLib's `dao::dialogue` has been seen in play.
+
+The walk search with the game paused, 2026-10-01, 15:46 (for lib-agent): `inspect kind=geometry` with `walk`, the hero to a spider 40.7 m off, asked running, paused, paused again and running again: each time found, 44.18 m, 29 waypoints, 20 slices, the same answers slice for slice. A pause changes nothing in it.
