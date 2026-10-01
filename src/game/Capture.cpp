@@ -1,0 +1,210 @@
+#include "game/Capture.h"
+
+#include "core/Tool.h"
+
+#include <Windows.h>
+#include <objidl.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+
+#include <cstdint>
+#include <cstring>
+#include <format>
+#include <vector>
+
+#ifndef PW_RENDERFULLCONTENT
+#define PW_RENDERFULLCONTENT 0x00000002 // Windows 8.1's, missing from older headers
+#endif
+
+namespace eluvian::game
+{
+
+namespace
+{
+
+using Microsoft::WRL::ComPtr;
+
+// The process's largest visible top-level window: the game's own.
+struct Search
+{
+    DWORD process = 0;
+    HWND window = nullptr;
+    long area = 0;
+};
+
+BOOL CALLBACK Consider(HWND window, LPARAM param)
+{
+    auto &search = *reinterpret_cast<Search *>(param);
+    DWORD process = 0;
+    GetWindowThreadProcessId(window, &process);
+    if (process != search.process || IsWindowVisible(window) == FALSE || GetWindow(window, GW_OWNER) != nullptr)
+    {
+        return TRUE;
+    }
+    RECT client{};
+    GetClientRect(window, &client);
+    const long area = (client.right - client.left) * (client.bottom - client.top);
+    if (area > search.area)
+    {
+        search.window = window;
+        search.area = area;
+    }
+    return TRUE;
+}
+
+HWND GameWindow()
+{
+    Search search{GetCurrentProcessId()};
+    EnumWindows(&Consider, reinterpret_cast<LPARAM>(&search));
+    return search.window;
+}
+
+void Check(HRESULT result, const char *what)
+{
+    if (FAILED(result))
+    {
+        throw ToolError(std::format("screenshot: {} failed ({:#010x})", what, static_cast<unsigned long>(result)));
+    }
+}
+
+// COM on this thread for the call's length. A thread COM already knows in
+// another mode (RPC_E_CHANGED_MODE) can use it as it is, and must not
+// uninitialise what it did not initialise.
+class ComScope
+{
+  public:
+    ComScope() : result_(CoInitializeEx(nullptr, COINIT_MULTITHREADED))
+    {
+    }
+    ~ComScope()
+    {
+        if (SUCCEEDED(result_))
+        {
+            CoUninitialize();
+        }
+    }
+    ComScope(const ComScope &) = delete;
+    ComScope &operator=(const ComScope &) = delete;
+
+  private:
+    HRESULT result_;
+};
+
+std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int height, float quality)
+{
+    const ComScope com;
+    ComPtr<IWICImagingFactory> factory;
+    Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)),
+          "making the image factory");
+    ComPtr<IWICBitmap> bitmap;
+    Check(factory->CreateBitmapFromMemory(static_cast<UINT>(width), static_cast<UINT>(height),
+                                          GUID_WICPixelFormat32bppBGRA, static_cast<UINT>(width) * 4,
+                                          static_cast<UINT>(bgra.size()), const_cast<BYTE *>(bgra.data()), &bitmap),
+          "taking the pixels");
+    ComPtr<IWICFormatConverter> converter;
+    Check(factory->CreateFormatConverter(&converter), "making a converter");
+    Check(converter->Initialize(bitmap.Get(), GUID_WICPixelFormat24bppBGR, WICBitmapDitherTypeNone, nullptr, 0.0,
+                                WICBitmapPaletteTypeCustom),
+          "converting the pixels");
+    ComPtr<IStream> stream;
+    Check(CreateStreamOnHGlobal(nullptr, TRUE, &stream), "making a stream");
+    ComPtr<IWICBitmapEncoder> encoder;
+    Check(factory->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, &encoder), "making the JPEG encoder");
+    Check(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache), "starting the encoder");
+    ComPtr<IWICBitmapFrameEncode> frame;
+    ComPtr<IPropertyBag2> options;
+    Check(encoder->CreateNewFrame(&frame, &options), "making the frame");
+    PROPBAG2 option{};
+    option.pstrName = const_cast<LPOLESTR>(L"ImageQuality");
+    VARIANT value;
+    VariantInit(&value);
+    value.vt = VT_R4;
+    value.fltVal = quality;
+    Check(options->Write(1, &option, &value), "setting the quality");
+    Check(frame->Initialize(options.Get()), "starting the frame");
+    Check(frame->SetSize(static_cast<UINT>(width), static_cast<UINT>(height)), "sizing the frame");
+    WICPixelFormatGUID format = GUID_WICPixelFormat24bppBGR;
+    Check(frame->SetPixelFormat(&format), "setting the frame's format");
+    Check(frame->WriteSource(converter.Get(), nullptr), "writing the frame");
+    Check(frame->Commit(), "finishing the frame");
+    Check(encoder->Commit(), "finishing the JPEG");
+
+    HGLOBAL memory = nullptr;
+    Check(GetHGlobalFromStream(stream.Get(), &memory), "reading the JPEG back");
+    STATSTG stat{};
+    Check(stream->Stat(&stat, STATFLAG_NONAME), "measuring the JPEG");
+    const auto *bytes = static_cast<const char *>(GlobalLock(memory));
+    if (bytes == nullptr)
+    {
+        throw ToolError("screenshot: reading the JPEG back failed");
+    }
+    std::string jpeg(bytes, static_cast<std::size_t>(stat.cbSize.QuadPart));
+    GlobalUnlock(memory);
+    return jpeg;
+}
+
+} // namespace
+
+Picture CaptureGameWindow(float quality)
+{
+    HWND window = GameWindow();
+    if (window == nullptr)
+    {
+        throw ToolError("screenshot: the game has no window to take yet");
+    }
+    if (IsIconic(window) != FALSE)
+    {
+        throw ToolError("screenshot: the game's window is minimised; restore it to take a picture");
+    }
+    RECT client{};
+    GetClientRect(window, &client);
+    const int width = client.right - client.left;
+    const int height = client.bottom - client.top;
+    if (width <= 0 || height <= 0)
+    {
+        throw ToolError("screenshot: the game's window has no size");
+    }
+
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = -height; // top-down, as the encoder reads rows
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+
+    std::vector<std::uint8_t> pixels;
+    HDC windowDc = GetDC(window);
+    HDC memoryDc = windowDc != nullptr ? CreateCompatibleDC(windowDc) : nullptr;
+    void *bits = nullptr;
+    HBITMAP bitmap =
+        memoryDc != nullptr ? CreateDIBSection(windowDc, &info, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+    if (bitmap != nullptr)
+    {
+        HGDIOBJ previous = SelectObject(memoryDc, bitmap);
+        const BOOL drawn = PrintWindow(window, memoryDc, PW_CLIENTONLY | PW_RENDERFULLCONTENT);
+        GdiFlush();
+        if (drawn != FALSE && bits != nullptr)
+        {
+            pixels.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4);
+            std::memcpy(pixels.data(), bits, pixels.size());
+        }
+        SelectObject(memoryDc, previous);
+        DeleteObject(bitmap);
+    }
+    if (memoryDc != nullptr)
+    {
+        DeleteDC(memoryDc);
+    }
+    if (windowDc != nullptr)
+    {
+        ReleaseDC(window, windowDc);
+    }
+    if (pixels.empty())
+    {
+        throw ToolError("screenshot: Windows could not draw the game's window");
+    }
+    return Picture{EncodeJpeg(pixels, width, height, quality), width, height};
+}
+
+} // namespace eluvian::game

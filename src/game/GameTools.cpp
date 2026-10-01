@@ -2,6 +2,7 @@
 
 #include "core/Args.h"
 #include "core/Base64.h"
+#include "game/Capture.h"
 #include "game/Convert.h"
 
 #include "dao/Abilities.h"
@@ -20,6 +21,8 @@
 #include "dao/World.h"
 #include "dao/generated/ScriptApi.h"
 #include "dao/generated/ScriptConstants.h"
+
+#include <Windows.h>
 
 #include <algorithm>
 #include <cctype>
@@ -419,12 +422,12 @@ void AddInspect(Bench &bench, const Watch &watch)
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
             const ObjectId hero = api::GetHero();
-            const ObjectId near = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
-            if (near == kInvalidObject)
+            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+            if (around == kInvalidObject)
             {
                 throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
             }
-            const auto from = api::GetPosition(near);
+            const auto from = api::GetPosition(around);
             const auto radius = args.Number("radius", -1);
             const auto side =
                 args.Has("side") ? std::optional{args.Choice("side", {"party", "hostile", "neutral"})} : std::nullopt;
@@ -433,7 +436,7 @@ void AddInspect(Bench &bench, const Watch &watch)
             const auto party = PartyOf(hero);
 
             std::vector<std::pair<float, Json>> found;
-            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(near))))
+            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
             {
                 if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE ||
                     (!includeInactive && api::GetObjectActive(id) == 0))
@@ -459,7 +462,7 @@ void AddInspect(Bench &bench, const Watch &watch)
             {
                 creatures.push_back(std::move(creature));
             }
-            return Json{{"near", Brief(near)}, {"count", creatures.size()}, {"creatures", std::move(creatures)}};
+            return Json{{"near", Brief(around)}, {"count", creatures.size()}, {"creatures", std::move(creatures)}};
         });
 
     bench.Tools().AddKind(
@@ -996,15 +999,15 @@ ObjectId StageSpawn(const Args &args, Json &answer)
 {
     const auto name = args.String("template");
     const auto point = VectorOf(args.Raw().value("point", Json()), "stage: `point`");
-    const ObjectId near = api::GetMainControlled();
-    if (near == kInvalidObject)
+    const ObjectId around = api::GetMainControlled();
+    if (around == kInvalidObject)
     {
         throw ToolError("stage: nobody is controlled, so there is no area to spawn in");
     }
     const auto facing = static_cast<float>(args.Number("facing", 0));
     const auto spawn = [&](const std::string &resource) {
         return api::CreateObject(k::OBJECT_TYPE_CREATURE, dao::Resource{Wide(resource)},
-                                 api::Location(api::GetArea(near), point, facing));
+                                 api::Location(api::GetArea(around), point, facing));
     };
     // The scripts name a creature's template with its extension
     // (R"gen00fl_dog.utc"); GetResRef may give it without.
@@ -1080,92 +1083,56 @@ void AddStage(Bench &bench, const Watch &watch)
 
 // ---- screenshot ------------------------------------------------------------
 
-// The game's own screenshots: <Documents>\BioWare\Dragon Age\Screenshots\
-// User\Screenshot<time>.jpg, as its key writes them (seen on this machine,
-// 2026-09-30). Beside the logs' folder.
+// Where Eluvian keeps its pictures: beside the game's own screenshots, in
+// <Documents>\BioWare\Dragon Age\Screenshots\Eluvian.
 std::filesystem::path ScreenshotFolder()
 {
-    return dao::LogDirectory().parent_path() / "Screenshots";
+    return dao::LogDirectory().parent_path() / "Screenshots" / "Eluvian";
 }
 
-// The newest .jpg under the folder, and when it was written.
-std::optional<std::filesystem::path> NewestShot(const std::filesystem::path &folder)
-{
-    std::error_code error;
-    std::optional<std::filesystem::path> newest;
-    std::filesystem::file_time_type newestTime{};
-    for (const auto &entry : std::filesystem::recursive_directory_iterator(folder, error))
-    {
-        if (!entry.is_regular_file(error) || entry.path().extension() != ".jpg")
-        {
-            continue;
-        }
-        const auto written = entry.last_write_time(error);
-        if (!newest || written > newestTime)
-        {
-            newest = entry.path();
-            newestTime = written;
-        }
-    }
-    return newest;
-}
-
-void AddScreenshot(Bench &bench, const Watch &watch)
+void AddScreenshot(Bench &bench)
 {
     bench.Tools().Add(
         ToolSpec{"screenshot",
-                 "The game's own picture of what it shows, as its screenshot key takes it: no window over the "
-                 "game can spoil it. Answers the picture as an image, with the file's path; `image: false` "
-                 "answers the path alone, to look at later or save tokens.",
+                 "A picture of the game's window as it is now, interface and all, drawn by Windows from inside "
+                 "the game: no window over the game can spoil it (not while it is minimised). Answers the picture "
+                 "as an image, with its size and the file it was saved to (Screenshots\\Eluvian beside the "
+                 "game's own); `image: false` answers the file alone, to save tokens; `quality` from 0.1 to 1, "
+                 "0.8 by default.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"image", {{"type", "boolean"}, {"description", "Answer the picture itself; default true"}}}}}},
+                       {{"image", {{"type", "boolean"}, {"description", "Answer the picture itself; default true"}}},
+                        {"quality", {{"type", "number"}, {"description", "JPEG quality, 0.1 to 1; default 0.8"}}}}}},
                  Thread::Listener, true},
-        [&bench, &watch](const Json &raw) -> ToolResult {
+        [](const Json &raw) -> ToolResult {
             const Args args(raw, "screenshot");
             const bool image = args.Bool("image", true);
+            const double quality = args.Number("quality", 0.8);
+            if (quality < 0.1 || quality > 1)
+            {
+                throw ToolError("screenshot: `quality` is from 0.1 to 1");
+            }
+            const auto picture = CaptureGameWindow(static_cast<float>(quality));
+
             const auto folder = ScreenshotFolder();
-            const auto before = NewestShot(folder);
-            // The picture is asked for on the frame thread, as the script
-            // command must be; the file comes a frame or more later, waited
-            // for here, off the frame.
-            bench.Frames().RunAndWait(
-                [&watch] {
-                    RequireWorld(watch, "screenshot");
-                    api::Screenshot();
-                },
-                std::chrono::milliseconds(5000));
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-            std::optional<std::filesystem::path> shot;
-            std::uintmax_t lastSize = 0;
-            while (std::chrono::steady_clock::now() < deadline)
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                const auto newest = NewestShot(folder);
-                if (!newest || newest == before)
-                {
-                    continue;
-                }
-                // Done when its size holds still between two looks.
-                std::error_code error;
-                const auto size = std::filesystem::file_size(*newest, error);
-                if (!error && size > 0 && size == lastSize)
-                {
-                    shot = newest;
-                    break;
-                }
-                lastSize = error ? 0 : size;
-            }
-            if (!shot)
-            {
-                throw ToolError(std::format("screenshot: no new picture in {} within 10 s", folder.string()));
-            }
-            ToolResult result(Json{{"file", shot->string()}, {"bytes", lastSize}});
+            std::error_code error;
+            std::filesystem::create_directories(folder, error);
+            SYSTEMTIME now{};
+            GetLocalTime(&now);
+            const auto file =
+                folder / std::format("Eluvian{:04}{:02}{:02}{:02}{:02}{:02}{:03}.jpg", now.wYear, now.wMonth, now.wDay,
+                                     now.wHour, now.wMinute, now.wSecond, now.wMilliseconds);
+            std::ofstream(file, std::ios::binary)
+                .write(picture.jpeg.data(), static_cast<std::streamsize>(picture.jpeg.size()));
+
+            ToolResult result(Json{{"file", file.string()},
+                                   {"width", picture.width},
+                                   {"height", picture.height},
+                                   {"bytes", picture.jpeg.size()}});
             if (image)
             {
-                std::ifstream in(*shot, std::ios::binary);
-                const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-                result.content.push_back(Json{{"type", "image"}, {"data", Base64(bytes)}, {"mimeType", "image/jpeg"}});
+                result.content.push_back(
+                    Json{{"type", "image"}, {"data", Base64(picture.jpeg)}, {"mimeType", "image/jpeg"}});
             }
             return result;
         });
@@ -1237,7 +1204,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);
-    AddScreenshot(bench, watch);
+    AddScreenshot(bench);
     AddGame(bench, watch);
 }
 

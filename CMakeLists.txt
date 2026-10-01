@@ -210,6 +210,7 @@ include("${EL_DAOLIB}/cmake/Quality.cmake")
 add_daolib_plugin(
     eluvian
     SOURCES
+        src/game/Capture.cpp
         src/game/Convert.cpp
         src/game/GameTools.cpp
         src/game/Health.cpp
@@ -217,7 +218,8 @@ add_daolib_plugin(
         src/plugin/Plugin.cpp
 )
 el_apply_warnings(eluvian)
-target_link_libraries(eluvian PRIVATE el_server)
+# windowscodecs: the screenshot's JPEG (game/Capture.cpp).
+target_link_libraries(eluvian PRIVATE el_server windowscodecs)
 target_compile_definitions(
     eluvian
     PRIVATE
