@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,15 +25,21 @@ class FakeGame(BaseHTTPRequestHandler):
 
     def answer(self, status: int, body: object) -> None:
         data = json.dumps(body).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except ConnectionError:
+            pass  # the client stopped waiting, which one test is about
 
     def do_GET(self) -> None:
         if self.path == "/api/health":
             self.answer(200, {"state": "running", "mode": "explore"})
+        elif self.path == "/api/slow":
+            time.sleep(1.5)
+            self.answer(200, {"late": True})
         elif self.path == "/api/tools":
             tools = [
                 {
@@ -269,6 +276,79 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(
             sorted(reply["id"] for reply in self.sent if "id" in reply), [1, 2, 3]
         )
+
+    def test_the_bridge_waits_as_long_as_the_tool_may_take(self) -> None:
+        two_minutes = {"steps": [{"sleepMs": 60000}, {"sleepMs": 60000}]}
+        self.assertGreater(bridge_module.call_budget("scenario", two_minutes), 600)
+        self.assertEqual(
+            bridge_module.call_budget("wait_for", {"timeoutMs": 120000}), 180
+        )
+        self.assertEqual(bridge_module.call_budget("inspect", {"kind": "game"}), 60)
+        self.assertEqual(
+            bridge_module.call_budget("inspect", ["not", "an", "object"]), 60
+        )
+
+    def test_a_call_still_running_is_not_reported_as_the_game_down(self) -> None:
+        def still_waiting(*args, **kwargs):
+            raise bridge_module.StillWaiting("timed out")
+
+        self.bridge.game.request = still_waiting
+        result = self.call("scenario", {"steps": [{"sleepMs": 1}]})
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("may still be running", text)
+        self.assertNotIn("game_launch", text)
+
+    def test_a_read_that_times_out_is_still_waiting_not_unreachable(self) -> None:
+        with self.assertRaises(bridge_module.StillWaiting):
+            self.bridge.game.request("GET", "/api/slow", timeout=0.2)
+
+    def test_two_launches_at_once_start_one_game(self) -> None:
+        self.processes.pids.clear()
+        looked = self.processes.running
+
+        def slow_look() -> list[int]:
+            pids = looked()
+            time.sleep(
+                0.1
+            )  # long enough for the other request to look too, were it let
+            return pids
+
+        self.processes.running = slow_look
+        threads = [
+            threading.Thread(target=self.call, args=("game_launch", {"waitSeconds": 0}))
+            for _ in range(2)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(self.processes.started, 1)
+
+    def test_malformed_requests_are_answered_with_their_id(self) -> None:
+        reply = self.bridge.handle(
+            {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": ["bad"]}
+        )
+        self.assertEqual((reply["id"], reply["error"]["code"]), (7, -32602))
+        reply = self.bridge.handle(
+            request(8, "tools/call", {"name": "game_quit", "arguments": ["bad"]})
+        )
+        self.assertEqual((reply["id"], reply["error"]["code"]), (8, -32602))
+        reply = self.bridge.handle(request(9, "initialize", None))
+        self.assertIn("protocolVersion", reply["result"])
+
+    def test_a_request_that_fails_inside_still_gets_an_answer(self) -> None:
+        def broken(*args, **kwargs):
+            raise RuntimeError("no such exe")
+
+        self.processes.pids.clear()
+        self.processes.start = broken
+        line = json.dumps(request(11, "tools/call", {"name": "game_launch"}))
+        bridge_module.serve(self.bridge, [line, json.dumps(request(12, "ping"))])
+        by_id = {reply["id"]: reply for reply in self.sent if "id" in reply}
+        self.assertEqual(by_id[11]["error"]["code"], -32603)
+        self.assertIn("no such exe", by_id[11]["error"]["message"])
+        self.assertEqual(by_id[12]["result"], {})
 
     def test_the_port_comes_from_eluvian_json(self) -> None:
         (self.folder / "eluvian.json").write_text(

@@ -85,6 +85,28 @@ class Unreachable(Exception):
     """Nothing answered at the game's port."""
 
 
+class StillWaiting(Exception):
+    """The game took the request and had not answered when the bridge stopped waiting: the call
+    may be running there yet, which is not the game being down."""
+
+
+# How long the bridge waits for a tool's answer. A scenario may run its ten minutes, and a
+# wait_for its own timeout; anything else answers within the frame queue's few seconds.
+SCENARIO_SECONDS = 10 * 60
+MARGIN_SECONDS = 30
+
+
+def call_budget(name: str, arguments: object) -> float:
+    """Seconds to wait for a tool's answer: longer than the tool itself may take, so the bridge
+    never gives up on a call the game is still running (a review found a two-minute scenario
+    given 60 s, then reported as the game not running while its later steps went on)."""
+    if name == "scenario":
+        return SCENARIO_SECONDS + MARGIN_SECONDS
+    wait_ms = arguments.get("timeoutMs", 0) if isinstance(arguments, dict) else 0
+    waited = wait_ms / 1000 if isinstance(wait_ms, (int, float)) and wait_ms > 0 else 0
+    return 60 + waited
+
+
 class Game:
     """The game's REST API, at the port eluvian.json names."""
 
@@ -120,7 +142,15 @@ class Game:
                 return error.code, json.loads(error.read() or b"null")
             except ValueError:
                 return error.code, {"error": str(error)}
-        except (urllib.error.URLError, ConnectionError, TimeoutError) as error:
+        except TimeoutError as error:
+            raise StillWaiting(str(error)) from error
+        except urllib.error.URLError as error:
+            # urllib wraps a timeout on connecting or sending in a URLError; one on reading
+            # the answer comes bare (above). Either way the game may have the request.
+            if isinstance(error.reason, TimeoutError):
+                raise StillWaiting(str(error)) from error
+            raise Unreachable(str(error)) from error
+        except ConnectionError as error:
             raise Unreachable(str(error)) from error
 
 
@@ -274,6 +304,38 @@ BRIDGE_TOOLS = [
 ]
 
 
+class LaunchLock:
+    """One launch at a time: among this bridge's request threads (a lock), and among the
+    bridges on the machine (a named mutex, on Windows), so "never a second game" holds
+    whoever asks."""
+
+    NAME = "Local\\EluvianBridgeLaunch"
+    WAIT_MS = 30_000
+
+    def __init__(self) -> None:
+        self.local = threading.Lock()
+        self.handle: int | None = None
+
+    def __enter__(self) -> LaunchLock:
+        self.local.acquire()
+        if sys.platform == "win32":
+            kernel32 = ctypes.windll.kernel32
+            kernel32.CreateMutexW.restype = ctypes.c_void_p
+            self.handle = kernel32.CreateMutexW(None, False, self.NAME)
+            if self.handle:
+                # Abandoned by a bridge that died holding it counts as taken: ours now.
+                kernel32.WaitForSingleObject(ctypes.c_void_p(self.handle), self.WAIT_MS)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self.handle:
+            kernel32 = ctypes.windll.kernel32
+            kernel32.ReleaseMutex(ctypes.c_void_p(self.handle))
+            kernel32.CloseHandle(ctypes.c_void_p(self.handle))
+            self.handle = None
+        self.local.release()
+
+
 class Bridge:
     def __init__(
         self,
@@ -295,6 +357,7 @@ class Bridge:
         )
         self.revision: int | None = None
         self.lock = threading.Lock()
+        self.launching = LaunchLock()
 
     # ---- the game's tools -------------------------------------------------
 
@@ -310,7 +373,7 @@ class Bridge:
                 except OSError:
                     pass  # a cache not written is a list not kept, nothing worse
                 return tools
-        except Unreachable:
+        except (Unreachable, StillWaiting):
             pass
         try:
             return json.loads(self.cache.read_text(encoding="utf-8"))
@@ -326,14 +389,20 @@ class Bridge:
             self.send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
 
     def call_game(self, name: str, arguments: dict) -> dict:
-        wait_ms = arguments.get("timeoutMs", 0) if isinstance(arguments, dict) else 0
-        timeout = 60 + (wait_ms / 1000 if isinstance(wait_ms, (int, float)) else 0)
+        timeout = call_budget(name, arguments)
         try:
             status, body = self.game.request(
                 "POST", f"/api/tool/{name}", arguments, timeout=timeout
             )
         except Unreachable:
             return text_result(f"{name}: {NOT_RUNNING}", is_error=True)
+        except StillWaiting:
+            return text_result(
+                f"{name}: the bridge stopped waiting after {timeout:.0f} s, but the game took the "
+                "call and may still be running it, and whatever comes after it. Do not repeat it "
+                "blindly: `health` and `events` say what has happened.",
+                is_error=True,
+            )
         if status != 200:
             message = body.get("error") if isinstance(body, dict) else None
             return text_result(message or f"{name}: HTTP {status}", is_error=True)
@@ -349,7 +418,7 @@ class Bridge:
         try:
             status, body = self.game.request("GET", "/api/health", timeout=3)
             return body if status == 200 else {"error": f"HTTP {status}"}
-        except Unreachable:
+        except (Unreachable, StillWaiting):
             return None
 
     def game_status(self) -> dict:
@@ -362,26 +431,34 @@ class Bridge:
         }
 
     def game_launch(self, arguments: dict) -> dict:
-        pids = self.processes.running()
-        if pids:
-            return text_result(
-                {"launched": False, "already": pids, **self.game_status()}
-            )
-        if not self.processes.exe.exists():
-            return text_result(f"game_launch: no {self.processes.exe}", is_error=True)
         environment = {}
         if isinstance(arguments.get("logLevel"), str):
             environment["DAOLIB_LOG_LEVEL"] = arguments["logLevel"]
-        pid = self.processes.start(environment)
+        # Looking for a game and starting one are a single step, under a lock: requests run
+        # on threads of their own, and two launches at once each saw no game and each started
+        # one (a review's finding). The lock is the machine's, so two bridges agree too.
+        with self.launching:
+            pids = self.processes.running()
+            if pids:
+                return text_result(
+                    {"launched": False, "already": pids, **self.game_status()}
+                )
+            if not self.processes.exe.exists():
+                return text_result(
+                    f"game_launch: no {self.processes.exe}", is_error=True
+                )
+            pid = self.processes.start(environment)
         wait = arguments.get("waitSeconds", 180)
         deadline = time.monotonic() + (wait if isinstance(wait, (int, float)) else 180)
         health = None
         while time.monotonic() < deadline:
             health = self.health()
+            # The game started here is the one that must answer, not another's listener.
             if (
                 isinstance(health, dict)
                 and health.get("state") == "running"
                 and health.get("mode") != "none"
+                and health.get("pid", pid) == pid
             ):
                 break
             if not self.processes.running():
@@ -432,10 +509,24 @@ class Bridge:
         if "id" not in message or not isinstance(method, str):
             return None  # a notification, or a response to us
         request_id = message["id"]
-        params = message.get("params") or {}
 
         def reply(result: dict) -> dict:
             return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+        def invalid(what: str) -> dict:
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32602, "message": f"Invalid params: {what}"},
+            }
+
+        # Checked before anything reads them: params that were a list took the request's
+        # thread down with an AttributeError, and its id never got an answer (a review).
+        params = message.get("params")
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            return invalid("`params` must be an object")
 
         if method == "initialize":
             asked = params.get("protocolVersion")
@@ -457,13 +548,13 @@ class Bridge:
             return reply({"tools": BRIDGE_TOOLS + game})
         if method == "tools/call":
             name = params.get("name")
-            arguments = params.get("arguments") or {}
+            arguments = params.get("arguments")
+            if arguments is None:
+                arguments = {}
             if not isinstance(name, str):
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {"code": -32602, "message": "no tool name"},
-                }
+                return invalid("tools/call needs a tool `name`")
+            if not isinstance(arguments, dict):
+                return invalid("`arguments` must be an object")
             if name == "game_saves":
                 character = arguments.get("character")
                 saves = list_saves(
@@ -507,7 +598,22 @@ def serve(bridge: Bridge, lines, drain_seconds: float = 30) -> None:
             continue
 
         def run(message=message) -> None:
-            reply = bridge.handle(message)
+            # Whatever goes wrong, a request with an id gets an answer with that id: a
+            # client waiting on one that never comes waits for ever.
+            try:
+                reply = bridge.handle(message)
+            except Exception as error:
+                request_id = message.get("id") if isinstance(message, dict) else None
+                if request_id is None:
+                    return
+                reply = {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32603,
+                        "message": f"the bridge failed on this request: {error!r}",
+                    },
+                }
             if reply is not None:
                 bridge.send(reply)
 
