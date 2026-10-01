@@ -4,6 +4,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <string>
 
 using namespace eluvian;
@@ -123,4 +124,33 @@ TEST_CASE("a step's label holds only an answer that came", "[scenario]")
                                      {{"expect", {{"from", "w"}, {"exists", true}}}}}},
                                    {"continueOnError", true}});
     CHECK_THAT(answer["steps"][1]["error"].get<std::string>(), ContainsSubstring("no earlier step is labelled"));
+}
+
+TEST_CASE("waits and sleeps are cut to the scenario's budget, and the run says it timed out", "[scenario]")
+{
+    Fixture f;
+    const auto start = std::chrono::steady_clock::now();
+    auto answer =
+        f.Run(Json{{"budgetMs", 80},
+                   {"steps", {{{"waitFor", {{"topic", "never"}}}, {"timeoutMs", 60000}}, {{"tool", "attack"}}}},
+                   {"continueOnError", true}});
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
+    CHECK(answer["ok"] == false);
+    CHECK(answer["timedOut"] == true);
+    CHECK(answer["stepsRun"] == 1); // even told to go on: there is no time to go on in
+    CHECK_THAT(answer["steps"][0]["error"].get<std::string>(), ContainsSubstring("time ran out"));
+    CHECK(f.attacks == 0);
+
+    answer = f.Run(Json{{"budgetMs", 50}, {"steps", {{{"sleepMs", 60000}}}}});
+    CHECK(answer["timedOut"] == true);
+    CHECK_THAT(answer["steps"][0]["error"].get<std::string>(), ContainsSubstring("into a sleep of 60000 ms"));
+}
+
+TEST_CASE("a run within its budget does not time out", "[scenario]")
+{
+    Fixture f;
+    const auto answer = f.Run(Json{{"budgetMs", 5000}, {"steps", {{{"tool", "attack"}}, {{"sleepMs", 5}}}}});
+    CHECK(answer["ok"] == true);
+    CHECK(answer["timedOut"] == false);
+    CHECK_THROWS_AS(f.Run(Json{{"budgetMs", 0}, {"steps", {{{"tool", "attack"}}}}}), ToolError);
 }
