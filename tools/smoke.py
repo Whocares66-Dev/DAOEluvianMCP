@@ -232,6 +232,29 @@ def checks(run: Run) -> None:
         lambda a: a["found"],
     )
     check(
+        "input, the pause key's binding",
+        tool("input", {"binding": "UserTogglePauseMessage"}),
+        lambda a: a["sent"] is True,
+    )
+    time.sleep(0.4)
+    check(
+        "which paused the game",
+        tool("inspect", {"kind": "game"}),
+        lambda a: a["paused"] is True,
+    )
+    tool("input", {"binding": "UserTogglePauseMessage"})
+    time.sleep(0.4)
+    check(
+        "and unpaused it",
+        tool("inspect", {"kind": "game"}),
+        lambda a: a["paused"] is False,
+    )
+    check(
+        "input refuses a text that names a save",
+        tool("input", {"binding": "SaveGameMessage -1 2"}),
+        lambda a: "names a save" in a["error"],
+    )
+    check(
         "input refuses a message the game does not know",
         tool("input", {"message": "Nobody.NoSuchThing 1"}),
         lambda a: a["sent"] is False,
