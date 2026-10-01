@@ -21,7 +21,7 @@ src/core/     the bench without the game: HTTP parsing and routes, MCP's JSON-RP
 src/server/   the socket loop under core/Http.h: Winsock, 127.0.0.1, a thread per connection. Tested
               over loopback.
 src/game/     the tools that read and drive the game, through DAOLib, a file each (Inspect, Script,
-              Order, Stage, Screenshot, Game, Input, Camera, Dialogue; Shared.h is what they share;
+              Order, Stage, Screenshot, Screen, Game, Input, Camera, Dialogue; Shared.h is what they share;
               GameTools.cpp registers them and puts the engine's events on the bus), and health.
               Verified by playing.
 src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_GetInterface)
@@ -65,7 +65,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-10-01, against DAOLib `0632df5`: 117 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
+Last green 2026-10-01, against DAOLib `d5a1f3e`: 117 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
 
 ## Writing files from the shell
 

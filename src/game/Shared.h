@@ -2,8 +2,8 @@
 // summary, its room, its effects and abilities, the command it carries out),
 // the checks before any of them touches the game, the watch on deaths, and
 // each tool's own registration, which GameTools.cpp calls. One file per
-// tool: Inspect, Script, Order, Stage, Screenshot, Game, Input, Camera and
-// Dialogue. Everything here is on the game's thread.
+// tool: Inspect, Script, Order, Stage, Screenshot, Game, Input, Camera, Dialogue
+// and Screen. Everything here is on the game's thread.
 #pragma once
 
 #include "core/Args.h"
@@ -173,5 +173,6 @@ void AddGame(Bench &bench, const Watch &watch);
 void AddInput(Bench &bench, const Watch &watch);
 void AddCamera(Bench &bench, const Watch &watch);
 void AddDialogue(Bench &bench, const Watch &watch);
+void AddScreen(Bench &bench, const Watch &watch);
 
 } // namespace eluvian::game

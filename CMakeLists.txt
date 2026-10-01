@@ -227,6 +227,7 @@ add_daolib_plugin(
         src/game/Input.cpp
         src/game/Inspect.cpp
         src/game/Order.cpp
+        src/game/Screen.cpp
         src/game/Screenshot.cpp
         src/game/Script.cpp
         src/game/Shared.cpp
