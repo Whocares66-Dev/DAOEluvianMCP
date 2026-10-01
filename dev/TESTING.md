@@ -262,3 +262,10 @@ For the real mouse, 2026-10-01, about 10:35: `inspect kind=window` gave the clie
 - Since then `aim` is a pixel well inside what the pick meets: from DAOLib's first hit and the feet, the places between and a little to each side are tried, and the one with the most of its eight neighbours (10 px away) on the object wins; `clear` says how many. Seen: Lyna (800, 781), Tamlen (179, 676), two wolves, each `clear` 8, the pick at each the creature; 13 to 23 ms a call.
 
 Why the cursor read nothing at the spider's top edge (lib-agent, from the cursor's ray cast): with no place for the cursor the game casts no ray and the hits are empty, ground and all, which is what it does when the cursor is over an interface element or outside the view; a creature's name label, drawn at about the top of its body, is the likely one. So empty `hits` in `inspect kind=cursor` says "over the interface", and an aim at the body's middle keeps clear of the label. DAOLib's own `AimAt` keeps off edges too from `b284b9e`.
+
+A cutscene played and skipped, 2026-10-01, 14:25 (DAOLib `4757f0e`; the ruins' entrance, Lyna's AutoSave_2, loaded only, one call at a time):
+
+- `stage action=cutscene` with `bed110cs_tainted_mirror.cut`: the game's mode was cutscene within half a second (`eluvian.mode.changed` explore to cutscene), `inspect kind=dialogue` said `cutscene` true, and the game's own screenshot three seconds in shows the hand at the mirror between the cutscene's bars. The same name without `.cut`, and `bed200cs_farewell` with or without it, did nothing; the tool now adds `.cut` to a name that has no extension.
+- `dialogue action=skip_cutscene`: answered `skipped` cutscene, and the mode was explore again within half a second, `cutscene` false, frames running, the hero where she had stood. With none playing it is refused.
+- A pre-rendered movie's skip (`skipped` movie) is built on the same call and not yet seen.
+- No save was written. The origin's own playing of that mirror scene had gone by as a conversation's mode in the morning's run; started by the scripts' LoadCutscene it is the cutscene mode.

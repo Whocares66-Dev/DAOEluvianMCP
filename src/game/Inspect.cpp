@@ -202,16 +202,19 @@ void AddInspect(Bench &bench, const Watch &watch)
 
     bench.Tools().AddKind(
         "inspect",
-        KindSpec{"dialogue",
-                 "The conversation on the screen (health's mode is dialog while one is): the `line` spoken last, "
-                 "with its speaker and text, and the `replies` the player may choose from now, in their order, "
-                 "each with its `place`, text and icon. No replies while the other speaks. The same comes as "
-                 "events: eluvian.dialogue.line, .replies and .chosen. `cutscene` says whether one is playing. "
-                 "The dialogue tool answers."},
+        KindSpec{
+            "dialogue",
+            "The conversation on the screen (health's mode is dialog while one is): the `line` spoken last, "
+            "with its speaker and text, and the `replies` the player may choose from now, in their order, "
+            "each with its `place`, text and icon. No replies while the other speaks. The same comes as "
+            "events: eluvian.dialogue.line, .replies and .chosen. `cutscene` and `movie` say whether one is playing. "
+            "The dialogue tool answers."},
         [&watch](const Json &) -> ToolResult {
             RequireWorld(watch, "inspect");
             const auto *conversation = dao::dialogue::Current();
-            Json answer = {{"active", conversation != nullptr}, {"cutscene", dao::dialogue::InCutscene()}};
+            Json answer = {{"active", conversation != nullptr},
+                           {"cutscene", dao::dialogue::InCutscene()},
+                           {"movie", dao::dialogue::InMovie()}};
             if (conversation == nullptr)
             {
                 answer["note"] = "no conversation is on the screen";

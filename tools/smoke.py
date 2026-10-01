@@ -300,6 +300,30 @@ def checks(run: Run) -> None:
         tool("input", {"message": "Nobody.NoSuchThing 1"}),
         lambda a: a["sent"] is False,
     )
+    # A cutscene of the base game's, started as the scripts start one, and skipped as Escape
+    # skips it.
+    played = tool(
+        "stage", {"action": "cutscene", "resource": "bed110cs_tainted_mirror.cut"}
+    )
+    check(
+        "stage cutscene puts the game in a cutscene",
+        wait(
+            "eluvian.mode.changed", played.get("cursor", 0), {"to": "cutscene"}, ms=5000
+        ),
+        lambda a: a["found"],
+    )
+    skipped = tool("dialogue", {"action": "skip_cutscene"})
+    check("dialogue skip_cutscene", skipped, lambda a: a["skipped"] == "cutscene")
+    check(
+        "and the game is out of it",
+        wait(
+            "eluvian.mode.changed",
+            skipped.get("cursor", 0),
+            {"from": "cutscene"},
+            ms=5000,
+        ),
+        lambda a: a["found"],
+    )
     check(
         "dialogue refuses with no conversation",
         tool("dialogue", {"action": "continue"}),

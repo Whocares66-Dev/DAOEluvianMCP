@@ -204,6 +204,36 @@ ObjectId StageGroup(const Args &args, Json &answer)
     return id;
 }
 
+// A cutscene, started as the scripts start one (LoadCutscene): for a test
+// of what a cutscene does to the thing under test, or of skipping one. No
+// test met the game's cutscene mode by playing (the Dalish origin's scenes
+// went by as conversations, 2026-10-01), so this is how one is had. Loading
+// is playing: the mode is cutscene at once (lib-agent's reading of the
+// handler; the command's bPlayImmediately is not used). The actors are the
+// cutscene's own: none is replaced.
+ObjectId StageCutscene(const Args &args, Json &answer)
+{
+    const ObjectId hero = api::GetHero();
+    if (hero == kInvalidObject)
+    {
+        throw ToolError("stage: no hero, so nobody to play a cutscene for; is a game loaded?");
+    }
+    // The scripts name a cutscene with its extension: "bed110cs_tainted_mirror"
+    // did nothing in play and "bed110cs_tainted_mirror.cut" played (2026-10-01).
+    auto name = args.String("resource");
+    if (name.find('.') == std::string::npos)
+    {
+        name += ".cut";
+    }
+    api::LoadCutscene(dao::Resource{Wide(name)}, hero, 1, dao::script::Array::Empty(dao::core::ArrayTag::String),
+                      dao::script::Array::Empty(dao::core::ArrayTag::Object), 0);
+    answer["resource"] = name;
+    answer["note"] = "the game's mode is cutscene from the next frame if there is such a resource (health says; "
+                     "wait_for eluvian.mode.changed from `cursor`); dialogue action=skip_cutscene ends it as "
+                     "Escape does. Nothing happens for a name the game has not";
+    return hero;
+}
+
 ObjectId StageSpawn(const Args &args, Json &answer)
 {
     const auto name = args.String("template");
@@ -273,6 +303,7 @@ void AddStage(Bench &bench, const Watch &watch)
               {"group", {{"type", "integer"}, {"description", "action=group: the group to move the creature to"}}},
               {"toward", {{"type", "integer"}, {"description", "action=group: another group, to set hostility with"}}},
               {"hostile", {{"type", "boolean"}, {"description", "action=group: with `toward`; default true"}}},
+              {"resource", {{"type", "string"}, {"description", "action=cutscene: the cutscene's name"}}},
               {"template", {{"type", "string"}, {"description", "action=spawn: the creature's template"}}},
               {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
               {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}}}}},
@@ -312,6 +343,11 @@ void AddStage(Bench &bench, const Watch &watch)
         "first; a spawned creature moved to group 2 fights the hostile ones near it, for a fight the party is "
         "not in",
         StageGroup);
+    add("cutscene",
+        "plays the cutscene `resource` (its name as the scripts give it, \"bed110cs_tainted_mirror.cut\"), as the "
+        "scripts' "
+        "LoadCutscene does; the game's mode is cutscene until it ends or is skipped",
+        StageCutscene);
     add("spawn",
         "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "
         "`facing` degrees, in the controlled creature's area; `moved` says how far from the point the game "

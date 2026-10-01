@@ -16,7 +16,8 @@ void AddDialogue(Bench &bench, const Watch &watch)
                  "Answer the conversation on the screen, or skip a cutscene. `action`: choose, the reply at "
                  "`place` among those inspect kind=dialogue lists, as a click on it; continue, as the skip key: "
                  "the line being spoken is cut short and its replies offered, and a reply with no text is gone "
-                 "through; skip_cutscene, as Escape in one. A loop that works: read inspect kind=dialogue; with "
+                 "through; skip_cutscene, as Escape in a cutscene or a pre-rendered movie. A loop that works: read "
+                 "inspect kind=dialogue; with "
                  "no replies, or a first reply with no text, continue; otherwise choose. Each answers that the "
                  "game was asked, and `cursor`: wait_for eluvian.dialogue.chosen, eluvian.dialogue.line or "
                  "eluvian.mode.changed from it. The game ignores an answer in the moment after replies appear: "
@@ -37,9 +38,21 @@ void AddDialogue(Bench &bench, const Watch &watch)
             Json answer = {{"action", action}, {"asked", true}, {"cursor", bench.Events().Next()}};
             if (action == "skip_cutscene")
             {
-                if (!dao::dialogue::SkipCutscene())
+                // The game has two kinds, each with its own mode and its own
+                // skip (DAOLib 4757f0e): a cutscene played in the world, and a
+                // pre-rendered movie. Esc skips either; so does this.
+                if (dao::dialogue::SkipCutscene())
                 {
-                    throw ToolError("dialogue: no cutscene is playing (health's mode is cutscene while one is)");
+                    answer["skipped"] = "cutscene";
+                }
+                else if (dao::dialogue::SkipMovie())
+                {
+                    answer["skipped"] = "movie";
+                }
+                else
+                {
+                    throw ToolError("dialogue: no cutscene or movie is playing (health's mode is cutscene or "
+                                    "movie while one is)");
                 }
                 return answer;
             }
