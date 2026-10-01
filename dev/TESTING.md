@@ -218,3 +218,5 @@ After the game's tools were split into a file each, 2026-10-01, 06:40 to 06:50 (
 - A creature spawned reads 1 of 1 health for its first frames, and `stage action=health` in those frames leaves it there.
 
 `tools/smoke.py`, 2026-10-01, 07:07: every tool once from the command line (`python tools/smoke.py --character Lyna --kind auto --number 2`), the game started through the bridge under the owner `eluvian-smoke`, loading only, closed after. 33 checks; it is what to run after a change that moves code in `src/game`.
+
+The pause that held the wolf's death, explained (turn-based-agent, 2026-10-01): it was the game's own. With the player's auto-pause option on, the game's scripts pause it about half a second into every real-time fight; a mod running a fight of its own may swallow that, and did not here because it had no fight to run (the wolf was no enemy of the party by then). So after anything that starts a fight, a test unpauses, or waits with `wait_for`, whose timeout now says `paused`.

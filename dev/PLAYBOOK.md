@@ -92,3 +92,5 @@ A mod that registers with Eluvian (`src/api/EluvianAPI.h`) shows up in `health`'
 When waiting for an order's end, match on the command's `type` as well as the creature (`{"id": "0x82", "type": "UseObject"}`): an earlier command of the same creature may end first, cleared by the new one.
 
 The game saves by itself at more than area transitions: some doors and plot steps write an autosave (`eluvian.game.saved` says so when it happens). A test on a player's own playthrough that must leave the saves as they were stops before such a step, or runs on a copy of the saves.
+
+The game pauses itself about half a second into every real-time fight when the player's auto-pause option is on, and a paused game plays nothing: no death, no command's end. After anything that starts a fight (a hostile creature spawned near the party, a door opened on enemies), `game {"action": "unpause"}`; a `wait_for` that times out says `paused` when that is why.
