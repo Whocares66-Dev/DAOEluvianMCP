@@ -90,3 +90,10 @@ Deaths and spawn, 19:42 to 19:43, on the eluvian.dll of 19:40 (computer-use-agen
 - `eluvian.creature.died` comes, watched: a staged kill of a soldier, the scenario's wait matched in 22 ms, one event before the mod's turnbased.fell; and for a party member, Eleanor felled in her own turn, `IsDead` true and health 0 of 176 while she is down. `killer` is null for a staged kill.
 - `template` in each creature's summary: the Howe soldiers are `bhn200cr_howe_dual` and `bhn200cr_howe_long`, the archers `bhn200cr_howe_archer`, while their tags are `bhn200cr_howe_landra1` to 4. `stage spawn` of `bhn200cr_howe_long` made a hostile soldier, which joined the fight by itself 316 ms later. Its answer read health 1 of 1, three seconds later 85 of 85: a creature spawned is set up over the next frames, which the answer now says.
 - DAOLib `bc081ea` hooks script events where every one runs, queued or immediate (lib-agent: deaths are the engine's own and go straight to the creature), so `eluvian.script.death` may come now; the watch stays until that is seen.
+
+Eluvian 0.2.0, 20:07 to 20:14, two fights with turnbased's newest build (computer-use-agent; its report `DAOTurnBased\dev\PLAYTEST-2026-09-30-5.md`, scripts `build\stage7.py` to `stage9.py`):
+
+- `events {"describe": true}`: the twenty eluvian.* topics with their fields. The mod's topics are not among them yet: its build does not call DescribeEvent.
+- Both deaths come now. After four staged kills: `eluvian.creature.died` first (killer null), the mod's turnbased.fell within 0.1 s, `eluvian.script.death` 1.5 to 2.5 s later. After a death from a real blow (Aedan's on a soldier): `died` with killer Aedan, turnbased.fell 43 ms later, `script.death` with creator Aedan 2.1 s after `died`. DAOLib `bc081ea` works; the watch is kept for the moment of the death, the engine's event marks its end.
+- `inspect kind=game`'s controlled and selected followed the mod's hand-over of control between turns.
+- `script BeginConversation` in a fight answered 1 and started nothing: the engine's answer, not to be trusted there.
