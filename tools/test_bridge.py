@@ -61,6 +61,9 @@ class FakeGame(BaseHTTPRequestHandler):
             # A load, as Eluvian's game tool answers it; no such save for "Nobody".
             if args.get("character") == "Nobody":
                 self.answer(400, {"error": "game: no such save to load"})
+            elif args.get("character") == "Modded":
+                # Asked, and then the game's own dialog: no load follows.
+                self.answer(200, {"asked": True, "save": args, "cursor": 8})
             else:
                 self.answer(200, {"asked": True, "save": args, "cursor": 7})
         elif self.path == "/api/tool/wait_for":
@@ -246,6 +249,17 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["isError"])
         self.assertIn("no such save to load", result["content"][0]["text"])
         self.assertEqual(self.processes.started, 1)  # the game was started all the same
+
+    def test_a_load_the_game_stops_at_a_dialog_is_told_not_waited_out(self) -> None:
+        self.processes.pids.clear()
+        self.bridge.load_patience = 0
+        result = self.call(
+            "game_launch", {"load": {"character": "Modded"}, "waitSeconds": 300}
+        )
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("showing a dialog", text)
+        self.assertIn("Do not Force Load", text)
 
     def test_another_installs_game_is_neither_joined_nor_closed(self) -> None:
         self.processes.pids.clear()

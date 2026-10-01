@@ -432,6 +432,9 @@ class Bridge:
         self.cache = cache
         self.send = send
         self.sleep = sleep
+        # How long a load may leave the game's mode unmoved before it counts as declined: from
+        # the menu the mode changed within seconds, and the whole load took 14 s.
+        self.load_patience = 20.0
         # The saves' root, beside the logs' folder: Documents\BioWare\Dragon Age\Characters.
         self.characters = (
             characters if characters is not None else game.folder.parent / "Characters"
@@ -599,26 +602,49 @@ class Bridge:
             if time.monotonic() >= deadline:
                 return {"error": f"the load was not taken: {refusal}"}
             self.sleep(2)
-        wait_ms = int(max(1.0, min(deadline - time.monotonic(), 290)) * 1000)
-        try:
-            status, event = self.game.request(
-                "POST",
-                "/api/tool/wait_for",
-                {
-                    "topic": "eluvian.game.loaded",
-                    "since": body.get("cursor", 0),
-                    "timeoutMs": wait_ms,
-                },
-                timeout=wait_ms / 1000 + MARGIN_SECONDS,
-            )
-        except (Unreachable, StillWaiting) as error:
-            return {"error": f"asked, but the wait for the load failed: {error}"}
-        if status == 200 and isinstance(event, dict) and event.get("found"):
-            return {"save": body.get("save"), "event": event.get("event")}
-        return {
-            "error": "the game was asked and no eluvian.game.loaded came in time; it may have "
-            "declined, or still be loading: health says"
-        }
+        # The game answers "asked" and may still not load: a save that needs content no longer
+        # registered stops at the game's own dialog (Force Load / Cancel), with no word to a
+        # plugin (seen 2026-10-01, after another install rewrote AddIns.xml). So the wait is
+        # in pieces, and a mode that has not moved in `load_patience` seconds is that.
+        before = self.mode()
+        asked_at = time.monotonic()
+        while True:
+            left = deadline - time.monotonic()
+            piece_ms = int(max(1.0, min(left, 5)) * 1000)
+            try:
+                status, event = self.game.request(
+                    "POST",
+                    "/api/tool/wait_for",
+                    {
+                        "topic": "eluvian.game.loaded",
+                        "since": body.get("cursor", 0),
+                        "timeoutMs": piece_ms,
+                    },
+                    timeout=piece_ms / 1000 + MARGIN_SECONDS,
+                )
+            except (Unreachable, StillWaiting) as error:
+                return {"error": f"asked, but the wait for the load failed: {error}"}
+            if status == 200 and isinstance(event, dict) and event.get("found"):
+                return {"save": body.get("save"), "event": event.get("event")}
+            mode = self.mode()
+            waited = time.monotonic() - asked_at
+            if mode == before and mode != "loading" and waited >= self.load_patience:
+                return {
+                    "error": f"the game was asked for the save and did nothing in {waited:.0f} s "
+                    f'(mode still {mode}): it is likely showing a dialog, such as "This saved '
+                    'game cannot be loaded. It requires the following content" when the save '
+                    "needs add-ins that are not registered. `screenshot` shows it. Do not "
+                    "Force Load and then save: the save would lose that content."
+                }
+            if time.monotonic() >= deadline:
+                return {
+                    "error": "the game was asked and no eluvian.game.loaded came in time "
+                    f"(mode {mode}); it may still be loading: health says"
+                }
+
+    def mode(self) -> str | None:
+        health = self.health()
+        return health.get("mode") if isinstance(health, dict) else None
 
     def game_quit(self, arguments: dict) -> dict:
         pids = self.processes.running()

@@ -1411,7 +1411,10 @@ void AddGame(Bench &bench, const Watch &watch)
                 return Json{{"asked", true},
                             {"save", SlotJson(slot)},
                             {"cursor", cursor},
-                            {"note", "wait_for eluvian.game.loaded from `cursor`; the game may still decline"}};
+                            {"note",
+                             "wait_for eluvian.game.loaded from `cursor`. If none comes and health's mode does not "
+                             "move, the game is showing a dialog of its own (a save that needs add-ins "
+                             "not registered asks Force Load or Cancel): screenshot shows it"}};
             }
             // A new manual save by default: a test's save must not write over
             // the player's own, as a quicksave does (computer-use-agent would
