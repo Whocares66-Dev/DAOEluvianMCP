@@ -128,3 +128,15 @@ Play test 7 and a load that stopped at a dialog, 2026-10-01:
 - A wish from it: a spawned creature set fighting another group, so that a fight out of the party's sight can be staged.
 - That night the user installed EA's game beside GOG's. Its installer rewrote the shared `Settings\AddIns.xml`, the user's mods were no longer registered, and `game action=load` answered `asked` and then nothing: the game showed "This saved game cannot be loaded. It requires the following content ... Force Load / Cancel", which no plugin is told of (DAOLib `d8ef457` says so in `Saves.h`). `screenshot` showed it. Posted mouse messages did not reach the dialog. Since then the bridge's `game_launch` with `load` says so when the mode has not moved in 20 s, and the bridge knows its own install's game by its file, not its name.
 - Not yet seen in the game: `room` and `attackTarget` in `inspect kind=creatures` (DAOLib `4262d70`), `game action=save`, `screenshot source=game`, `stage action=cooldown`.
+
+A test driven with no computer use, 2026-10-01, 01:22 to 01:24 (the unmodded game the user began that night, Lyna, Forest Clearing; eluvian.dll on DAOLib `66d5567`, the turn-based mod's `93f125f`):
+
+- The bridge's `game_launch` with `load` for Lyna's manual save 1: the save loaded 11 s after the process started, asked 2 s after the menu served, no menu touched. The loaded event came while the mode still read loading; the bridge now waits for the mode to leave it.
+- `inspect kind=creatures`: `room` and `attackTarget` for all 11 creatures. Outdoors the rooms are the terrain's cells (196612, 262147, ...), each `seen` in view, `wanted` 6 (a value DAOLib does not name), `load` not loaded, `shown` true. A first reading, on DAOLib `4262d70`, had `shown` false for everything there, which DAOLib fixed. `includeInactive` showed five genlocks the story keeps for later.
+- `stage action=spawn` with template `wolf` at a point: a hostile wolf, fighting at once; the mod's fight began with it.
+- `stage action=cooldown`: 30 s on an ability read back 29.99 of 30 in `inspect kind=creature`, and 0 made it ready. `available` stayed true throughout, being the scripts' own answer; `ready` now says available and not cooling down.
+- `screenshot source=game`: the game's own picture, 512 KB in `Screenshots\User`, in 381 ms. `screenshot` of the window: 69 ms.
+- `stage action=kill`: `eluvian.creature.died`, and the mod's `fight_over` 0.27 s after.
+- `game_quit`: closed. The user's saves were as before: nothing saved, no transition crossed.
+- eluvian.log held all 40 calls with their arguments, times and refusals.
+- Still not seen: `game action=save`, a fight with creatures in rooms not seen (indoors), dialogue (no tool yet).
