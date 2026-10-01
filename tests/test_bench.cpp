@@ -173,6 +173,20 @@ TEST_CASE("events describes the topics there are, filtered like a read", "[bench
     CHECK(answer["topics"][0]["from"] == "mymod");
 }
 
+TEST_CASE("a wait that times out carries what the host knows of why", "[bench]")
+{
+    Bench bench;
+    bool paused = true;
+    AddEventTools(bench, [&paused] { return paused ? Json{{"paused", true}} : Json::object(); });
+    auto answer = bench.Invoke("wait_for", Json{{"topic", "nothing.comes"}, {"timeoutMs", 10}}).data;
+    CHECK(answer["found"] == false);
+    CHECK(answer["paused"] == true);
+    paused = false;
+    answer = bench.Invoke("wait_for", Json{{"topic", "nothing.comes"}, {"timeoutMs", 10}}).data;
+    CHECK(answer["found"] == false);
+    CHECK_FALSE(answer.contains("paused"));
+}
+
 TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
 {
     struct Seen

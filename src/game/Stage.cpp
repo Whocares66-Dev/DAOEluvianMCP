@@ -162,8 +162,17 @@ ObjectId StageKill(const Args &args, Json &answer)
     api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *damage.get(), id, 0.0F, kInvalidObject, 0);
     Deaths().Note(id, kInvalidObject);
     answer["dealt"] = health + 1000;
-    answer["note"] = "the death comes a frame or more later, so `creature` still lives here: wait_for "
-                     "eluvian.creature.died from `cursor`";
+    // A death is the game's to play out, and a paused game plays nothing: a
+    // wolf killed while a fight's start had the game paused was dead only
+    // when it ran again, 14 s on, long after the caller's wait gave up
+    // (2026-10-01).
+    const auto *app = dao::CClientExoApp::Get();
+    const bool paused = app != nullptr && app->IsPaused();
+    answer["paused"] = paused;
+    answer["note"] = paused ? "the game is paused, and a death does not come while it is: game action=unpause, then "
+                              "wait_for eluvian.creature.died from `cursor`"
+                            : "the death comes a frame or more later, so `creature` still lives here: wait_for "
+                              "eluvian.creature.died from `cursor`";
     return id;
 }
 

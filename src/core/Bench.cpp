@@ -77,7 +77,7 @@ void Bench::Close()
     frames_.Close();
 }
 
-void AddEventTools(Bench &bench)
+void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
 {
     static const Json kFilterProperties = {
         {"topic",
@@ -142,9 +142,10 @@ void AddEventTools(Bench &bench)
     bench.Tools().Add(
         ToolSpec{"wait_for",
                  "Wait until an event matching `topic` and `match` happens, and return it; instead of sleeping and "
-                 "reading the log. `found` is false if the time ran out. Returns `next`, the cursor after it.",
+                 "reading the log. `found` is false if the time ran out, with what is known of why nothing came "
+                 "(the game `paused`, say). Returns `next`, the cursor after it.",
                  waitSchema, Thread::Listener, true},
-        [&bench](const Json &raw) -> ToolResult {
+        [&bench, whyNothing = std::move(whyNothing)](const Json &raw) -> ToolResult {
             const Args args(raw, "wait_for");
             const auto filter = EventFilter::FromArgs(args.Raw());
             const auto since = static_cast<std::uint64_t>(
@@ -155,7 +156,19 @@ void AddEventTools(Bench &bench)
                 const auto next = event->seq + 1;
                 return Json{{"found", true}, {"event", event->ToJson()}, {"next", next}};
             }
-            return Json{{"found", false}, {"waitedMs", timeout.count()}, {"next", bench.Events().Next()}};
+            // Nothing came. The commonest reason in play was not a wrong
+            // topic but a game that was paused and playing nothing (a death
+            // waited for 14 s, 2026-10-01): what the host knows of that goes
+            // with the answer.
+            Json answer = {{"found", false}, {"waitedMs", timeout.count()}, {"next", bench.Events().Next()}};
+            if (whyNothing)
+            {
+                if (Json why = whyNothing(); why.is_object())
+                {
+                    answer.update(why);
+                }
+            }
+            return answer;
         });
 }
 

@@ -38,6 +38,11 @@ class Watch
     {
         return mode_.load();
     }
+    // As last seen on a frame; false before the first.
+    [[nodiscard]] bool Paused() const
+    {
+        return paused_.load() == 1;
+    }
 
   private:
     friend void AddHealthTool(Bench &bench, const Watch &watch, std::function<Json()> extra);

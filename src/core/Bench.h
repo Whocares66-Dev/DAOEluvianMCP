@@ -91,7 +91,10 @@ class Bench
 };
 
 // `events` and `wait_for`.
-void AddEventTools(Bench &bench);
+// `whyNothing`, if given, is asked when a wait_for's time runs out: what the
+// host knows of why nothing happened (the game is paused), as an object
+// merged into the answer. On a listener's thread.
+void AddEventTools(Bench &bench, std::function<Json()> whyNothing = {});
 
 // `log`: the *.log files in `directory` (DAOLib's log folder), read from a
 // cursor.

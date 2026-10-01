@@ -202,7 +202,13 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
         return false;
     }
     g = new State();
-    AddEventTools(g->bench);
+    AddEventTools(g->bench, [] {
+        // A paused game plays nothing: no death, no command's end, no turn.
+        return g->watch.Paused() ? Json{{"paused", true},
+                                        {"note", "the game is paused, and nothing plays while it is: game "
+                                                 "action=unpause, then wait again"}}
+                                 : Json::object();
+    });
     AddLogTool(g->bench, dao::LogDirectory());
     AddScenarioTool(g->bench);
     game::AddHealthTool(g->bench, g->watch, [] {
