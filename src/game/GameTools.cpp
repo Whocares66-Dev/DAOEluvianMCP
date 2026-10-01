@@ -24,6 +24,7 @@
 #include <chrono>
 #include <cmath>
 #include <format>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -912,140 +913,164 @@ ObjectId CreatureArg(const Args &args)
     return id;
 }
 
+// What a built-in stage action does: reads its arguments, changes the game,
+// fills its answer, and names the creature it changed.
+using StageAction = std::function<ObjectId(const Args &args, Json &answer)>;
+
+ObjectId StageEffect(const Args &args, Json &answer)
+{
+    const ObjectId id = CreatureArg(args);
+    const auto type = EffectTypeArg(args);
+    if (!type)
+    {
+        throw ToolError("stage: action effect needs `effect`, a condition's name or a number");
+    }
+    const double seconds = args.Number("seconds", 6);
+    if (seconds <= 0 || seconds > 600)
+    {
+        throw ToolError("stage: `seconds` must be more than 0 and at most 600");
+    }
+    const ObjectId creator = args.OptionalId("creator", kCreatureHint).value_or(kInvalidObject);
+    const auto ability = static_cast<std::int32_t>(args.Integer("ability", 0, 0, 1 << 30));
+    const auto effect = api::Effect(*type);
+    if (effect.get() == nullptr)
+    {
+        throw ToolError("stage: the engine made no effect of that type");
+    }
+    api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_TEMPORARY, *effect.get(), id, static_cast<float>(seconds),
+                                    creator, ability);
+    answer["applied"] = Json{{"type", Named(static_cast<dao::script::EffectType>(*type))},
+                             {"seconds", seconds},
+                             {"creator", Brief(creator)},
+                             {"ability", AbilityJson(ability)}};
+    answer["effects"] = Effects(id);
+    return id;
+}
+
+ObjectId StageRemoveEffects(const Args &args, Json &answer)
+{
+    const ObjectId id = CreatureArg(args);
+    const auto type = EffectTypeArg(args).value_or(k::EFFECT_TYPE_INVALID);
+    const auto ability = static_cast<std::int32_t>(args.Integer("ability", k::ABILITY_INVALID, -1, 1 << 30));
+    const ObjectId creator = args.OptionalId("creator", kCreatureHint).value_or(kInvalidObject);
+    api::RemoveEffectsByParameters(id, type, ability, creator);
+    answer["effects"] = Effects(id);
+    return id;
+}
+
+ObjectId StageHealth(const Args &args, Json & /*answer*/)
+{
+    const ObjectId id = CreatureArg(args);
+    const double value = args.Number("value");
+    if (value < 0)
+    {
+        throw ToolError("stage: `value` is the health to set, 0 or more");
+    }
+    api::SetCreatureProperty(id, k::PROPERTY_DEPLETABLE_HEALTH, static_cast<float>(value), k::PROPERTY_VALUE_CURRENT);
+    return id;
+}
+
+ObjectId StageKill(const Args &args, Json &answer)
+{
+    const ObjectId id = CreatureArg(args);
+    const float health = api::GetCreatureProperty(id, k::PROPERTY_DEPLETABLE_HEALTH, k::PROPERTY_VALUE_CURRENT);
+    const auto damage = api::EffectDamage(health + 1000);
+    if (damage.get() == nullptr)
+    {
+        throw ToolError("stage: the engine made no damage effect");
+    }
+    api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *damage.get(), id, 0.0F, kInvalidObject, 0);
+    Deaths().Note(id, kInvalidObject);
+    answer["dealt"] = health + 1000;
+    answer["note"] = "the death comes a frame or more later, so `creature` still lives here: wait_for "
+                     "eluvian.creature.died from `cursor`";
+    return id;
+}
+
+ObjectId StageSpawn(const Args &args, Json &answer)
+{
+    const auto name = args.String("template");
+    const auto point = VectorOf(args.Raw().value("point", Json()), "stage: `point`");
+    const ObjectId near = api::GetMainControlled();
+    if (near == kInvalidObject)
+    {
+        throw ToolError("stage: nobody is controlled, so there is no area to spawn in");
+    }
+    const auto facing = static_cast<float>(args.Number("facing", 0));
+    const auto spawn = [&](const std::string &resource) {
+        return api::CreateObject(k::OBJECT_TYPE_CREATURE, dao::Resource{Wide(resource)},
+                                 api::Location(api::GetArea(near), point, facing));
+    };
+    // The scripts name a creature's template with its extension
+    // (R"gen00fl_dog.utc"); GetResRef may give it without.
+    ObjectId id = spawn(name);
+    if (id == kInvalidObject && name.find('.') == std::string::npos)
+    {
+        id = spawn(name + ".utc");
+    }
+    if (id == kInvalidObject)
+    {
+        throw ToolError(std::format("stage: no creature from template \"{}\"; inspect gives each creature's "
+                                    "`template` (its tag names the instance, not this)",
+                                    name));
+    }
+    // Read in the frame it was made, a spawned creature is not set up yet:
+    // health 1 of 1 in the answer, 85 of 85 three seconds on (2026-09-30).
+    answer["note"] = "a creature spawned is set up over the next frames; inspect it again for its health";
+    return id;
+}
+
 void AddStage(Bench &bench, const Watch &watch)
 {
-    bench.Tools().Add(
-        ToolSpec{
-            "stage",
-            "Set up a test's case, where a fight rarely brings it: `action` effect puts a condition on "
-            "creature `id` (stun, knockdown, paralyze, root, sleep, daze, slip, fear, confusion, grabbed, or "
-            "an EFFECT_TYPE_* number) for `seconds`, as from `creator` and `ability` if given; "
-            "remove_effects takes them off (by `effect`, `ability`, `creator`, or all); health sets its "
-            "current health to `value`; kill deals it more damage than it has; spawn makes a creature from "
-            "`template` (a creature's template, as inspect gives each creature's `template`) at `point` "
-            "facing `facing` degrees, in the controlled creature's area. Answers `creature` as the change "
-            "leaves it (health, dead, its command), and the effects for an effect. The effects are the engine's bare "
-            "ones, applied as scripts apply them; "
-            "a death or a fall comes a frame or more later, so wait_for eluvian.creature.died.",
-            Json{{"type", "object"},
-                 {"properties",
-                  {{"action", {{"type", "string"}, {"enum", {"effect", "remove_effects", "health", "kill", "spawn"}}}},
-                   {"id", {{"description", "The creature"}}},
-                   {"effect", {{"description", "A condition's name or an EFFECT_TYPE_* number"}}},
-                   {"seconds", {{"type", "number"}, {"description", "action=effect: how long; default 6"}}},
-                   {"creator", {{"description", "Whom the effect is from; default none"}}},
-                   {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}},
-                   {"value", {{"type", "number"}, {"description", "action=health: the current health"}}},
-                   {"template", {{"type", "string"}, {"description", "action=spawn: the creature's resource"}}},
-                   {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
-                   {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}}}},
-                 {"required", {"action"}}},
-            Thread::Frame},
-        [&bench, &watch](const Json &raw) -> ToolResult {
-            const Args args(raw, "stage");
-            const auto action = args.Choice("action", {"effect", "remove_effects", "health", "kill", "spawn"});
-            RequireWorld(watch, "stage");
-            Json answer = {{"action", action}, {"cursor", bench.Events().Next()}};
-            if (action == "spawn")
-            {
-                const auto name = args.String("template");
-                const auto point = VectorOf(args.Raw().value("point", Json()), "stage: `point`");
-                const ObjectId near = api::GetMainControlled();
-                if (near == kInvalidObject)
-                {
-                    throw ToolError("stage: nobody is controlled, so there is no area to spawn in");
-                }
-                const auto facing = static_cast<float>(args.Number("facing", 0));
-                const auto spawn = [&](const std::string &resource) {
-                    return api::CreateObject(k::OBJECT_TYPE_CREATURE, dao::Resource{Wide(resource)},
-                                             api::Location(api::GetArea(near), point, facing));
-                };
-                // The scripts name a creature's template with its extension
-                // (R"gen00fl_dog.utc"); GetResRef may give it without.
-                ObjectId id = spawn(name);
-                if (id == kInvalidObject && name.find('.') == std::string::npos)
-                {
-                    id = spawn(name + ".utc");
-                }
-                if (id == kInvalidObject)
-                {
-                    throw ToolError(std::format("stage: no creature from template \"{}\"; inspect gives each "
-                                                "creature's `template` (its tag names the instance, not this)",
-                                                name));
-                }
-                answer["creature"] = Summary(id, api::GetHero(), PartyOf(api::GetHero()));
-                return answer;
-            }
-            const ObjectId id = CreatureArg(args);
-            answer["creature"] = Brief(id);
-            if (action == "effect")
-            {
-                const auto type = EffectTypeArg(args);
-                if (!type)
-                {
-                    throw ToolError("stage: action effect needs `effect`, a condition's name or a number");
-                }
-                const double seconds = args.Number("seconds", 6);
-                if (seconds <= 0 || seconds > 600)
-                {
-                    throw ToolError("stage: `seconds` must be more than 0 and at most 600");
-                }
-                const ObjectId creator = args.OptionalId("creator", kCreatureHint).value_or(kInvalidObject);
-                const auto ability = static_cast<std::int32_t>(args.Integer("ability", 0, 0, 1 << 30));
-                const auto effect = api::Effect(*type);
-                if (effect.get() == nullptr)
-                {
-                    throw ToolError("stage: the engine made no effect of that type");
-                }
-                api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_TEMPORARY, *effect.get(), id,
-                                                static_cast<float>(seconds), creator, ability);
-                answer["applied"] = Json{{"type", Named(static_cast<dao::script::EffectType>(*type))},
-                                         {"seconds", seconds},
-                                         {"creator", Brief(creator)},
-                                         {"ability", AbilityJson(ability)}};
-                answer["effects"] = Effects(id);
-            }
-            else if (action == "remove_effects")
-            {
-                const auto type = EffectTypeArg(args).value_or(k::EFFECT_TYPE_INVALID);
-                const auto ability =
-                    static_cast<std::int32_t>(args.Integer("ability", k::ABILITY_INVALID, -1, 1 << 30));
-                const ObjectId creator = args.OptionalId("creator", kCreatureHint).value_or(kInvalidObject);
-                api::RemoveEffectsByParameters(id, type, ability, creator);
-                answer["effects"] = Effects(id);
-            }
-            else if (action == "health")
-            {
-                const double value = args.Number("value");
-                if (value < 0)
-                {
-                    throw ToolError("stage: `value` is the health to set, 0 or more");
-                }
-                api::SetCreatureProperty(id, k::PROPERTY_DEPLETABLE_HEALTH, static_cast<float>(value),
-                                         k::PROPERTY_VALUE_CURRENT);
-                answer["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
-            }
-            else
-            {
-                const float health =
-                    api::GetCreatureProperty(id, k::PROPERTY_DEPLETABLE_HEALTH, k::PROPERTY_VALUE_CURRENT);
-                const auto damage = api::EffectDamage(health + 1000);
-                if (damage.get() == nullptr)
-                {
-                    throw ToolError("stage: the engine made no damage effect");
-                }
-                api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *damage.get(), id, 0.0F,
-                                                kInvalidObject, 0);
-                Deaths().Note(id, kInvalidObject);
-                answer["dealt"] = health + 1000;
-                answer["note"] = "the death comes a frame or more later, so `creature` still lives here: "
-                                 "wait_for eluvian.creature.died from `cursor`";
-            }
-            // The creature as the change leaves it, in every answer (a tester
-            // reading `creature.dead` after a kill found no field, 2026-09-30).
-            answer["creature"] = Summary(id, api::GetHero(), PartyOf(api::GetHero()));
-            return answer;
-        });
+    ToolSpec spec{
+        "stage",
+        "Set up a test's case, where play rarely brings it. `action` chooses what; the built-in ones answer "
+        "`creature` as the change leaves it (health, dead, its command) and `cursor`, to wait_for what follows "
+        "from. Mods that register with Eluvian may add actions of their own (an arena, a state only they know). "
+        "The effects are the engine's bare ones, applied as scripts apply them; a death comes a frame or more "
+        "later, as eluvian.creature.died.",
+        Json{{"type", "object"},
+             {"properties",
+              {{"id", {{"description", "The creature"}}},
+               {"effect", {{"description", "A condition's name or an EFFECT_TYPE_* number"}}},
+               {"seconds", {{"type", "number"}, {"description", "action=effect: how long; default 6"}}},
+               {"creator", {{"description", "Whom the effect is from; default none"}}},
+               {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}},
+               {"value", {{"type", "number"}, {"description", "action=health: the current health"}}},
+               {"template", {{"type", "string"}, {"description", "action=spawn: the creature's template"}}},
+               {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
+               {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}}}}},
+        Thread::Frame};
+    spec.kindProperty = "action";
+    bench.Tools().Add(std::move(spec));
+
+    const auto add = [&bench, &watch](std::string name, std::string description, StageAction act) {
+        bench.Tools().AddKind("stage", KindSpec{name, std::move(description), Thread::Frame},
+                              [&bench, &watch, name, act = std::move(act)](const Json &raw) -> ToolResult {
+                                  const Args args(raw, "stage");
+                                  RequireWorld(watch, "stage");
+                                  Json answer = {{"action", name}, {"cursor", bench.Events().Next()}};
+                                  const ObjectId id = act(args, answer);
+                                  // The creature as the change leaves it, in every answer (a
+                                  // tester reading `creature.dead` after a kill found no field,
+                                  // 2026-09-30).
+                                  answer["creature"] = Summary(id, api::GetHero(), PartyOf(api::GetHero()));
+                                  return answer;
+                              });
+    };
+    add("effect",
+        "puts a condition on creature `id`: `effect` (stun, knockdown, paralyze, root, sleep, daze, slip, fear, "
+        "confusion, grabbed, or an EFFECT_TYPE_* number) for `seconds` (default 6), as from `creator` and "
+        "`ability` if given; answers the effects on it after",
+        StageEffect);
+    add("remove_effects", "takes effects off creature `id`: by `effect`, `ability`, `creator`, or all",
+        StageRemoveEffects);
+    add("health", "sets creature `id`'s current health to `value`", StageHealth);
+    add("kill", "deals creature `id` more damage than it has; it dies a frame or more later", StageKill);
+    add("spawn",
+        "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "
+        "`facing` degrees, in the controlled creature's area; it is set up over the next frames",
+        StageSpawn);
 }
 
 // ---- game ------------------------------------------------------------------
@@ -1199,8 +1224,79 @@ Json CommandPayload(ObjectId id, const dao::Command &command)
 
 } // namespace
 
+namespace
+{
+
+// What each of Eluvian's own topics means, in the catalogue a mod's go into
+// too (`events describe=true`).
+void DescribeTopics(EventCatalog &topics)
+{
+    const auto describe = [&topics](std::string topic, std::string description, Json fields) {
+        topics.Describe(TopicSpec{std::move(topic), std::move(description), std::move(fields), "eluvian"});
+    };
+    describe("eluvian.mode.changed",
+             "The game mode changed: explore, combat, dialog, cutscene, loading, pregame "
+             "(the main menu), gui (a menu over the game), and the rest.",
+             Json{{"from", "the mode before"}, {"to", "the mode now"}});
+    describe("eluvian.paused", "The game was paused or unpaused.", Json{{"paused", "true or false"}});
+    describe("eluvian.game.loaded", "A save loaded, or a new game began, and the world is in place.",
+             Json{{"newGame", "true for a new game"},
+                  {"character", "the save's character folder"},
+                  {"kind", "manual, auto or quick"},
+                  {"number", "the slot's number"}});
+    describe("eluvian.game.saved", "The game wrote a save.",
+             Json{{"character", "the save's character folder"},
+                  {"kind", "manual, auto or quick"},
+                  {"number", "the slot's number"}});
+    describe("eluvian.creature.died",
+             "A creature died, or a party member fell: seen by watching creatures that were hurt or staged.",
+             Json{{"id", "the creature"}, {"name", "its name"}, {"killer", "the last who hurt it, if known"}});
+    describe("eluvian.command.started",
+             "A creature started a command from its queue: an attack, a move, an "
+             "ability, a wait, an animation.",
+             Json{{"id", "the creature"},
+                  {"type", "the command (Attack, MoveToObject, UseAbility, ...)"},
+                  {"playerIssued", "whether the player gave it"}});
+    describe("eluvian.command.ended", "A creature's command ended, and how.",
+             Json{{"id", "the creature"},
+                  {"type", "the command"},
+                  {"playerIssued", "whether the player gave it"},
+                  {"result", "success, a COMMAND_FAILED_*, or cleared"},
+                  {"success", "true when it succeeded"}});
+    const Json scriptFields = {{"receiver", "the object the event was delivered to (not always the one it is about)"},
+                               {"creator", "the event's creator"},
+                               {"objects", "its object parameters, as GetEventObject reads them"},
+                               {"integers", "its integer parameters"},
+                               {"floats", "its float parameters"}};
+    for (const auto &[type, name] : kScriptEvents)
+    {
+        Json fields = scriptFields;
+        std::string description =
+            std::format("The script event {} (EVENT_TYPE_*), as the scripts receive it.", dao::script::Name(type));
+        if (type == dao::script::EventType::AttackImpact)
+        {
+            fields["attacker"] = "who attacked (delivered to them)";
+            fields["target"] = "who was attacked";
+            fields["hit"] = "COMBAT_RESULT_*";
+            fields["effectId"] = "the effect it made";
+        }
+        else if (type == dao::script::EventType::Damaged)
+        {
+            fields["damager"] = "who dealt it";
+            fields["amount"] = "how much";
+            fields["damageType"] = "DAMAGE_TYPE_*";
+            fields["ability"] = "the ability it came from";
+        }
+        describe(std::format("eluvian.script.{}", name), std::move(description), std::move(fields));
+    }
+}
+
+} // namespace
+
 void AddEngineEvents(Bench &bench)
 {
+    DescribeTopics(bench.Topics());
+
     // Each command a creature starts and ends, and how it ended: what a test
     // waits on after an order ("did the attack happen"), which the scripts'
     // COMMAND_COMPLETE reaches only sometimes (DAOLib 38eea39). On the game's

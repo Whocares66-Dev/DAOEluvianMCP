@@ -27,6 +27,7 @@
 // "mymod.thing_happened"); prefix them too.
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -44,7 +45,7 @@ extern "C"
 
     typedef void (*EluvianToolFn)(void *context, const char *argsJson, EluvianReply *reply);
 
-    // Flags for RegisterTool and RegisterInspectKind.
+    // Flags for RegisterTool, RegisterInspectKind and RegisterToolExtension.
     enum
     {
         // Call the handler on the HTTP listener's thread, not the frame's: for
@@ -71,11 +72,33 @@ extern "C"
         // Publishes an event: payloadJson an object, its creatures as ids
         // ("0x7d9"). Any thread.
         void (*EmitEvent)(const char *topic, const char *payloadJson);
+
+        // From build 200 (0.2.0); a plugin built against this header checks
+        // ELUVIAN_HAS(eluvian, member) before calling these, since an older
+        // Eluvian's interface ends before them.
+
+        // A choice of one of Eluvian's tools that is made of choices:
+        // "inspect" (chosen by `kind`: `inspect kind="mymod.state"`) and
+        // "stage" (chosen by `action`: `stage action="mymod.arena"`, a test's
+        // set-up only the mod knows). descriptorJson: {"description": "..."};
+        // the handler gets the tool's whole arguments. Returns as RegisterTool.
+        int (*RegisterToolExtension)(const char *baseTool, const char *key, const char *descriptorJson,
+                                     EluvianToolFn handler, void *context, uint32_t flags);
+        // Says what an event topic means, so an agent can list the topics
+        // there are (`events describe=true`) before waiting for one.
+        // descriptorJson: {"description": "...", "fields": {"id": "the
+        // creature", ...}}. Returns 1 if new, 0 if it replaced, -1 if refused.
+        int (*DescribeEvent)(const char *topic, const char *descriptorJson);
     } EluvianInterface1;
 
     typedef const EluvianInterface1 *(*EluvianGetInterfaceFn)(uint32_t version);
 
 #define ELUVIAN_GET_INTERFACE "Eluvian_GetInterface"
+
+// Whether the interface a plugin got has `member`: those added after the
+// plugin's Eluvian was built are past the end of an older one.
+#define ELUVIAN_HAS(eluvian, member)                                                                                   \
+    ((eluvian)->size >= offsetof(EluvianInterface1, member) + sizeof((eluvian)->member))
 
 #ifdef __cplusplus
 }

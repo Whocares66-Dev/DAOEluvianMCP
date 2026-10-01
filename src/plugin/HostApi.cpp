@@ -177,35 +177,87 @@ int RegisterTool(const char *name, const char *descriptorJson, EluvianToolFn han
     }
 }
 
-int RegisterInspectKind(const char *kind, const char *descriptorJson, EluvianToolFn handler, void *context,
-                        std::uint32_t flags) noexcept
+// The tools a plugin may add choices to: those made of choices, whose
+// argument picks one (inspect's `kind`, stage's `action`).
+bool Extensible(std::string_view tool)
+{
+    return tool == "inspect" || tool == "stage";
+}
+
+int RegisterToolExtension(const char *baseTool, const char *key, const char *descriptorJson, EluvianToolFn handler,
+                          void *context, std::uint32_t flags) noexcept
 {
     try
     {
-        const std::string_view name = kind != nullptr ? kind : "";
-        if (g_bench == nullptr || handler == nullptr || !NameIs(name, "."))
+        const std::string_view base = baseTool != nullptr ? baseTool : "";
+        const std::string_view name = key != nullptr ? key : "";
+        if (g_bench == nullptr || handler == nullptr || !Extensible(base) || !NameIs(name, "."))
         {
-            spdlog::error("a plugin's inspect kind \"{}\" refused: a kind is letters, digits, '_', '-' and '.', "
-                          "up to 64, and a handler is needed",
-                          name);
+            spdlog::error("a plugin's extension \"{}\" of \"{}\" refused: the tools extended are inspect and "
+                          "stage, a key is letters, digits, '_', '-' and '.', up to 64, and a handler is needed",
+                          name, base);
             return -1;
         }
-        auto descriptor = ReadDescriptor(kind, descriptorJson);
+        auto descriptor = ReadDescriptor(key, descriptorJson);
         if (!descriptor)
         {
             return -1;
         }
         const std::lock_guard lock(g_mutex);
         const bool added =
-            g_bench->Tools().AddKind("inspect",
+            g_bench->Tools().AddKind(base,
                                      KindSpec{std::string(name), std::move(descriptor->description),
                                               (flags & ELUVIAN_ON_LISTENER) != 0 ? Thread::Listener : Thread::Frame},
-                                     Wrap("inspect " + std::string(name), handler, context));
+                                     Wrap(std::string(base) + " " + std::string(name), handler, context));
         if (added)
         {
-            g_registered.push_back("inspect kind=" + std::string(name));
+            g_registered.push_back(std::string(base) + " " + std::string(name));
         }
-        spdlog::info("a plugin {} inspect kind {}", added ? "registered" : "replaced", name);
+        spdlog::info("a plugin {} {} {}", added ? "registered" : "replaced", base, name);
+        return added ? 1 : 0;
+    }
+    catch (...)
+    {
+        return -1;
+    }
+}
+
+int RegisterInspectKind(const char *kind, const char *descriptorJson, EluvianToolFn handler, void *context,
+                        std::uint32_t flags) noexcept
+{
+    return RegisterToolExtension("inspect", kind, descriptorJson, handler, context, flags);
+}
+
+int DescribeEvent(const char *topic, const char *descriptorJson) noexcept
+{
+    try
+    {
+        const std::string_view name = topic != nullptr ? topic : "";
+        if (g_bench == nullptr || name.empty() || name.starts_with("eluvian.") || !NameIs(name, ".") ||
+            name.size() > 64)
+        {
+            spdlog::error("a plugin's event \"{}\" refused: a topic is letters, digits, '_', '-' and '.', under "
+                          "the plugin's own prefix (eluvian.* is the bench's)",
+                          name);
+            return -1;
+        }
+        const Json descriptor = Json::parse(descriptorJson != nullptr ? descriptorJson : "", nullptr, false);
+        if (descriptor.is_discarded() || !descriptor.is_object() || !descriptor.contains("description") ||
+            !descriptor["description"].is_string())
+        {
+            spdlog::error("{}: refused, its descriptor is not JSON with a \"description\" string", name);
+            return -1;
+        }
+        Json fields = descriptor.value("fields", Json::object());
+        if (!fields.is_object())
+        {
+            spdlog::error("{}: refused, its \"fields\" is not an object of field names to what they hold", name);
+            return -1;
+        }
+        // Who said so: the topic's prefix, which the plugin's own name is.
+        const std::string from(name.substr(0, name.find('.')));
+        const bool added = g_bench->Topics().Describe(
+            TopicSpec{std::string(name), descriptor["description"].get<std::string>(), std::move(fields), from});
         return added ? 1 : 0;
     }
     catch (...)
@@ -243,6 +295,8 @@ constexpr EluvianInterface1 kInterface{
     &RegisterTool,
     &RegisterInspectKind,
     &EmitEvent,
+    &RegisterToolExtension,
+    &DescribeEvent,
 };
 
 } // namespace
