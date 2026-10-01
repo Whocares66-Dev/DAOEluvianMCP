@@ -76,3 +76,11 @@ What the tester measured (computer-use-agent, 18:37): a 60-line script played th
 - The answer to `kill` named the creature only, so a script reading `creature.dead` found nothing. Every `stage` answer now carries the creature as the change leaves it (health, dead, command); after a kill it still lives in that answer, and the death is `eluvian.creature.died`, which these scripts did not wait on: whether it comes after `stage kill` is still to see.
 - With turnbased `b63e52f`, `inspect kind=turnbased.state` is registered and answers whose turn it is, so a script started in the middle of a turn acts at once; `turnbased.refused` comes with its detail, command and note.
 - Not yet tried: `stage` spawn, health, remove_effects; `order via:"click"` since its answer changed.
+
+The rest of stage, and the click, 19:34 to 19:36 on the eluvian.dll of 19:31 (computer-use-agent):
+
+- `stage health` 5 on a soldier: 5 of 85, and the next hit killed it. `stage effect stun` 10 s, then `remove_effects` stun 2.6 s later: no effects left, and the mod saw the condition go.
+- **No `eluvian.creature.died` for any of four deaths**, nor `eluvian.script.death`; the mod's `turnbased.fell` came for each. EVENT_TYPE_DEATH does not pass the engine's event queue where DAOLib hears script events. Deaths are now watched instead: a creature hurt (a damage, an attack's impact) or staged is looked at each frame until it dies, leaves, or goes a minute unhurt, and its death is `eluvian.creature.died` with the last who hurt it.
+- **`stage spawn` found no template**: a creature's tag (`bhn200cr_howe_landra1`) names the instance, not its template. Each creature's summary now carries `template` (GetResRef), and spawn tries it with `.utc` too.
+- `order via:"click"` attack with the real cursor parked on a door: given, `selected` [Teyrna Eleanor], `eluvian.command.started` {Eleanor, Attack, playerIssued}, and the mod logged the click's own lines first. The case that failed at 18:49 works with the party's selection known.
+- A script's mistake re-ordered a refused attack 172 times in 65 s; every call was answered, nothing broke.
