@@ -1637,6 +1637,13 @@ void AddScreenshot(Bench &bench, const Watch &watch)
                     .write(picture.jpeg.data(), static_cast<std::streamsize>(picture.jpeg.size()));
                 answer["width"] = picture.width;
                 answer["height"] = picture.height;
+                if (picture.black)
+                {
+                    answer["black"] = true;
+                    answer["note"] = "the picture is black all over: Windows drew nothing of the game's window, "
+                                     "as when the display is asleep or the session locked. `source`: \"game\" "
+                                     "takes the game's own frame, which does not depend on the desktop";
+                }
                 jpeg = picture.jpeg;
             }
             answer["file"] = file.string();
@@ -2078,6 +2085,7 @@ constexpr ScriptEventTopic kScriptEvents[] = {
     {dao::script::EventType::ArealoadPostloadexit, "area_loaded"},
     {dao::script::EventType::PartymemberAdded, "partymember_added"},
     {dao::script::EventType::OnOrderReceived, "order_received"},
+    {dao::script::EventType::PopupResult, "popup_result"},
 };
 
 } // namespace

@@ -204,7 +204,14 @@ Picture CaptureGameWindow(float quality)
     {
         throw ToolError("screenshot: Windows could not draw the game's window");
     }
-    return Picture{EncodeJpeg(pixels, width, height, quality), width, height};
+    // Black all over, by a sample of the pixels (every 97th, so no column
+    // or row is the only one read).
+    bool black = true;
+    for (std::size_t i = 0; black && i + 2 < pixels.size(); i += 4 * 97)
+    {
+        black = pixels[i] == 0 && pixels[i + 1] == 0 && pixels[i + 2] == 0;
+    }
+    return Picture{EncodeJpeg(pixels, width, height, quality), width, height, black};
 }
 
 } // namespace eluvian::game

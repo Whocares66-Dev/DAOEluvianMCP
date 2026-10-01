@@ -17,6 +17,10 @@ struct Picture
     std::string jpeg; // the bytes of a JPEG file
     int width = 0;
     int height = 0;
+    // Every pixel black: Windows drew nothing of the game. Seen with the
+    // display asleep, 2026-10-01, where the game's own screenshot of the
+    // same moment was whole.
+    bool black = false;
 };
 
 // The game's main window's client area, as a JPEG of `quality` (0 to 1).

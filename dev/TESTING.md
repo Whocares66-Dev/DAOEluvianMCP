@@ -190,3 +190,11 @@ The walk there, 2026-10-01, 05:28 (the ruins' entrance, Lyna's AutoSave_2 loaded
 - `inspect kind=geometry` with `walk: true`, from Lyna: to Tamlen 0.9 m off, found, 0.91 m, 2 waypoints; to a spider 40.7 m off in the same room, found, 44.18 m, 29 waypoints; to creatures 80 to 143 m off in rooms never seen, behind shut doors, not found, "gave up part way" with `reached` (-3.8, 0.4, 0.0) and 53.4 m so far, the same point each time. No `blocker` was named: the pathfinder's answer there was 1, not 6.
 - After five searches a move order of 6 m ended success, 6.0 m walked: the creature is left as it was.
 - The run wrote no save (`eluvian.game.saved` did not come), and the saves' folder was as before it.
+
+A message box's button pressed, and the walk from where it stopped, 2026-10-01, 05:38 to 05:46 (the ruins, loaded only; DAOLib `bf85cb1`):
+
+- `game action=press` on the scripts' Yes / No box: "No" by its label answered what it sent and `popup` null; `inspect kind=popup` null a second later. The game's own screenshot with the box up shows the interface dimmed and the hero's bar gone, and after the press both back. A wrong label is refused with the box's labels; with no box up, refused.
+- `input` with the Yes button's own text ("GUIPopupLayer.ScriptDialogResult 1 1 -1"): `sent` true and the box gone; "Nobody.NoSuchThing 1": `sent` false.
+- `screenshot` of the window was black all over in this run while `source=game` was whole: the display was asleep. The answer now says `black` and to use `source=game`.
+- `inspect kind=geometry` with `walk` and `trace`, on DAOLib `52e87a7`: from the entrance the walks to creatures behind shut doors still ended "gave up part way" at (-3.77, 0.39, 0.00), 53.4 m, the search's second leg ending as the first. From that very point (the hero moved there and standing, door 0x1f1 1.2 m off and shut) the same walks answered "something is in the way" in 3 slices, with no `blocker` named. Both sent to lib-agent.
+- No run wrote a save.
