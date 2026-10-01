@@ -182,13 +182,40 @@ class Game:
             raise Unreachable(str(error)) from error
 
 
+def image_path(pid: int) -> str | None:
+    """The file a process runs, or None if Windows will not say."""
+    if sys.platform != "win32":
+        return None
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(
+        0x1000, False, pid
+    )  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        buffer = ctypes.create_unicode_buffer(32768)
+        size = ctypes.c_ulong(len(buffer))
+        if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+            return buffer.value
+        return None
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def is_same_file(path: str | None, exe: Path) -> bool:
+    return path is not None and os.path.normcase(
+        os.path.normpath(path)
+    ) == os.path.normcase(os.path.normpath(str(exe)))
+
+
 class Processes:
     """DAOrigins.exe as Windows sees it: find, start, close."""
 
     def __init__(self, exe: Path) -> None:
         self.exe = exe
 
-    def running(self) -> list[int]:
+    def named(self) -> list[int]:
+        """Every process with the game's file name, whichever install it is of."""
         out = subprocess.run(
             ["tasklist", "/FI", f"IMAGENAME eq {self.exe.name}", "/FO", "CSV", "/NH"],
             capture_output=True,
@@ -201,6 +228,21 @@ class Processes:
             if len(fields) > 1 and fields[1].isdigit():
                 pids.append(int(fields[1]))
         return pids
+
+    def running(self) -> list[int]:
+        """This install's game only. A second install of the game has the same file name (the
+        user installed EA's beside GOG's, 2026-10-01): a game of another install is not
+        Eluvian's to attach to, count as its own, or close."""
+        return [pid for pid in self.named() if is_same_file(image_path(pid), self.exe)]
+
+    def others(self) -> list[dict]:
+        """Games running from another install, or whose file could not be read."""
+        found = []
+        for pid in self.named():
+            path = image_path(pid)
+            if not is_same_file(path, self.exe):
+                found.append({"pid": pid, "exe": path or "unknown"})
+        return found
 
     def start(self, environment: dict[str, str]) -> int:
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
@@ -463,11 +505,15 @@ class Bridge:
     def game_status(self) -> dict:
         pids = self.processes.running()
         health = self.health()
-        return {
+        status = {
             "running": bool(pids),
             "pids": pids,
             "eluvian": health if health is not None else "not answering",
         }
+        others = self.processes.others()
+        if others:
+            status["otherInstalls"] = others
+        return status
 
     def game_launch(self, arguments: dict) -> dict:
         environment = {}
@@ -481,6 +527,15 @@ class Bridge:
             if pids:
                 return text_result(
                     {"launched": False, "already": pids, **self.game_status()}
+                )
+            others = self.processes.others()
+            if others:
+                # Two installs share Documents\BioWare\Dragon Age: saves, settings, logs.
+                return text_result(
+                    "game_launch: a game from another install is running "
+                    f"({others[0]['exe']}, pid {others[0]['pid']}), not {self.processes.exe}. "
+                    "It is not this bridge's to close; close it yourself, then launch.",
+                    is_error=True,
                 )
             if not self.processes.exe.exists():
                 return text_result(

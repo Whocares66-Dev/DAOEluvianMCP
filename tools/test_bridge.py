@@ -88,9 +88,13 @@ class FakeProcesses:
         self.pids = pids
         self.started = 0
         self.closed: list[tuple[int, bool]] = []
+        self.other: list[dict] = []  # games of another install
 
     def running(self) -> list[int]:
         return list(self.pids)
+
+    def others(self) -> list[dict]:
+        return list(self.other)
 
     def start(self, environment: dict[str, str]) -> int:
         self.started += 1
@@ -242,6 +246,29 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["isError"])
         self.assertIn("no such save to load", result["content"][0]["text"])
         self.assertEqual(self.processes.started, 1)  # the game was started all the same
+
+    def test_another_installs_game_is_neither_joined_nor_closed(self) -> None:
+        self.processes.pids.clear()
+        self.processes.other.append({"pid": 7, "exe": r"C:\EA\bin_ship\daorigins.exe"})
+        result = self.call("game_launch")
+        self.assertTrue(result["isError"])
+        self.assertIn("another install", result["content"][0]["text"])
+        self.assertEqual(self.processes.started, 0)
+        status = self.call("game_status")["structuredContent"]
+        self.assertFalse(status["running"])
+        self.assertEqual(status["otherInstalls"][0]["pid"], 7)
+        self.assertFalse(self.call("game_quit")["structuredContent"]["quit"])
+        self.assertEqual(self.processes.closed, [])
+
+    def test_a_process_is_this_installs_by_its_file_not_its_name(self) -> None:
+        exe = Path(r"C:\Games\GOG\bin_ship\DAOrigins.exe")
+        self.assertTrue(
+            bridge_module.is_same_file(r"c:\games\gog\bin_ship\daorigins.exe", exe)
+        )
+        self.assertFalse(
+            bridge_module.is_same_file(r"C:\Games\EA\bin_ship\daorigins.exe", exe)
+        )
+        self.assertFalse(bridge_module.is_same_file(None, exe))
 
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})
