@@ -324,6 +324,35 @@ def checks(run: Run) -> None:
         ),
         lambda a: a["found"],
     )
+    # A pre-rendered movie of the base game's, started by the scripts' PlayMovie, and skipped.
+    cursor = tool("health").get("cursor", 0)
+    tool(
+        "script",
+        {"action": "call", "command": "PlayMovie", "args": ["game_introduction.bik"]},
+    )
+    check(
+        "a movie puts the game in its movie mode",
+        wait("eluvian.mode.changed", cursor, {"to": "movie"}, ms=5000),
+        lambda a: a["found"],
+    )
+    check(
+        "inspect dialogue says a movie plays",
+        tool("inspect", {"kind": "dialogue"}),
+        lambda a: a["movie"] is True and a["cutscene"] is False,
+    )
+    skipped = tool("dialogue", {"action": "skip_cutscene"})
+    check(
+        "dialogue skip_cutscene skips the movie",
+        skipped,
+        lambda a: a["skipped"] == "movie",
+    )
+    check(
+        "and the game is out of the movie",
+        wait(
+            "eluvian.mode.changed", skipped.get("cursor", 0), {"from": "movie"}, ms=5000
+        ),
+        lambda a: a["found"],
+    )
     check(
         "dialogue refuses with no conversation",
         tool("dialogue", {"action": "continue"}),

@@ -46,7 +46,11 @@ A conversation or a cutscene holds the world until it is answered; `health`'s mo
 inspect {"kind": "dialogue"}                     the line spoken last, the replies offered (place, text, icon), cutscene
 dialogue {"action": "continue"}                  as the skip key: cuts the line short; goes through a reply with no text
 dialogue {"action": "choose", "place": 0}        the reply at that place
-dialogue {"action": "skip_cutscene"}             as Escape in a cutscene
+dialogue {"action": "skip_cutscene"}             as Escape in a cutscene or a pre-rendered movie
+stage {"action": "cutscene", "resource": "bed110cs_tainted_mirror.cut"}
+                                                 play a cutscene, as the scripts do (for a test of one, or of skipping)
+script {"action": "call", "command": "PlayMovie", "args": ["game_introduction.bik"]}
+                                                 play a movie
 wait_for {"topic": "eluvian.dialogue.*", "since": <cursor>}     .line, .replies, .chosen as they come
 ```
 

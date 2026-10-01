@@ -269,3 +269,5 @@ A cutscene played and skipped, 2026-10-01, 14:25 (DAOLib `4757f0e`; the ruins' e
 - `dialogue action=skip_cutscene`: answered `skipped` cutscene, and the mode was explore again within half a second, `cutscene` false, frames running, the hero where she had stood. With none playing it is refused.
 - A pre-rendered movie's skip (`skipped` movie) is built on the same call and not yet seen.
 - No save was written. The origin's own playing of that mirror scene had gone by as a conversation's mode in the morning's run; started by the scripts' LoadCutscene it is the cutscene mode.
+
+A pre-rendered movie played and skipped, 2026-10-01, 14:35 (the same place, one call at a time): `script` calling PlayMovie with `bed100cs_duncan_finds_pc.bik` put the game in mode movie within half a second, `inspect kind=dialogue` saying `movie` true and `cutscene` false; `dialogue action=skip_cutscene` two seconds in answered `skipped` movie and the mode was explore again within half a second; the hero walked after. With that every call of DAOLib's `dao::dialogue` has been seen in play.
