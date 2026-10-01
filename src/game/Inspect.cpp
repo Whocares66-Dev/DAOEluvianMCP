@@ -142,7 +142,9 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "the one a click would act on (null over none), the `ground` point under it and whether it is "
                  "`walkable`, and `hits`, everything the cursor's ray meets, nearest first. After moving the "
                  "real mouse, ask before clicking: a click beside a creature is a move order. The game picks "
-                 "again 15 times a second."},
+                 "again 15 times a second. No `hits` at all, not even ground, means the game cast no ray: the "
+                 "cursor is over a piece of the interface (a creature's name label among them) or outside "
+                 "the picture."},
         [&watch](const Json &) -> ToolResult {
             RequireWorld(watch, "inspect");
             const auto *explore = dao::CClientExoApp::CurrentExplore();
