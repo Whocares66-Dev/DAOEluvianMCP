@@ -13,6 +13,7 @@
 #include "dao/Events.h"
 #include "dao/Frame.h"
 #include "dao/GameModes.h"
+#include "dao/Gui.h"
 #include "dao/Log.h"
 #include "dao/Messages.h"
 #include "dao/Objects.h"
@@ -204,6 +205,26 @@ Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints)
     const auto *command = CurrentCommand(id);
     answer["beingWalked"] = command != nullptr && IsMove(command->Type());
     return answer;
+}
+
+// The game's own message box, if one is up: its text, and each button with
+// what pressing it sends. A box holds the game until it is answered and no
+// event tells of it: a load asked for a save that needed add-ins no longer
+// registered stopped at one, "Force Load / Cancel", and the call had
+// answered `asked` (2026-10-01). DAOLib's dao::gui::CurrentPopup (788079b).
+Json PopupJson()
+{
+    const auto popup = dao::gui::CurrentPopup();
+    if (!popup)
+    {
+        return nullptr;
+    }
+    Json buttons = Json::array();
+    for (const auto &button : popup->buttons)
+    {
+        buttons.push_back(Json{{"label", Narrow(button.label)}, {"sends", Narrow(button.callback)}});
+    }
+    return Json{{"text", Narrow(popup->text)}, {"buttons", std::move(buttons)}};
 }
 
 // A conversation's line as the screen has it: its place in the file, who
@@ -507,12 +528,13 @@ void AddInspect(Bench &bench, const Watch &watch)
         "inspect",
         KindSpec{"game",
                  "The game mode, pause, the area, the hero, the creature controlled, the party and who of it is "
-                 "selected in the party bar, and the "
-                 "event cursor."},
+                 "selected in the party bar, the game's message box if one is up (`popup`: its text and "
+                 "buttons), and the event cursor."},
         [&bench, &watch](const Json &) -> ToolResult {
             Json answer = {{"mode", ModeName(watch.Mode())}, {"cursor", bench.Events().Next()}};
             const auto *app = dao::CClientExoApp::Get();
             answer["paused"] = app != nullptr && app->IsPaused();
+            answer["popup"] = PopupJson();
             RequireWorld(watch, "inspect");
             const ObjectId hero = api::GetHero();
             answer["hero"] = Brief(hero);
@@ -532,6 +554,15 @@ void AddInspect(Bench &bench, const Watch &watch)
             answer["selected"] = std::move(selected);
             return answer;
         });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"popup",
+                 "The game's own message box, if one is up: `popup` with its text and each button's label and "
+                 "what pressing it sends; null with none. Answers in any mode, the main menu too. A box holds "
+                 "the game until it is answered, and nothing else says it is there: ask when a load or another "
+                 "order was taken and nothing followed. Reading only: no tool presses a button yet."},
+        [](const Json &) -> ToolResult { return Json{{"popup", PopupJson()}}; });
 
     bench.Tools().AddKind(
         "inspect",
@@ -1822,8 +1853,8 @@ void AddGame(Bench &bench, const Watch &watch)
                             {"cursor", cursor},
                             {"note",
                              "wait_for eluvian.game.loaded from `cursor`. If none comes and health's mode does not "
-                             "move, the game is showing a dialog of its own (a save that needs add-ins "
-                             "not registered asks Force Load or Cancel): screenshot shows it"}};
+                             "move, the game is showing a message box of its own (a save that needs add-ins "
+                             "not registered asks Force Load or Cancel): inspect kind=popup reads it"}};
             }
             // A new manual save by default: a test's save must not write over
             // the player's own, as a quicksave does (computer-use-agent would

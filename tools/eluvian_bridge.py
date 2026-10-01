@@ -630,6 +630,17 @@ class Bridge:
                 while self.mode() == "loading" and time.monotonic() < deadline:
                     self.sleep(0.5)
                 return {"save": body.get("save"), "event": event.get("event")}
+            popup = self.popup()
+            if popup is not None:
+                labels = ", ".join(
+                    str(button.get("label")) for button in popup.get("buttons", [])
+                )
+                return {
+                    "error": "the game answered the load with a message box and waits on it: "
+                    f'"{popup.get("text", "")}" [{labels}]. No tool presses its buttons; a person '
+                    "must. Do not Force Load and then save: the save would lose that content.",
+                    "popup": popup,
+                }
             mode = self.mode()
             waited = time.monotonic() - asked_at
             if mode == before and mode != "loading" and waited >= self.load_patience:
@@ -645,6 +656,22 @@ class Bridge:
                     "error": "the game was asked and no eluvian.game.loaded came in time "
                     f"(mode {mode}); it may still be loading: health says"
                 }
+
+    def popup(self) -> dict | None:
+        """The game's message box, if one is up and this build of Eluvian can read it."""
+        try:
+            status, body = self.game.request(
+                "POST", "/api/tool/inspect", {"kind": "popup"}, timeout=10
+            )
+        except (Unreachable, StillWaiting):
+            return None
+        if (
+            status == 200
+            and isinstance(body, dict)
+            and isinstance(body.get("popup"), dict)
+        ):
+            return body["popup"]
+        return None
 
     def mode(self) -> str | None:
         health = self.health()

@@ -19,6 +19,7 @@ class FakeGame(BaseHTTPRequestHandler):
     """Answers as Eluvian does: health, the tool list, and three tools."""
 
     revision = 1
+    popup = False  # whether the game's message box is up
 
     def log_message(self, *args) -> None:  # quiet
         pass
@@ -66,6 +67,12 @@ class FakeGame(BaseHTTPRequestHandler):
                 self.answer(200, {"asked": True, "save": args, "cursor": 8})
             else:
                 self.answer(200, {"asked": True, "save": args, "cursor": 7})
+        elif self.path == "/api/tool/inspect":
+            box = {
+                "text": "This saved game cannot be loaded.",
+                "buttons": [{"label": "Force Load"}, {"label": "Cancel"}],
+            }
+            self.answer(200, {"popup": box if FakeGame.popup else None})
         elif self.path == "/api/tool/wait_for":
             event = {"seq": 9, "topic": args.get("topic"), "payload": {"number": 2}}
             self.answer(200, {"found": args.get("since") == 7, "event": event})
@@ -249,6 +256,18 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["isError"])
         self.assertIn("no such save to load", result["content"][0]["text"])
         self.assertEqual(self.processes.started, 1)  # the game was started all the same
+
+    def test_a_load_answered_with_a_message_box_gives_its_text_at_once(self) -> None:
+        self.processes.pids.clear()
+        FakeGame.popup = True
+        self.addCleanup(setattr, FakeGame, "popup", False)
+        result = self.call(
+            "game_launch", {"load": {"character": "Modded"}, "waitSeconds": 300}
+        )
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("This saved game cannot be loaded.", text)
+        self.assertIn("Force Load, Cancel", text)
 
     def test_a_load_the_game_stops_at_a_dialog_is_told_not_waited_out(self) -> None:
         self.processes.pids.clear()
