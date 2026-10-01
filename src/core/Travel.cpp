@@ -68,7 +68,7 @@ class Journey
                 return End(false, *reason);
             }
             Json ask = where_;
-            ask.update(Json{{"kind", "geometry"}, {"id", who_}, {"walk", true}});
+            ask.update(Json{{"kind", "geometry"}, {"id", who_}, {"walk", true}, {"waypoints", true}});
             const Json geometry = bench_.Invoke("inspect", ask).data;
             const Json walk = geometry.value("walk", Json::object());
             const double distance = geometry.value("distance", 0.0);
@@ -79,8 +79,18 @@ class Journey
             }
             if (walk.value("found", false))
             {
-                const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", geometry.at("to")}},
-                                          "MoveToLocation", "move");
+                // The walk's own end, not the target's place: a door or a
+                // mirror stands where nothing can, the search ends as near
+                // as a creature fits, and a move to the thing itself ended
+                // COMMAND_FAILED_INVALID_PATH 6 m and 20 m short (2026-10-01).
+                if (walk.value("length", distance) < 0.5)
+                {
+                    return End(true, "as near as the walk goes");
+                }
+                const Json waypoints = walk.value("waypoints", Json::array());
+                const Json &to = waypoints.is_array() && !waypoints.empty() ? waypoints.back() : geometry.at("to");
+                const auto result =
+                    Order(Json{{"action", "move"}, {"id", who_}, {"point", to}}, "MoveToLocation", "move");
                 if (!result)
                 {
                     return End(false, stopped_.value_or("the time ran out while walking"));
@@ -245,7 +255,8 @@ void AddTravelTool(Bench &bench)
                  "Walk a creature to a `target` (a creature or object id) or a `point`, opening what is shut on the "
                  "way: it asks for the walk, uses the door in the way, waits, and goes on, up to `maxDoors` "
                  "(default 4) and `budgetMs` (default 60000). `id` is who walks, default the creature controlled. "
-                 "Answers `arrived` (within `within` metres, default 1.5), `reason`, the `distance` left, what it "
+                 "Answers `arrived` (within `within` metres, default 1.5, or as near as a creature can stand to a "
+                 "thing that fills its own place, a door or a chest), `reason`, the `distance` left, what it "
                  "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
                  "its to make: a fight began, a conversation or cutscene took the screen, the game is paused. "
                  "Opening a door may start a fight or a plot's step; the events from `cursor` say what followed.",

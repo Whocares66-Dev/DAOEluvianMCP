@@ -226,3 +226,11 @@ A key's message without the key, 2026-10-01, 08:58 (DAOLib `0632df5`; the ruins,
 - `input` with `binding` "UserTogglePauseMessage": `sent` true and the game paused; again, and it ran. "NoSuchMessage 1": `sent` false, nothing happened.
 - "SelectPartyMemberIndexMessage 1 1": `sent` true, the selection Lyna and Tamlen, Lyna still controlled; then "... 0 1": the selection Tamlen alone, and Tamlen controlled. So the second field acts as the key held to add to or take from the selection does.
 - "SaveGameMessage -1 2" (the quicksave key's) is refused by the tool unless `confirmSave` is given; it was not sent. No save was written, no crash.
+
+`travel`, and the Dalish origin's mirror driven to the camp, 2026-10-01, 09:44 to 09:52 (Lyna's AutoSave_2, the game started with owner "eluvian-agent", no computer use):
+
+- `travel` to a genlock in room 1579 from the ruins' entrance, 80 m and a shut door off: the first call ordered the use of door 0x1f1, named from afar, and stopped with "a fight began" (the spiders' drop); the fight ended with `stage`, the second call opened the door (`opened` 0x1f1) and stopped at the next fight; the third answered `arrived`, 0.8 m.
+- `travel` toward the mirror room's door: "a conversation took the screen" at the statue; `inspect kind=dialogue` and `dialogue` choose and continue took it to its end; on, through a fight, to 5.9 m from the door, where the move to the door's own place ended COMMAND_FAILED_INVALID_PATH. The same 20 m from the mirror. Since: `travel` moves to the walk's own end and answers arrived "as near as the walk goes".
+- `order action=use` on the door, the Bereskarn's fight, then on the mirror: the mirror's conversation, an area's load in the middle of it, the camp's conversation with Fenarel and the keeper, 38 lines in all, each continued or answered with its first reply by the same loop, to explore mode in the Dalish Camp. The origin's "cutscenes" here are conversations: the game's mode read dialog throughout and never cutscene, so `dialogue action=skip_cutscene` is still not seen.
+- The game autosaved at the mirror room's door (AutoSave_4), which the user has said is no concern.
+- `screenshot source=game` now answers the picture written again as a plain JPEG (the game's own carries an Exif header a reader rejected).

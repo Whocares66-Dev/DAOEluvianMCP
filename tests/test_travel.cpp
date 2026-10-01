@@ -18,11 +18,12 @@ namespace
 struct World
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
-    double at = 30;    // metres from the goal
-    double door = 10;  // where the door stands, from the goal
-    bool shut = true;  // the door
-    bool opens = true; // whether a use opens it
-    bool named = true; // whether the search names the door from afar
+    double at = 30;     // metres from the goal
+    double door = 10;   // where the door stands, from the goal
+    bool shut = true;   // the door
+    bool opens = true;  // whether a use opens it
+    bool named = true;  // whether the search names the door from afar
+    double shortBy = 0; // how far from the goal a walk ends: the goal fills its own place
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
@@ -41,7 +42,11 @@ struct World
             Json walk;
             if (!shut || at <= door)
             {
-                walk = Json{{"found", true}, {"length", at}};
+                walk = Json{{"found", true}, {"length", at - shortBy}};
+                if (shortBy > 0)
+                {
+                    walk["waypoints"] = Json::array({Json::array({shortBy, 0, 0})});
+                }
             }
             else if (named || at - door < 1.5)
             {
@@ -191,6 +196,19 @@ TEST_CASE("already there is no order at all", "[travel]")
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == true);
     CHECK(world.orders.empty());
+}
+
+TEST_CASE("a thing that fills its own place is reached as near as the walk goes", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.shortBy = 2.5; // a door: nothing stands where it does
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "as near as the walk goes");
+    CHECK(answer["distance"] == 2.5);
+    REQUIRE(world.orders.size() == 1);
+    CHECK(world.orders[0]["point"][0] == 2.5); // the walk's end, not the door's own place
 }
 
 TEST_CASE("a target and a point both, or neither, is refused", "[travel]")
