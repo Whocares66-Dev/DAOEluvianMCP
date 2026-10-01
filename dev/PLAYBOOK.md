@@ -30,6 +30,8 @@ With the game already running, `game {"action": "saves"}` lists the saves and `g
 ```
 inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock
 order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
+inspect {"kind": "geometry", "id": "0x82", "target": "0x2ec", "walk": true}
+                                                 the walk there: its length, or the door in the way (`blocker`)
 camera {"action": "face", "target": "0x305"}     turn the camera to it at once; then screenshot
 camera {"action": "follow", "target": "0x305"}   look at a creature elsewhere
 screenshot {}                                    the window as it is drawn; {"image": false} only writes the file

@@ -509,6 +509,10 @@ void AddInspect(Bench &bench, const Watch &watch)
                {"target", {{"description", "kind=geometry: the creature to measure to"}}},
                {"point", {{"description", "kind=geometry: the point to measure to, {x, y, z} or [x, y, z]"}}},
                {"waypoints", {{"type", "boolean"}, {"description", "kind=geometry: list the paths' points"}}},
+               {"walk",
+                {{"type", "boolean"},
+                 {"description", "kind=geometry: also search the path the creature would walk there: its length, "
+                                 "or what is in the way"}}},
                {"near",
                 {{"description", "kind=creatures: measure distances from this creature; default "
                                  "the one controlled"}}},
@@ -736,8 +740,10 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "(`point`): the straight distance, the line of sight as the engine judges it (eye height to eye "
                  "height; where it is cut, if it is; only walls and placeables block, not creatures), and the "
                  "creature's movement path with its length and what is left of it; `beingWalked` says "
-                 "whether it is walking it now (`waypoints: true` lists its points). Not yet the path it would walk "
-                 "there: that search is not safe to ask yet."},
+                 "whether it is walking it now (`waypoints: true` lists its points). `walk: true` also searches the "
+                 "path it would walk there, as the game's pathfinder finds it now: `found` with its `length`, or "
+                 "why not, and for a shut door or the like in the way, `blocker`: use that first, then move. The "
+                 "creature is left as it is."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -776,12 +782,57 @@ void AddInspect(Bench &bench, const Watch &watch)
             answer["lineOfSight"] =
                 Json{{"clear", sight.clear}, {"blockedAt", sight.blockedAt ? VectorJson(*sight.blockedAt) : Json()}};
             answer["path"] = PathNow(id, from, waypoints);
-            // Not the walk there. DAOLib's first FindPath drove the creature's
-            // own search and, in play, 2026-09-30, left creatures unable to
-            // walk; its Pathfind since searches apart from any creature's, but
-            // fails once the party has walked and is being reworked
-            // (lib-agent, 2026-10-01: "don't expose it yet"). A read must not
-            // be able to disturb the game; it comes back when seen safe.
+            // The walk there, when asked for. DAOLib's first FindPath drove the
+            // creature's own search and left creatures unable to walk (in play,
+            // 2026-09-30); its Pathfind since searches apart from any creature's
+            // and was seen in play with the creature walking as before
+            // throughout (lib-agent, 2026-10-01, 1fe01a3 on). It names what is
+            // in the way of a walk, which a move's COMMAND_FAILED_PATH_ACTION_
+            // REQUIRED does not: a test's walk across the Elven Ruins failed
+            // ten times on a shut door it could not name. Still the caller's
+            // to choose: a search is up to 30 ms of the frame.
+            if (args.Bool("walk", false))
+            {
+                const auto search =
+                    dao::world::Pathfind(id, to, args.OptionalId("target", kCreatureHint).value_or(kInvalidObject));
+                Json walk = {{"found", search.path.has_value()}};
+                const char *said = search.result == 1   ? (search.path ? "found" : "gave up part way")
+                                   : search.result == 5 ? "none"
+                                   : search.result == 6 ? "something is in the way"
+                                   : search.result == 8 ? "no walkable ground there"
+                                                        : "not finished in time";
+                walk["result"] = said;
+                if (search.path)
+                {
+                    walk["length"] = search.path->Length();
+                    walk["waypointCount"] = search.path->waypoints.size();
+                    if (waypoints)
+                    {
+                        Json points = Json::array();
+                        for (const auto &point : search.path->waypoints)
+                        {
+                            points.push_back(VectorJson(point));
+                        }
+                        walk["waypoints"] = std::move(points);
+                    }
+                }
+                else if (search.partial)
+                {
+                    walk["reached"] = search.partial->waypoints.empty() ? Json(nullptr)
+                                                                        : VectorJson(search.partial->waypoints.back());
+                    walk["lengthSoFar"] = search.partial->Length();
+                }
+                if (search.result == 6)
+                {
+                    walk["blocker"] = Brief(search.blocker);
+                    walk["note"] = search.blocker == kInvalidObject
+                                       ? "a door or the like stands in the way and was not found by name; inspect "
+                                         "kind=placeables near `reached` lists what is there"
+                                       : "a move there ends COMMAND_FAILED_PATH_ACTION_REQUIRED; order action=use "
+                                         "on `blocker` first (a shut door opens), then move";
+                }
+                answer["walk"] = std::move(walk);
+            }
             return answer;
         });
 }
