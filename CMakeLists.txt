@@ -1,0 +1,226 @@
+cmake_minimum_required(VERSION 3.21)
+
+project(DAOEluvianMCP VERSION 0.1.0 LANGUAGES CXX)
+
+option(
+    EL_BUILD_PLUGIN
+    "Build eluvian.dll and its server (needs DAOLib and the game's 32-bit architecture)"
+    ON
+)
+option(EL_BUILD_TESTS "Build the unit tests (no game required)" ON)
+option(EL_SANITIZE "Build with AddressSanitizer (for the tests)" OFF)
+option(EL_ANALYZE "MSVC static analysis (/analyze) on our own targets" OFF)
+option(
+    EL_COVERAGE
+    "Instrument for test coverage (clang-cl only; the core-cov preset)"
+    OFF
+)
+
+# Dragon Age: Origins is a 32-bit x86 executable, so the plugin the loader
+# loads into it must be too. CMakePresets.json selects the x86 toolset and
+# the x86-windows-static-md vcpkg triplet; this catches a configure from a
+# 64-bit shell with a sentence rather than a DLL the game cannot load. The
+# core alone may be built either way (core-cov is 64-bit).
+if(EL_BUILD_PLUGIN AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+    message(
+        FATAL_ERROR
+        "eluvian.dll must be built for 32-bit x86 (the game's architecture); "
+        "configure with a preset from CMakePresets.json, through tools/build.ps1"
+    )
+endif()
+
+# Our own targets: max warnings, warnings fail the build, conformance, and
+# third-party headers (DAOLib's and nlohmann's, through <angle brackets>)
+# kept quiet. The flags DAOLib and DAOTurnBased build with.
+function(el_apply_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /WX /permissive- /utf-8)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            target_compile_options(${target} PRIVATE /Zc:preprocessor)
+            target_compile_options(
+                ${target}
+                PRIVATE /external:anglebrackets /external:W0
+            )
+        endif()
+        if(EL_ANALYZE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            target_compile_options(
+                ${target}
+                PRIVATE /analyze /analyze:external-
+            )
+        endif()
+    else()
+        target_compile_options(
+            ${target}
+            PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+        )
+    endif()
+    target_compile_features(${target} PRIVATE cxx_std_20)
+endfunction()
+
+# AddressSanitizer covers every translation unit or none, so it is global
+# and set before any target. Only the tests run under it; a sanitized DLL in
+# the game would need the ASan runtime beside the exe. vcpkg's libraries are
+# built without the STL's container annotations, so they are off (DAOLib's
+# CMakeLists has the LNK2038 this avoids).
+if(EL_SANITIZE)
+    add_compile_options(/fsanitize=address /Oy-)
+    add_compile_definitions(
+        _DISABLE_STRING_ANNOTATION
+        _DISABLE_VECTOR_ANNOTATION
+    )
+    add_link_options(/INCREMENTAL:NO)
+    string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+endif()
+
+# Test coverage, clang's source-based kind, as DAOTurnBased measures it:
+# every region of el_core gets a counter, el_tests runs once, and llvm-cov
+# reports (the `coverage` target, tests/CMakeLists.txt). clang-cl only; LLVM
+# ships the profile runtime for x64 alone, so the core-cov preset is 64-bit.
+if(EL_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(
+            FATAL_ERROR
+            "EL_COVERAGE needs clang-cl (the core-cov preset); the compiler is ${CMAKE_CXX_COMPILER_ID}"
+        )
+    endif()
+    execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" /clang:-print-resource-dir
+        OUTPUT_VARIABLE _clang_resource_dir
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    link_directories("${_clang_resource_dir}/lib/windows")
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+    get_filename_component(_llvm_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    find_program(EL_LLVM_PROFDATA llvm-profdata HINTS "${_llvm_bin}")
+    find_program(EL_LLVM_COV llvm-cov HINTS "${_llvm_bin}")
+endif()
+
+# nlohmann-json from vcpkg in the x86 presets; core-cov builds with no vcpkg
+# at all, so there it is fetched, as Catch2 is (tests/CMakeLists.txt).
+find_package(nlohmann_json 3 CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann_json not found through find_package; fetching it.")
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        URL
+            https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
+# ---------------------------------------------------------------------------
+# el_core -- the bench without the game: MCP's JSON-RPC, the REST routes, the
+# tool registry, the event bus, the queue to the frame thread, arguments,
+# logs read from a cursor.
+#
+# It never includes <Windows.h>, never links DAOLib and never sees a dao::
+# type, which is what makes it testable without the game (CLAUDE.md).
+# ---------------------------------------------------------------------------
+add_library(
+    el_core
+    STATIC
+    src/core/Args.cpp
+    src/core/Bench.cpp
+    src/core/EventBus.cpp
+    src/core/FrameQueue.cpp
+    src/core/LogTail.cpp
+    src/core/ToolRegistry.cpp
+)
+el_apply_warnings(el_core)
+target_include_directories(el_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(el_core PUBLIC nlohmann_json::nlohmann_json)
+
+if(EL_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+# The core presets stop here: no DAOLib, no server, no plugin, and no format
+# or lint targets, which read the plugin's compile database (run them on
+# debug).
+if(NOT EL_BUILD_PLUGIN)
+    return()
+endif()
+
+# ---------------------------------------------------------------------------
+# el_server -- the socket loop under core/Http.h: 127.0.0.1 only, a thread
+# per connection. It needs Winsock but not the game, so its tests run over
+# loopback.
+# ---------------------------------------------------------------------------
+add_library(el_server STATIC src/server/HttpServer.cpp)
+el_apply_warnings(el_server)
+target_link_libraries(el_server PUBLIC el_core ws2_32)
+
+if(EL_BUILD_TESTS)
+    add_subdirectory(tests/server)
+endif()
+
+# ---------------------------------------------------------------------------
+# DAOLib, built with us the way DAOTurnBased builds it: a source tree added
+# as a subdirectory, which gives DAOLib::daolib and add_daolib_plugin. Its
+# dependencies (detours, spdlog) come through our vcpkg.json, since a
+# manifest build reads only the top-level manifest.
+#
+# The tree is extern/DAOLib, a git submodule, once there is one; until then,
+# and whenever DAOLib is being changed alongside this, the sibling checkout
+# ..\DAOLib. DAOLIB_DIR names another.
+# ---------------------------------------------------------------------------
+set(DAOLIB_DIR
+    ""
+    CACHE PATH
+    "DAOLib's source tree (default extern/DAOLib, else ../DAOLib)"
+)
+if(DAOLIB_DIR)
+    set(EL_DAOLIB "${DAOLIB_DIR}")
+elseif(EXISTS "${PROJECT_SOURCE_DIR}/extern/DAOLib/CMakeLists.txt")
+    set(EL_DAOLIB "${PROJECT_SOURCE_DIR}/extern/DAOLib")
+else()
+    set(EL_DAOLIB "${PROJECT_SOURCE_DIR}/../DAOLib")
+endif()
+if(NOT EXISTS "${EL_DAOLIB}/cmake/DAOLib.cmake")
+    message(
+        FATAL_ERROR
+        "No DAOLib with add_daolib_plugin at ${EL_DAOLIB}. Add the submodule "
+        "(git submodule add <DAOLib's url> extern/DAOLib) or set DAOLIB_DIR."
+    )
+endif()
+message(STATUS "DAOLib: ${EL_DAOLIB}")
+add_subdirectory(
+    "${EL_DAOLIB}"
+    "${CMAKE_BINARY_DIR}/extern/DAOLib"
+    EXCLUDE_FROM_ALL
+)
+
+# The format and lint targets, DAOLib's own module run over this tree: it
+# reads the top-level source directory, our .clang-format and .clang-tidy,
+# and tools/check-powershell.ps1.
+include("${EL_DAOLIB}/cmake/Quality.cmake")
+
+# ---------------------------------------------------------------------------
+# eluvian.dll -- the plugin. src/game is every call into the engine, through
+# DAOLib; it is verified by playing.
+# ---------------------------------------------------------------------------
+add_daolib_plugin(
+    eluvian
+    SOURCES
+        src/game/Convert.cpp
+        src/game/GameTools.cpp
+        src/game/Health.cpp
+        src/plugin/HostApi.cpp
+        src/plugin/Plugin.cpp
+)
+el_apply_warnings(eluvian)
+target_link_libraries(eluvian PRIVATE el_server)
+target_compile_definitions(
+    eluvian
+    PRIVATE
+        EL_VERSION_STRING="${PROJECT_VERSION}"
+        EL_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        EL_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        EL_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+)
+
+# `cmake --build --preset debug` builds the loader too, so build\<preset>\
+# is a game folder's worth of files: version.dll, daolib\plugins\*.dll.
+add_custom_target(game_folder ALL DEPENDS version eluvian)
