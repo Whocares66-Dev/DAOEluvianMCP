@@ -281,6 +281,11 @@ Json Summary(ObjectId id, ObjectId hero, const std::set<ObjectId> &party)
     creature["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
     creature["manaStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
     creature["template"] = Narrow(api::GetResRef(id)); // what stage spawn takes; the tag is the instance's
+    // `side` is the hero's view and has three values; the group is the
+    // game's own, and says more: a creature of group 2 fighting the hostile
+    // ones read "neutral" (computer-use-agent, 2026-10-01). 0 is the
+    // player's, 1 the hostile one, 2 friendly, as the game sets them.
+    creature["group"] = api::GetGroupId(id);
     creature["combatState"] = api::GetCombatState(id);
     creature["attackTarget"] = Brief(api::GetAttackTarget(id));
     creature["room"] = RoomJson(id);
@@ -612,7 +617,8 @@ void AddInspect(Bench &bench, const Watch &watch)
         "inspect",
         KindSpec{"creatures",
                  "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
-                 "(party, hostile, neutral), position, distance, dead, health and mana or stamina, combat state, "
+                 "(party, hostile, neutral: the hero's view), its `group` (the game's own: 0 the player's, 1 "
+                 "hostile, 2 friendly), position, distance, dead, health and mana or stamina, combat state, "
                  "whom it attacks, its `room` (number; `seen` by the party: never, which the game draws "
                  "black with what stands in it, in view, or before; `shown`; and how much the game wants "
                  "the room and whether it is in memory), and the command it is carrying out."},
@@ -1260,6 +1266,34 @@ ObjectId StageKill(const Args &args, Json &answer)
     return id;
 }
 
+// A creature's group decides whom it fights: the game keeps, for each pair
+// of groups, whether they are hostile. Moving a spawned creature to group 2
+// set it against a room's hostile creatures at once, the party not in it
+// (computer-use-agent with `script`, 2026-10-01): a fight out of the
+// party's sight, staged.
+ObjectId StageGroup(const Args &args, Json &answer)
+{
+    const ObjectId id = CreatureArg(args);
+    const auto group = static_cast<std::int32_t>(args.Integer("group", 0, 0, 255));
+    if (!args.Has("group"))
+    {
+        throw ToolError("stage: group needs `group`, a number: 0 is the player's, 1 the hostile one, 2 friendly; "
+                        "inspect gives each creature's");
+    }
+    answer["was"] = api::GetGroupId(id);
+    if (args.Has("toward"))
+    {
+        const auto toward = static_cast<std::int32_t>(args.Integer("toward", 0, 0, 255));
+        api::SetGroupHostility(group, toward, args.Bool("hostile", true) ? 1 : 0);
+    }
+    api::SetGroupId(id, group);
+    const ObjectId hero = api::GetHero();
+    answer["group"] = group;
+    answer["hostileToParty"] = hero != kInvalidObject && api::GetGroupHostility(group, api::GetGroupId(hero)) != 0;
+    answer["hostileToGroup1"] = api::GetGroupHostility(group, 1) != 0;
+    return id;
+}
+
 ObjectId StageSpawn(const Args &args, Json &answer)
 {
     const auto name = args.String("template");
@@ -1313,6 +1347,9 @@ void AddStage(Bench &bench, const Watch &watch)
               {"creator", {{"description", "Whom the effect is from; default none"}}},
               {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}},
               {"value", {{"type", "number"}, {"description", "action=health: the current health"}}},
+              {"group", {{"type", "integer"}, {"description", "action=group: the group to move the creature to"}}},
+              {"toward", {{"type", "integer"}, {"description", "action=group: another group, to set hostility with"}}},
+              {"hostile", {{"type", "boolean"}, {"description", "action=group: with `toward`; default true"}}},
               {"template", {{"type", "string"}, {"description", "action=spawn: the creature's template"}}},
               {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
               {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}}}}},
@@ -1346,6 +1383,12 @@ void AddStage(Bench &bench, const Watch &watch)
         "sets creature `id`'s cooldown on `ability` to `seconds` left (0 makes it ready), of `total` if given",
         StageCooldown);
     add("kill", "deals creature `id` more damage than it has; it dies a frame or more later", StageKill);
+    add("group",
+        "moves creature `id` to `group` (0 the player's, 1 the hostile one, 2 friendly: the game keeps which pairs "
+        "of groups fight), and with `toward` sets whether `group` and that group are `hostile` (default true) "
+        "first; a spawned creature moved to group 2 fights the hostile ones near it, for a fight the party is "
+        "not in",
+        StageGroup);
     add("spawn",
         "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "
         "`facing` degrees, in the controlled creature's area; it is set up over the next frames",
