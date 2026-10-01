@@ -121,3 +121,10 @@ Loading without the menus, 2026-10-01 (computer-use-agent, on the eluvian.dll of
 - `order action=use` on a door: the hero walked 13 m and opened it.
 - Not called: `save` (its default was then a quicksave, which would have written over the user's; it is a new manual save now).
 - On that the bridge's `game_launch` takes `load`, and starts a test in its save: asks for the load until the menu takes it, then waits for `eluvian.game.loaded`.
+
+Play test 7 and a load that stopped at a dialog, 2026-10-01:
+
+- computer-use-agent, on the eluvian.dll of 00:09 with the turn-based mod, 27 minutes and two fights: `inspect kind=creature`'s abilities gave a cooldown's remaining and total at each turn, matching the quickbar's sweep; `stage spawn` made 14 soldiers from `bhn200cr_howe_long`, each hostile and fighting within a second; `stage kill` and `stage health` in a fight; `screenshot` with `image: false` in about 50 ms; `order use` on a door in explore mode. In a turn-based fight the door's command ended -1 (COMMAND_FAILED), which was the mod's to fix.
+- A wish from it: a spawned creature set fighting another group, so that a fight out of the party's sight can be staged.
+- That night the user installed EA's game beside GOG's. Its installer rewrote the shared `Settings\AddIns.xml`, the user's mods were no longer registered, and `game action=load` answered `asked` and then nothing: the game showed "This saved game cannot be loaded. It requires the following content ... Force Load / Cancel", which no plugin is told of (DAOLib `d8ef457` says so in `Saves.h`). `screenshot` showed it. Posted mouse messages did not reach the dialog. Since then the bridge's `game_launch` with `load` says so when the mode has not moved in 20 s, and the bridge knows its own install's game by its file, not its name.
+- Not yet seen in the game: `room` and `attackTarget` in `inspect kind=creatures` (DAOLib `4262d70`), `game action=save`, `screenshot source=game`, `stage action=cooldown`.
