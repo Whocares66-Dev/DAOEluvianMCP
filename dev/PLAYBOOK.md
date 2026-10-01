@@ -16,7 +16,8 @@ For an agent testing the game or a mod in it. Every call below is an MCP tool (t
 game_saves {"character": "Aedan"}             bridge: the saves on disk, newest first, before the game runs
 game_launch {}                                   bridge: starts the game once, waits for the main menu
 health {}                                        state running, mode pregame (the main menu); the mods registered
-wait_for {"topic": "eluvian.game.loaded", "timeoutMs": 300000}     load the save (by hand for now)
+game {"action": "load", "character": "Aedan", "kind": "manual", "number": 2}     asks, and answers a cursor
+wait_for {"topic": "eluvian.game.loaded", "since": <cursor>, "timeoutMs": 120000}
 inspect {"kind": "game"}                         hero, party, area, mode explore
 ```
 
@@ -51,7 +52,7 @@ A mod that registers with Eluvian (`src/api/EluvianAPI.h`) shows up in `health`'
 
 ## The engine's events
 
-`eluvian.command.started` and `eluvian.command.ended` {id, type (Attack, UseAbility, MoveToObject, ...), playerIssued, result (success, a COMMAND_FAILED_*, or cleared), success}: every creature's commands, so `wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}}` says the attack happened and how it ended. `eluvian.mode.changed` {from, to}, `eluvian.paused` {paused}, `eluvian.game.loaded` {character, kind, number}, `eluvian.game.saved`, `eluvian.creature.died` {id, name, killer}, the moment it dies (watched: a creature hurt or staged is looked at each frame), and `eluvian.script.death` 1.5 to 2.5 s later, once the death has played out, and `eluvian.script.<event>` {receiver, creator, objects, integers, floats} for damaged, death, attack_impact, combat_initiated, ability_cast_start, ability_cast_impact, apply_effect, remove_effect, command_complete, gamemode_change, area_loaded, partymember_added, order_received. `receiver` is who the event was delivered to, not always who it is about: an attack's impact goes to the attacker. `objects`, `integers` and `floats` are the event's own parameters, as a script reads them (GetEventObject and the rest), the first four of each. Named for two: `attack_impact` adds `attacker`, `target`, `hit` (COMBAT_RESULT_*) and `effectId`; `damaged` adds `damager`, `amount`, `damageType` (DAMAGE_TYPE_*) and `ability`.
+`eluvian.command.started` and `eluvian.command.ended` {id, type (Attack, UseAbility, MoveToObject, ...), playerIssued, result (success, a COMMAND_FAILED_*, or cleared), success}: every creature's commands, so `wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}}` says the attack happened and how it ended. `eluvian.mode.changed` {from, to}, `eluvian.paused` {paused}, `eluvian.game.loaded` {character, kind, number}, `eluvian.game.saved`, `eluvian.creature.died` {id, name, killer}, the moment it dies (watched: a creature hurt or staged is looked at each frame), and `eluvian.script.death` 1.5 to 2.5 s later, once the death has played out, and `eluvian.script.<event>` {receiver, creator, objects, integers, floats} for damaged, death, attack_impact, combat_initiated, ability_cast_start, ability_cast_impact, apply_effect, remove_effect, gamemode_change, area_loaded, partymember_added, order_received. `receiver` is who the event was delivered to, not always who it is about: an attack's impact goes to the attacker. `objects`, `integers` and `floats` are the event's own parameters, as a script reads them (GetEventObject and the rest), the first four of each. Named for two: `attack_impact` adds `attacker`, `target`, `hit` (COMBAT_RESULT_*) and `effectId`; `damaged` adds `damager`, `amount`, `damageType` (DAMAGE_TYPE_*) and `ability`.
 
 ## Clicks, and what still needs eyes
 

@@ -103,3 +103,14 @@ Screenshots, 20:29 to 20:46:
 - The game's script command `Screenshot` writes nothing in this build: called by name with no arguments and with a file name, in combat and in explore, it answered at once and no file appeared anywhere (computer-use-agent). The screenshot key's own pictures (`Screenshots\User\Screenshot<time>.jpg`) come another way, asked of lib-agent.
 - So Eluvian draws the game's window itself, from inside the process: PrintWindow with PW_RENDERFULLCONTENT into a bitmap, encoded as JPEG by WIC. At the main menu it gave the whole 1600 by 1000 menu, Flash interface and all, while the game sat behind other windows; over MCP, a 71 KB JPEG at quality 0.6 as image content, in 149 ms. Not yet taken in a fight.
 - The bridge's `game_launch` started the game and answered once Eluvian served at the main menu (pregame, turnbased's registrations in); its `game_quit` closed it. Its `game_saves` matched the load screen entry for entry, without the space the menu shows in "Castle Cousland".
+
+## A session of the user's own, read off the bus, 2026-09-30
+
+22:11 to 23:17: eight turn-based fights played by hand, Eluvian 0.2.0 (the eluvian.dll of 20:52, DAOLib `f253b8c`) and turnbased's build of 20:44 beside it. Read afterwards through `GET /api/events`: 12,743 events, none dropped, 66 minutes.
+
+- Nothing of Eluvian's failed: its log has the start and the mod's four registrations and nothing more; no crash log since the morning's.
+- Deaths agree three ways: 39 `eluvian.creature.died`, 39 `turnbased.fell`, 39 `eluvian.script.death`, one of each per creature. The engine's event came a median 2.15 s after the watch's (5.14 s at most; once 20 ms before). Every `died` named its killer: Eleanor 14, Aedan 9, the dog 7, a servant 4, Howe soldiers 3, guards 2.
+- Commands: 1,739 started, 1,699 ended; the 40 between are `ExecuteEffect`, which a dying creature starts and never ends. Ends: success 1,286, cleared 315, INVALID_PATH 29, TIMEOUT 5, PATH_ACTION_REQUIRED 3, and 61 `PlayAnimation` ending with result 2, which nothing names (told to lib-agent).
+- Attacks: 292 hits, 174 misses, 21 criticals, 10 blocked, 2 backstabs; 3,582 physical damage in 382 events.
+- The bus's rate is what a turn-based session costs: `eluvian.paused` 1,475 (the mod pauses and unpauses each turn), `eluvian.script.command_complete` 2,094. At that rate 16,384 events last under an hour and a half. So the bus keeps 32,768 (`ELUVIAN_EVENTS` chooses another), and command_complete, which `eluvian.command.ended` says better, is no longer on it.
+- For the mod (told to turn-based-agent): `turnbased.up_again` 311 times against 39 falls, two living creatures getting one every 2.6 s for eleven minutes; 1,097 refusals, up to 64 in a second, most of them followers' moves out of turn; one fight ended "the game ended combat" three seconds after its last enemy fell; AI commands timing out as two fights began.
