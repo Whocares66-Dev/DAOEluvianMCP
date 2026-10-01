@@ -359,6 +359,29 @@ class BridgeTest(unittest.TestCase):
             Game(self.folder / "missing").port(), bridge_module.DEFAULT_PORT
         )
 
+    def test_a_file_left_by_a_game_that_is_gone_does_not_name_the_port(self) -> None:
+        def write(name: str, pid: int, port: int) -> None:
+            (self.folder / name).write_text(
+                json.dumps({"pid": pid, "port": port}), encoding="utf-8"
+            )
+
+        # A second game wrote its port over the first's, then went away
+        # (2026-09-30): the first, still running, serves on the default.
+        write("eluvian.json", 71156, 8931)
+        self.assertEqual(
+            Game(self.folder, running=lambda: [47408]).port(),
+            bridge_module.DEFAULT_PORT,
+        )
+        # The game the file names is the one running: its port.
+        self.assertEqual(Game(self.folder, running=lambda: [71156]).port(), 8931)
+        # A second game keeps its own file, and is found by its pid.
+        write("eluvian.json", 100, 8930)
+        write("eluvian.200.json", 200, 8931)
+        self.assertEqual(Game(self.folder, running=lambda: [200]).port(), 8931)
+        self.assertEqual(Game(self.folder, running=lambda: [100, 200]).port(), 8930)
+        # No game runs: the last one known, for when it comes back.
+        self.assertEqual(Game(self.folder, running=list).port(), 8930)
+
 
 if __name__ == "__main__":
     unittest.main()

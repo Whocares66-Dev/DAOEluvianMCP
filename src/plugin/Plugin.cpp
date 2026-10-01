@@ -109,9 +109,15 @@ struct State
 State *g = nullptr;
 
 // Where scripts and the bridge find the port: eluvian.json beside the logs.
+// A game that found the first port taken is a second game, and writes
+// eluvian.<pid>.json instead, as DAOLib names a second game's logs: on
+// 2026-09-30 a second game wrote its port over the first's, and the bridge
+// then looked for the game that was gone (turn-based-agent).
 void WriteRuntime(std::uint16_t port)
 {
-    const auto file = dao::LogDirectory() / "eluvian.json";
+    const auto name =
+        port == PortSetting() ? std::string("eluvian.json") : std::format("eluvian.{}.json", GetCurrentProcessId());
+    const auto file = dao::LogDirectory() / name;
     std::ofstream out(file, std::ios::trunc);
     out << Json{{"pid", GetCurrentProcessId()},
                 {"port", port},

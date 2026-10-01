@@ -108,23 +108,51 @@ def call_budget(name: str, arguments: object) -> float:
 
 
 class Game:
-    """The game's REST API, at the port eluvian.json names."""
+    """The game's REST API, at the port its Eluvian wrote down beside the logs: eluvian.json,
+    or eluvian.<pid>.json for a game that found the first port taken."""
 
-    def __init__(self, folder: Path, port: int | None = None) -> None:
+    def __init__(
+        self,
+        folder: Path,
+        port: int | None = None,
+        running: Callable[[], list[int]] | None = None,
+    ) -> None:
         self.folder = folder
         self.fixed_port = port
+        self.running = running  # the pids of the games running, to tell a stale file by
+        self.found: tuple[float, int] | None = None
+
+    def read_runtime(self, name: str) -> dict | None:
+        try:
+            runtime = json.loads((self.folder / name).read_text(encoding="utf-8"))
+            return runtime if isinstance(runtime.get("port"), int) else None
+        except (OSError, ValueError, AttributeError):
+            return None
+
+    def find_port(self) -> int:
+        """The port of a game that is running. eluvian.json's, if its game still runs (or
+        there is no telling); else a running game's own file; else what eluvian.json says, or
+        the default. A second game once wrote its port over the first's and went away
+        (2026-09-30): the file named a game that was gone while the first still served."""
+        named = self.read_runtime("eluvian.json")
+        pids = set(self.running()) if self.running is not None else None
+        if named and (pids is None or named.get("pid") in pids):
+            return named["port"]
+        for pid in sorted(pids or ()):
+            own = self.read_runtime(f"eluvian.{pid}.json")
+            if own:
+                return own["port"]
+        if named and pids:
+            return DEFAULT_PORT  # a game runs, and it is not the one the file names
+        return named["port"] if named else DEFAULT_PORT
 
     def port(self) -> int:
         if self.fixed_port is not None:
             return self.fixed_port
-        try:
-            return int(
-                json.loads((self.folder / "eluvian.json").read_text(encoding="utf-8"))[
-                    "port"
-                ]
-            )
-        except (OSError, ValueError, KeyError):
-            return DEFAULT_PORT
+        now = time.monotonic()
+        if self.found is None or now - self.found[0] > 5:
+            self.found = (now, self.find_port())
+        return self.found[1]
 
     def request(
         self, method: str, path: str, body: object = None, timeout: float = 10
@@ -644,9 +672,10 @@ def main() -> None:
             stdout.flush()
 
     folder = log_folder()
+    processes = Processes(options.exe)
     bridge = Bridge(
-        Game(folder, options.port),
-        Processes(options.exe),
+        Game(folder, options.port, processes.running),
+        processes,
         folder / "eluvian.tools.json",
         send,
     )
