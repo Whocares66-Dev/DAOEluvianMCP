@@ -16,9 +16,13 @@
 
 #include "core/Bench.h"
 
+#include <functional>
+
 namespace eluvian
 {
 
-void AddScenarioTool(Bench &bench);
+// `whyNothing`, as for wait_for (core/Bench.h): asked when a waitFor step's
+// time runs out, and what it answers goes into the step's line.
+void AddScenarioTool(Bench &bench, std::function<Json()> whyNothing = {});
 
 } // namespace eluvian

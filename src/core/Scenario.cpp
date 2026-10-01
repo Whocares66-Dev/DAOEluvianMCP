@@ -101,7 +101,7 @@ std::string KindOf(const Json &step)
 
 } // namespace
 
-void AddScenarioTool(Bench &bench)
+void AddScenarioTool(Bench &bench, std::function<Json()> whyNothing)
 {
     const Json schema = {
         {"type", "object"},
@@ -130,7 +130,7 @@ void AddScenarioTool(Bench &bench)
                  "cut to the time left, and the run stops with `timedOut` when it is gone. A tool step already "
                  "running in the game is waited for to its end, since what it does cannot be taken back.",
                  schema, Thread::Listener},
-        [&bench](const Json &raw) -> ToolResult {
+        [&bench, whyNothing = std::move(whyNothing)](const Json &raw) -> ToolResult {
             const Args args(raw, "scenario");
             const Json steps = args.Raw().value("steps", Json());
             if (!steps.is_array() || steps.empty() || steps.size() > 100)
@@ -211,6 +211,19 @@ void AddScenarioTool(Bench &bench)
                         else
                         {
                             failure = std::format("no such event within {} ms", timeout.count());
+                            // What the host knows of why: a paused game plays
+                            // nothing, and a wait in one only times out.
+                            if (whyNothing)
+                            {
+                                if (const Json why = whyNothing(); why.is_object() && !why.empty())
+                                {
+                                    line["why"] = why;
+                                    if (why.contains("note") && why.at("note").is_string())
+                                    {
+                                        failure += "; " + why.at("note").get<std::string>();
+                                    }
+                                }
+                            }
                         }
                     }
                     else if (kind == "sleepMs")

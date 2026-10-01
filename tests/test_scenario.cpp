@@ -214,3 +214,16 @@ TEST_CASE("a step with no time left does not start, and one that ran past it say
     CHECK_THAT(second["steps"].back()["error"].get<std::string>(), ContainsSubstring("into a sleep of 500 ms"));
     CHECK(f.attacks == 0);
 }
+
+TEST_CASE("a wait that times out says what the host knows of why", "[scenario]")
+{
+    Bench bench;
+    AddScenarioTool(bench, [] { return Json{{"paused", true}, {"note", "the game is paused"}}; });
+    const auto answer =
+        bench.Invoke("scenario", Json{{"steps", {{{"waitFor", {{"topic", "nothing.comes"}}}, {"timeoutMs", 10}}}}})
+            .data;
+    CHECK(answer["ok"] == false);
+    const auto &step = answer["steps"].back();
+    CHECK(step["why"]["paused"] == true);
+    CHECK_THAT(step["error"].get<std::string>(), ContainsSubstring("the game is paused"));
+}
