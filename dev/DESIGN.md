@@ -70,7 +70,7 @@ In build order: what the testers said would have settled the most first (turn-ba
 | `dialogue` | frame | Answer the conversation on the screen or skip a cutscene: `choose` the reply at a place, `continue` as the skip key does, `skip_cutscene` as Escape. `inspect kind=dialogue` reads the line spoken and the replies offered. Without it a test stops at the first conversation between it and the fight it wants (the first test with no computer use, 2026-10-01, could not leave the clearing it loaded into). Through DAOLib's `Dialogue.h`. |
 | `stage` | frame | Test set-up: spawn a creature from a template at a point, apply an effect (stun, knockdown, root, grab), set health, mana or stamina, kill, set hostility, move. The fixtures for cases a fight rarely reaches. |
 | `script` | frame | Any script command by name, with arguments, returning its value: the general primitive when no tool fits. |
-| `camera` | frame | Centre on a creature, set yaw, pitch and zoom, read them. Makes the visual checks cheap. |
+| `camera` | frame | Read it (what it follows, focus, position, yaw, pitch, zoom); `face` a target or point at once, `follow` a creature, `turn` to a yaw. Makes the visual checks cheap: a screenshot that shows what the test means. Through DAOLib's `Camera.h`. |
 | `gui` | frame | The Flash UI: call a movie's registered call as the movie would (`TB_EndTurn`, `TB_Focus`), read what the game last sent a movie. Through DAOLib's `Gui.h`. |
 | `input` | frame | A key or button at the game's input layer, not the desktop's, so focus and covering windows do not matter: the pause key, the quickbar. |
 | `screenshot` | frame | The game's own frame as a PNG, as MCP image content: no window can cover it. Waits on DAOLib (below). |

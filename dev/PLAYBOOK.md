@@ -23,6 +23,16 @@ inspect {"kind": "game"}                         hero, party, area
 
 With the game already running, `game {"action": "saves"}` lists the saves and `game {"action": "load", ...}` loads one, from the main menu (mode pregame) or in the world; `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` says when it is there. A save made by a test is a new manual one by default (`game {"action": "save", "name": "..."}`), which writes over nothing.
 
+## Looking
+
+```
+inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock
+order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
+camera {"action": "face", "target": "0x305"}     turn the camera to it at once; then screenshot
+camera {"action": "follow", "target": "0x305"}   look at a creature elsewhere
+screenshot {}                                    the window as it is drawn; {"image": false} only writes the file
+```
+
 ## Conversations and cutscenes
 
 A conversation or a cutscene holds the world until it is answered; `health`'s mode says which (dialog, cutscene).
