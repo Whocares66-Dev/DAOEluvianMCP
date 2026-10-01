@@ -11,7 +11,7 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | Tool | What |
 |---|---|
 | `health` | Is the game alive and in what mode, answered even while it loads or hangs; who started it (`owner`) |
-| `inspect` | `kind`: `game` (mode, pause, area, hero, party, a message box if one is up), `creatures` (positions, sides and groups, health, rooms and whether the party has seen them, what each is doing), `creature` (one in full, with its effects and abilities), `geometry` (distance, line of sight, the path walked), `placeables` (doors, chests, levers: state and lock), `dialogue` (the line spoken, the replies offered), `popup` (the game's message box), `window` (where the game's window is on the desktop), and kinds plugins add |
+| `inspect` | `kind`: `game` (mode, pause, area, hero, party, a message box if one is up), `creatures` (positions, sides and groups, health, rooms and whether the party has seen them, what each is doing), `creature` (one in full, with its effects and abilities), `geometry` (distance, line of sight, the path walked), `placeables` (doors, chests, levers: state and lock), `dialogue` (the line spoken, the replies offered), `popup` (the game's message box), `window` (where the game's window is on the desktop), `cursor` (what the game says is under the real mouse), and kinds plugins add |
 | `order` | The player's orders by id: attack, move, ability, use; through the engine's own click functions or explore mode's click |
 | `travel` | Walk a creature to a target or point, opening what is shut on the way; stops and says why when a fight, a conversation or a pause takes the journey from it |
 | `dialogue` | Answer the conversation on the screen: choose a reply, continue, skip a cutscene |

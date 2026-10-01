@@ -101,6 +101,11 @@ def checks(run: Run) -> None:
         lambda a: a["popup"] is None,
     )
     check(
+        "inspect cursor",
+        tool("inspect", {"kind": "cursor"}),
+        lambda a: "hits" in a and "object" in a,
+    )
+    check(
         "inspect window",
         tool("inspect", {"kind": "window"}),
         lambda a: a["client"]["width"] > 100 and a["client"]["height"] > 100,

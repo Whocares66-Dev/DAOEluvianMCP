@@ -78,6 +78,42 @@ void AddInspect(Bench &bench, const Watch &watch)
 
     bench.Tools().AddKind(
         "inspect",
+        KindSpec{"cursor",
+                 "What the game says is under the real mouse cursor now, in explore and combat mode: `object`, "
+                 "the one a click would act on (null over none), the `ground` point under it and whether it is "
+                 "`walkable`, and `hits`, everything the cursor's ray meets, nearest first. After moving the "
+                 "real mouse, ask before clicking: a click beside a creature is a move order. The game picks "
+                 "again 15 times a second."},
+        [&watch](const Json &) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const auto *explore = dao::CClientExoApp::CurrentExplore();
+            if (explore == nullptr)
+            {
+                throw ToolError("inspect: the cursor picks in explore and combat mode only (health says the mode)");
+            }
+            const auto object = explore->CursorObject();
+            const auto ground = explore->CursorGround();
+            Json hits = Json::array();
+            for (const auto &hit : explore->CursorHits())
+            {
+                if (hits.size() == 8)
+                {
+                    break;
+                }
+                hits.push_back(Json{{"kind", hit.kind == dao::world::Hit::Kind::Object   ? "object"
+                                             : hit.kind == dao::world::Hit::Kind::Ground ? "ground"
+                                                                                         : "nothing"},
+                                    {"object", Brief(hit.object)},
+                                    {"position", VectorJson(hit.position)}});
+            }
+            return Json{{"object", object ? Brief(*object) : Json(nullptr)},
+                        {"ground", ground ? VectorJson(*ground) : Json(nullptr)},
+                        {"walkable", explore->CursorGroundWalkable()},
+                        {"hits", std::move(hits)}};
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
         KindSpec{"window",
                  "The game's window on the desktop, for a test that must use the real mouse: `client`, its "
                  "picture's top left corner in desktop pixels and its size, and whether it is minimised or the "
