@@ -7,6 +7,7 @@
 #include "dao/ClientExoApp.h"
 #include "dao/CommandEvents.h"
 #include "dao/Events.h"
+#include "dao/Frame.h"
 #include "dao/GameModes.h"
 #include "dao/Messages.h"
 #include "dao/Objects.h"
@@ -20,9 +21,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <format>
+#include <iterator>
 #include <limits>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -195,6 +199,7 @@ Json Summary(ObjectId id, ObjectId hero, const std::set<ObjectId> &party)
     creature["dead"] = api::IsDead(id) != 0;
     creature["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
     creature["manaStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
+    creature["template"] = Narrow(api::GetResRef(id)); // what stage spawn takes; the tag is the instance's
     creature["combatState"] = api::GetCombatState(id);
     creature["command"] = CommandJson(id);
     return creature;
@@ -270,6 +275,71 @@ std::set<ObjectId> PartyOf(ObjectId hero)
     }
     const auto ids = Objects(api::GetPartyList(hero));
     return {ids.begin(), ids.end()};
+}
+
+// ---- deaths ----------------------------------------------------------------
+
+// Deaths, watched rather than heard. EVENT_TYPE_DEATH does not come through
+// the engine's event queue, where DAOLib hears script events: in play,
+// 2026-09-30, four creatures died (two by stage, one in a fight, one more by
+// stage) and not one death was heard, while the turn-based mod saw each
+// fall. So a creature that is hurt (a damage or an attack's impact) or
+// staged is looked at every frame until it is dead, gone, or a minute
+// passes with no more harm, and its death is eluvian.creature.died with
+// the last one who hurt it. On the game's thread only, as every caller is.
+class DeathWatch
+{
+  public:
+    void Note(ObjectId id, ObjectId harmer)
+    {
+        if (id == kInvalidObject)
+        {
+            return;
+        }
+        Entry &entry = watched_[id];
+        if (harmer != kInvalidObject)
+        {
+            entry.killer = harmer;
+        }
+        entry.since = std::chrono::steady_clock::now();
+    }
+
+    void Tick(Bench &bench)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        for (auto it = watched_.begin(); it != watched_.end();)
+        {
+            const ObjectId id = it->first;
+            if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
+            {
+                it = watched_.erase(it); // gone from the world
+                continue;
+            }
+            if (api::IsDead(id) != 0)
+            {
+                bench.Events().Emit(
+                    "eluvian.creature.died",
+                    Json{{"id", IdJson(id)}, {"name", Narrow(api::GetName(id))}, {"killer", Brief(it->second.killer)}});
+                it = watched_.erase(it);
+                continue;
+            }
+            it = now - it->second.since > std::chrono::minutes(1) ? watched_.erase(it) : std::next(it);
+        }
+    }
+
+  private:
+    struct Entry
+    {
+        ObjectId killer = kInvalidObject;
+        std::chrono::steady_clock::time_point since;
+    };
+    std::map<ObjectId, Entry> watched_;
+};
+
+DeathWatch &Deaths()
+{
+    static DeathWatch deaths;
+    return deaths;
 }
 
 // ---- inspect ---------------------------------------------------------------
@@ -852,7 +922,7 @@ void AddStage(Bench &bench, const Watch &watch)
             "an EFFECT_TYPE_* number) for `seconds`, as from `creator` and `ability` if given; "
             "remove_effects takes them off (by `effect`, `ability`, `creator`, or all); health sets its "
             "current health to `value`; kill deals it more damage than it has; spawn makes a creature from "
-            "`template` (a creature resource, as its tag reads, e.g. \"bhn200cr_howe_soldier\") at `point` "
+            "`template` (a creature's template, as inspect gives each creature's `template`) at `point` "
             "facing `facing` degrees, in the controlled creature's area. Answers `creature` as the change "
             "leaves it (health, dead, its command), and the effects for an effect. The effects are the engine's bare "
             "ones, applied as scripts apply them; "
@@ -886,12 +956,21 @@ void AddStage(Bench &bench, const Watch &watch)
                     throw ToolError("stage: nobody is controlled, so there is no area to spawn in");
                 }
                 const auto facing = static_cast<float>(args.Number("facing", 0));
-                const ObjectId id = api::CreateObject(k::OBJECT_TYPE_CREATURE, dao::Resource{Wide(name)},
-                                                      api::Location(api::GetArea(near), point, facing));
+                const auto spawn = [&](const std::string &resource) {
+                    return api::CreateObject(k::OBJECT_TYPE_CREATURE, dao::Resource{Wide(resource)},
+                                             api::Location(api::GetArea(near), point, facing));
+                };
+                // The scripts name a creature's template with its extension
+                // (R"gen00fl_dog.utc"); GetResRef may give it without.
+                ObjectId id = spawn(name);
+                if (id == kInvalidObject && name.find('.') == std::string::npos)
+                {
+                    id = spawn(name + ".utc");
+                }
                 if (id == kInvalidObject)
                 {
-                    throw ToolError(std::format("stage: no creature from template \"{}\"; a creature's tag usually "
-                                                "names its template",
+                    throw ToolError(std::format("stage: no creature from template \"{}\"; inspect gives each "
+                                                "creature's `template` (its tag names the instance, not this)",
                                                 name));
                 }
                 answer["creature"] = Summary(id, api::GetHero(), PartyOf(api::GetHero()));
@@ -957,6 +1036,7 @@ void AddStage(Bench &bench, const Watch &watch)
                 }
                 api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *damage.get(), id, 0.0F,
                                                 kInvalidObject, 0);
+                Deaths().Note(id, kInvalidObject);
                 answer["dealt"] = health + 1000;
                 answer["note"] = "the death comes a frame or more later, so `creature` still lives here: "
                                  "wait_for eluvian.creature.died from `cursor`";
@@ -1159,18 +1239,20 @@ void AddEngineEvents(Bench &bench)
     });
     for (const auto &[type, name] : kScriptEvents)
     {
-        dao::events::OnScriptEvent(
-            type, [&bench, topic = std::format("eluvian.script.{}", name),
-                   death = type == dao::script::EventType::Death](ObjectId target, const dao::CScriptEvent &event) {
-                bench.Events().Emit(topic, ScriptEventPayload(target, event));
-                if (death)
-                {
-                    bench.Events().Emit("eluvian.creature.died", Json{{"id", IdJson(target)},
-                                                                      {"name", Narrow(api::GetName(target))},
-                                                                      {"killer", IdJson(event.Creator())}});
-                }
-            });
+        dao::events::OnScriptEvent(type, [&bench, type, topic = std::format("eluvian.script.{}", name)](
+                                             ObjectId receiver, const dao::CScriptEvent &event) {
+            bench.Events().Emit(topic, ScriptEventPayload(receiver, event));
+            if (type == dao::script::EventType::Damaged)
+            {
+                Deaths().Note(receiver, event.Creator());
+            }
+            else if (type == dao::script::EventType::AttackImpact)
+            {
+                Deaths().Note(event.Object(1), event.Object(0));
+            }
+        });
     }
+    dao::OnFrame([&bench] { Deaths().Tick(bench); });
 }
 
 } // namespace eluvian::game
