@@ -6,6 +6,8 @@
 
 #include "game/Capture.h"
 
+#include "dao/Data.h"
+
 namespace eluvian::game
 {
 
@@ -21,6 +23,8 @@ void AddInspect(Bench &bench, const Watch &watch)
               {{"id", {{"description", "kind=creature and kind=geometry: the creature; default the one controlled"}}},
                {"target", {{"description", "kind=geometry: the creature to measure to"}}},
                {"point", {{"description", "kind=geometry: the point to measure to, {x, y, z} or [x, y, z]"}}},
+               {"path", {{"type", "string"}, {"description", "kind=data: a dotted path in the data tree"}}},
+               {"paths", {{"type", "array"}, {"description", "kind=data: several paths, answered together"}}},
                {"waypoints", {{"type", "boolean"}, {"description", "kind=geometry: list the paths' points"}}},
                {"walk",
                 {{"type", "boolean"},
@@ -74,6 +78,61 @@ void AddInspect(Bench &bench, const Watch &watch)
             }
             answer["selected"] = std::move(selected);
             return answer;
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"data",
+                 "The game's data tree, which its interface is bound to: the value at a dotted `path` "
+                 "(\"GUI.SelectedChar\", \"Map.ShowAllLabels\", \"GUIPopupLayer.DialogBoxText\"), as `text` "
+                 "and as `number`, and its `type`; or several at once with `paths`. `found` is false for a path "
+                 "the tree has not. What the interface shows of the game is read here without a picture. "
+                 "Reading only. Answers in any mode."},
+        [&watch](const Json &raw) -> ToolResult {
+            const Args args(raw, "inspect");
+            if (watch.Mode() < 0)
+            {
+                throw ToolError("inspect: the game is still starting; health says when it runs");
+            }
+            const auto read = [](const std::string &path) {
+                Json value = {{"path", path}};
+                const auto *attribute = dao::data::Find(Wide(path));
+                value["found"] = attribute != nullptr;
+                if (attribute != nullptr)
+                {
+                    using Type = dao::data::Attribute::Type;
+                    const auto type = attribute->Kind();
+                    value["type"] = type == Type::Bool          ? "bool"
+                                    : type == Type::Int         ? "int"
+                                    : type == Type::UnsignedInt ? "unsigned"
+                                    : type == Type::Short       ? "short"
+                                    : type == Type::Byte        ? "byte"
+                                    : type == Type::Float       ? "float"
+                                                                : "other";
+                    value["text"] = Narrow(attribute->Text());
+                    value["number"] = attribute->Number();
+                }
+                return value;
+            };
+            if (args.Has("paths"))
+            {
+                const auto &paths = args.Raw().at("paths");
+                if (!paths.is_array() || paths.size() > 64)
+                {
+                    throw ToolError("inspect: `paths` is a list of up to 64 dotted paths");
+                }
+                Json values = Json::array();
+                for (const auto &path : paths)
+                {
+                    if (!path.is_string())
+                    {
+                        throw ToolError("inspect: each of `paths` is a string, like \"GUI.SelectedChar\"");
+                    }
+                    values.push_back(read(path.get<std::string>()));
+                }
+                return Json{{"values", std::move(values)}};
+            }
+            return read(args.String("path"));
         });
 
     bench.Tools().AddKind(

@@ -101,6 +101,11 @@ def checks(run: Run) -> None:
         lambda a: a["popup"] is None,
     )
     check(
+        "inspect data, a path the tree has not",
+        tool("inspect", {"kind": "data", "path": "Nothing.AtAll"}),
+        lambda a: "found" in a,
+    )
+    check(
         "inspect cursor",
         tool("inspect", {"kind": "cursor"}),
         lambda a: "hits" in a and "object" in a,
