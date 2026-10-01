@@ -19,8 +19,10 @@ src/core/     the bench without the game: HTTP parsing and routes, MCP's JSON-RP
               No <Windows.h>, no DAOLib, no dao:: type. Tested.
 src/server/   the socket loop under core/Http.h: Winsock, 127.0.0.1, a thread per connection. Tested
               over loopback.
-src/game/     the tools that read and drive the game, through DAOLib (inspect, script, order, stage,
-              dialogue, camera, input, game, health), and the engine's events on the bus. Verified by playing.
+src/game/     the tools that read and drive the game, through DAOLib, a file each (Inspect, Script,
+              Order, Stage, Screenshot, Game, Input, Camera, Dialogue; Shared.h is what they share;
+              GameTools.cpp registers them and puts the engine's events on the bus), and health.
+              Verified by playing.
 src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_GetInterface)
 src/api/      EluvianAPI.h: the C ABI other plugins include. MIT, unlike the rest (GPLv3).
 tests/        Catch2 over src/core; tests/server over src/server

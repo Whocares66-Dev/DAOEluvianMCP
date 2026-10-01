@@ -210,3 +210,9 @@ The door in the way named from afar, 2026-10-01, 06:05 (DAOLib `c8d7270`; the ru
 - `walk` to three creatures behind shut doors, 80 to 143 m off: "gave up part way" at 53.4 m as before, and now `blocker` 0x1f1, the door 1.2 m past where the search stopped, with the note that it is likely what is in the way. One search of 25 slices; the calls took 42 to 48 ms, a found walk of 44 m 25 to 45 ms.
 - With the pathfinder's own answer (standing at the door) `blocker` is its word; where the search gave up it is what lies across the way just ahead, a strong hint. The tool's note says which.
 - A move after the searches ended success; no save was written.
+
+After the game's tools were split into a file each, 2026-10-01, 06:40 to 06:50 (no behaviour meant to change; the ruins, loaded only):
+
+- Every tool once on the new build: 33 of 34 checks as before the split (the tools listed, each `inspect` kind and a mod's own, `script`, `order` move and use, `stage` spawn, group, effect, health and cooldown, `camera`, both screenshots, `game` pause, saves and press, `eluvian.script.popup_result` on the bus after a press, `input`, `dialogue`'s refusal with none up, `events` describe, `log`, `scenario`), and no save written.
+- The one that failed: no `eluvian.creature.died` within 10 s of a `stage action=kill` on a wolf spawned, regrouped, stunned and set to 10 health a moment before. Not seen again: seven kills in two further runs (at once and after 3 s, hostile and group 2, stunned, health set, all three together) each gave the event and a dead creature. Cause not known; the order of that first run's calls is in `build/smoke.py`.
+- A creature spawned reads 1 of 1 health for its first frames, and `stage action=health` in those frames leaves it there.

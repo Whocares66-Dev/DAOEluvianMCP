@@ -216,10 +216,20 @@ include("${EL_DAOLIB}/cmake/Quality.cmake")
 add_daolib_plugin(
     eluvian
     SOURCES
+        src/game/Camera.cpp
         src/game/Capture.cpp
         src/game/Convert.cpp
+        src/game/Dialogue.cpp
+        src/game/Game.cpp
         src/game/GameTools.cpp
         src/game/Health.cpp
+        src/game/Input.cpp
+        src/game/Inspect.cpp
+        src/game/Order.cpp
+        src/game/Screenshot.cpp
+        src/game/Script.cpp
+        src/game/Shared.cpp
+        src/game/Stage.cpp
         src/plugin/HostApi.cpp
         src/plugin/Plugin.cpp
 )
