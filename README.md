@@ -41,6 +41,15 @@ Through the bridge, for an agent: `tools\eluvian_bridge.py` is a stdio MCP serve
 claude mcp add eluvian -- python C:\project\DAOEluvianMCP\tools\eluvian_bridge.py
 ```
 
+Without an MCP client, a script or an agent calls one bridge tool from the command line and reads its answer as JSON; `game_launch`, `game_quit`, `game_saves` and `game_status` answer while no game runs:
+
+```powershell
+python tools\eluvian_bridge.py --call game_status
+python tools\eluvian_bridge.py --call game_launch '{"owner": "my-name", "load": {"character": "Lyna", "kind": "manual", "number": 1}}'
+```
+
+`owner` is the name the caller goes by: `health` gives it back, so that agents sharing one game know whose a running one is (none means it was started by hand, the player's own). A launch answers `launched` false when a game already runs: read that before any other call.
+
 Directly, for a quick look or a script: start the game; `eluvian.log` in `Documents\BioWare\Dragon Age\daolib\` says where it serves, and `eluvian.json` beside it has the port (8930, or the next free one; `ELUVIAN_PORT` chooses another). A direct MCP connection ends with the game.
 
 ```sh

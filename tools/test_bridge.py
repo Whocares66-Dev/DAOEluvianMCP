@@ -318,6 +318,23 @@ class BridgeTest(unittest.TestCase):
         )
         self.assertFalse(bridge_module.is_same_file(None, exe))
 
+    def test_one_call_from_the_command_line_prints_its_answer(self) -> None:
+        import io
+
+        out = io.StringIO()
+        code = bridge_module.call_once(self.bridge, ["game_status"], out)
+        self.assertEqual(code, 0)
+        printed = json.loads(out.getvalue())
+        self.assertFalse(printed["isError"])
+        self.assertEqual(printed["answer"]["pids"], [100])
+        out = io.StringIO()
+        self.assertEqual(bridge_module.call_once(self.bridge, ["refuse"], out), 1)
+        self.assertIn("not now", json.loads(out.getvalue())["answer"]["text"])
+        out = io.StringIO()
+        self.assertEqual(
+            bridge_module.call_once(self.bridge, ["echo", "{not json"], out), 2
+        )
+
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})
         self.assertTrue(result["structuredContent"]["quit"])

@@ -854,6 +854,15 @@ def main() -> None:
         "--port", type=int, help="the game's port; default: eluvian.json's, else 8930"
     )
     parser.add_argument("--exe", type=Path, default=DEFAULT_GAME, help="DAOrigins.exe")
+    parser.add_argument(
+        "--call",
+        nargs="+",
+        metavar=("TOOL", "ARGUMENTS"),
+        help="call one tool and print its answer as JSON, then exit: for a script or an agent "
+        "with no MCP client, above all game_launch, game_quit, game_saves and game_status, "
+        "which answer while no game runs. ARGUMENTS is a JSON object, such as "
+        '{"owner": "me"}',
+    )
     options = parser.parse_args()
 
     write_lock = threading.Lock()
@@ -872,7 +881,42 @@ def main() -> None:
         folder / "eluvian.tools.json",
         send,
     )
+    if options.call:
+        sys.exit(call_once(bridge, options.call, stdout))
     serve(bridge, sys.stdin)
+
+
+def call_once(bridge: Bridge, call: list[str], out) -> int:
+    """One tool call from the command line: its answer as JSON on `out`; 1 if it is an error."""
+    try:
+        arguments = json.loads(call[1]) if len(call) > 1 else {}
+    except ValueError as error:
+        print(
+            json.dumps({"isError": True, "error": f"ARGUMENTS is not JSON: {error}"}),
+            file=out,
+        )
+        return 2
+    bridge.send = lambda _message: None  # no client to notify
+    answer = bridge.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": call[0], "arguments": arguments},
+        }
+    )
+    result = (answer or {}).get("result", (answer or {}).get("error", {}))
+    failed = (
+        not isinstance(result, dict) or bool(result.get("isError")) or "code" in result
+    )
+    body = result.get("structuredContent") if isinstance(result, dict) else None
+    if body is None and isinstance(result, dict):
+        texts = [
+            c.get("text") for c in result.get("content", []) if c.get("type") == "text"
+        ]
+        body = {"text": " ".join(t for t in texts if t)} if texts else result
+    print(json.dumps({"isError": failed, "answer": body}, indent=1), file=out)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
