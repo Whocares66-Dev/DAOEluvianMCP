@@ -19,8 +19,8 @@ src/core/     the bench without the game: HTTP parsing and routes, MCP's JSON-RP
               No <Windows.h>, no DAOLib, no dao:: type. Tested.
 src/server/   the socket loop under core/Http.h: Winsock, 127.0.0.1, a thread per connection. Tested
               over loopback.
-src/game/     the tools that read and drive the game, through DAOLib (inspect, script, order, game,
-              health), and the engine's events on the bus. Verified by playing.
+src/game/     the tools that read and drive the game, through DAOLib (inspect, script, order, stage,
+              dialogue, game, health), and the engine's events on the bus. Verified by playing.
 src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_GetInterface)
 src/api/      EluvianAPI.h: the C ABI other plugins include. MIT, unlike the rest (GPLv3).
 tests/        Catch2 over src/core; tests/server over src/server
@@ -60,7 +60,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-10-01, against DAOLib `66d5567`: 104 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use.
+Last green 2026-10-01, against DAOLib `3d6c2ea`: 104 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use.
 
 ## Writing files from the shell
 

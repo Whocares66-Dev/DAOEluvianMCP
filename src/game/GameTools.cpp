@@ -8,6 +8,7 @@
 #include "dao/Abilities.h"
 #include "dao/ClientExoApp.h"
 #include "dao/CommandEvents.h"
+#include "dao/Dialogue.h"
 #include "dao/Events.h"
 #include "dao/Frame.h"
 #include "dao/GameModes.h"
@@ -18,6 +19,7 @@
 #include "dao/Party.h"
 #include "dao/Saves.h"
 #include "dao/ScriptCall.h"
+#include "dao/Tlk.h"
 #include "dao/World.h"
 #include "dao/generated/ScriptApi.h"
 #include "dao/generated/ScriptConstants.h"
@@ -37,6 +39,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <thread>
 #include <utility>
@@ -198,6 +201,43 @@ Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints)
     const auto *command = CurrentCommand(id);
     answer["beingWalked"] = command != nullptr && IsMove(command->Type());
     return answer;
+}
+
+// A conversation's line as the screen has it: its place in the file, who
+// speaks as the file writes it (a tag, or OWNER or PLAYER), and its text in
+// the player's language, in the form for the hero's sex. A line may have no
+// text: an NPC line that only routes, a "continue" reply (DAOLib's
+// Dialogue.h, seen at Highever, 2026-09-30). The talk table's markup
+// (<emp>) is left in.
+Json LineJson(const dao::dialogue::Line &line, bool female)
+{
+    Json json = {{"index", line.index},
+                 {"speaker", Narrow(line.speaker)},
+                 {"text", line.text == 0xFFFFFFFF ? std::string() : Narrow(dao::tlk::String(line.text, female))}};
+    if (line.kind == dao::dialogue::Line::Kind::Player)
+    {
+        json["icon"] = line.icon;
+    }
+    return json;
+}
+
+bool HeroIsFemale()
+{
+    return api::GetCreatureGender(api::GetHero()) == k::GENDER_FEMALE;
+}
+
+// The replies on the screen, each with its `place` among them: the number
+// a choice names.
+Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female)
+{
+    Json list = Json::array();
+    for (std::size_t place = 0; place < replies.size(); ++place)
+    {
+        Json reply = LineJson(replies[place], female);
+        reply["place"] = place;
+        list.push_back(std::move(reply));
+    }
+    return list;
 }
 
 // The room a creature stands in and whether the party has seen it: the
@@ -482,6 +522,31 @@ void AddInspect(Bench &bench, const Watch &watch)
                 selected.push_back(Brief(member));
             }
             answer["selected"] = std::move(selected);
+            return answer;
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"dialogue",
+                 "The conversation on the screen (health's mode is dialog while one is): the `line` spoken last, "
+                 "with its speaker and text, and the `replies` the player may choose from now, in their order, "
+                 "each with its `place`, text and icon. No replies while the other speaks. The same comes as "
+                 "events: eluvian.dialogue.line, .replies and .chosen. `cutscene` says whether one is playing. "
+                 "The dialogue tool answers."},
+        [&watch](const Json &) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const auto *conversation = dao::dialogue::Current();
+            Json answer = {{"active", conversation != nullptr}, {"cutscene", dao::dialogue::InCutscene()}};
+            if (conversation == nullptr)
+            {
+                answer["note"] = "no conversation is on the screen";
+                return answer;
+            }
+            const bool female = HeroIsFemale();
+            const auto current = conversation->CurrentLine();
+            const auto line = current ? conversation->LineAt(*current) : std::nullopt;
+            answer["line"] = line ? LineJson(*line, female) : Json(nullptr);
+            answer["replies"] = RepliesJson(dao::dialogue::Replies(), female);
             return answer;
         });
 
@@ -1353,6 +1418,90 @@ Json SlotJson(const dao::saves::Slot &slot)
     return answer;
 }
 
+// Conversations and cutscenes stand between a test and the world it means
+// to act in: tonight's first test with no computer use could not leave the
+// clearing it loaded into (2026-10-01). DAOLib's dao::dialogue sends what
+// the screen's own clicks and keys send (3d6c2ea).
+void AddDialogue(Bench &bench, const Watch &watch)
+{
+    bench.Tools().Add(
+        ToolSpec{"dialogue",
+                 "Answer the conversation on the screen, or skip a cutscene. `action`: choose, the reply at "
+                 "`place` among those inspect kind=dialogue lists, as a click on it; continue, as the skip key: "
+                 "the line being spoken is cut short and its replies offered, and a reply with no text is gone "
+                 "through; skip_cutscene, as Escape in one. A loop that works: read inspect kind=dialogue; with "
+                 "no replies, or a first reply with no text, continue; otherwise choose. Each answers that the "
+                 "game was asked, and `cursor`: wait_for eluvian.dialogue.chosen, eluvian.dialogue.line or "
+                 "eluvian.mode.changed from it. The game ignores an answer in the moment after replies appear: "
+                 "if nothing follows in a second, ask again.",
+                 Json{{"type", "object"},
+                      {"properties",
+                       {{"action", {{"type", "string"}, {"enum", {"choose", "continue", "skip_cutscene"}}}},
+                        {"place",
+                         {{"type", "integer"},
+                          {"minimum", 0},
+                          {"description", "action=choose: which reply, from 0, as inspect kind=dialogue lists"}}}}},
+                      {"required", {"action"}}},
+                 Thread::Frame},
+        [&bench, &watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "dialogue");
+            const Args args(raw, "dialogue");
+            const auto action = args.Choice("action", {"choose", "continue", "skip_cutscene"});
+            Json answer = {{"action", action}, {"asked", true}, {"cursor", bench.Events().Next()}};
+            if (action == "skip_cutscene")
+            {
+                if (!dao::dialogue::SkipCutscene())
+                {
+                    throw ToolError("dialogue: no cutscene is playing (health's mode is cutscene while one is)");
+                }
+                return answer;
+            }
+            if (dao::dialogue::Current() == nullptr)
+            {
+                throw ToolError(dao::dialogue::InCutscene()
+                                    ? "dialogue: a cutscene is playing, not a conversation: action skip_cutscene"
+                                    : "dialogue: no conversation is on the screen (health's mode is dialog "
+                                      "while one is)");
+            }
+            if (action == "continue")
+            {
+                if (!dao::dialogue::Continue())
+                {
+                    throw ToolError("dialogue: the game took no continue; inspect kind=dialogue says where "
+                                    "the conversation is");
+                }
+                return answer;
+            }
+            const auto replies = dao::dialogue::Replies();
+            if (replies.empty())
+            {
+                throw ToolError("dialogue: no replies are offered yet, the other is speaking: action continue "
+                                "cuts the line short, or wait_for eluvian.dialogue.replies");
+            }
+            if (!args.Has("place"))
+            {
+                throw ToolError(std::format("dialogue: choose needs `place`, 0 to {}; inspect kind=dialogue "
+                                            "lists the replies",
+                                            replies.size() - 1));
+            }
+            const auto place =
+                static_cast<std::size_t>(args.Integer("place", 0, 0, static_cast<std::int64_t>(replies.size()) - 1));
+            const bool female = HeroIsFemale();
+            if (replies[place].text == 0xFFFFFFFF)
+            {
+                throw ToolError("dialogue: that reply has no text, which the game goes through on action "
+                                "continue, not choose");
+            }
+            answer["reply"] = LineJson(replies[place], female);
+            if (!dao::dialogue::Choose(place))
+            {
+                throw ToolError("dialogue: the game took no choice; inspect kind=dialogue says where the "
+                                "conversation is");
+            }
+            return answer;
+        });
+}
+
 void AddGame(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
@@ -1491,6 +1640,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddStage(bench, watch);
     AddScreenshot(bench, watch);
     AddGame(bench, watch);
+    AddDialogue(bench, watch);
 }
 
 namespace
@@ -1599,6 +1749,16 @@ void DescribeTopics(EventCatalog &topics)
              Json{{"character", "the save's character folder"},
                   {"kind", "manual, auto or quick"},
                   {"number", "the slot's number"}});
+    describe("eluvian.dialogue.line",
+             "A line was spoken to the player in a conversation, or by creatures in passing (ambient lines "
+             "are conversations too). Some have no text: a line that only routes to the next.",
+             Json{{"index", "the line's place in the conversation's file"},
+                  {"speaker", "who, as the file writes it: a tag, OWNER or PLAYER"},
+                  {"text", "the line, in the player's language"}});
+    describe("eluvian.dialogue.replies", "The replies now offered to the player, in their order on the screen.",
+             Json{{"replies", "each with its place, index, text and icon"}});
+    describe("eluvian.dialogue.chosen", "The player chose a reply, and the conversation goes on from it.",
+             Json{{"index", "the reply's place in the file"}, {"text", "the reply"}});
     describe("eluvian.creature.died",
              "A creature died, or a party member fell, the moment it did: seen by watching creatures that were "
              "hurt or staged. The engine's own eluvian.script.death comes 1.5 to 2.5 s later, once the death has "
@@ -1680,6 +1840,17 @@ void AddEngineEvents(Bench &bench)
             payload["number"] = slot->number;
         }
         bench.Events().Emit("eluvian.game.loaded", std::move(payload));
+    });
+    // Conversations, as DAOLib's hooks see them: inside the engine's own
+    // work, so each does no more than read the line and put it on the bus.
+    dao::dialogue::OnNpcLine([&bench](dao::dialogue::Conversation &, const dao::dialogue::Line &line) {
+        bench.Events().Emit("eluvian.dialogue.line", LineJson(line, HeroIsFemale()));
+    });
+    dao::dialogue::OnReplies([&bench](dao::dialogue::Conversation &, std::span<const dao::dialogue::Line> replies) {
+        bench.Events().Emit("eluvian.dialogue.replies", Json{{"replies", RepliesJson(replies, HeroIsFemale())}});
+    });
+    dao::dialogue::OnReplyChosen([&bench](dao::dialogue::Conversation &, const dao::dialogue::Line &reply) {
+        bench.Events().Emit("eluvian.dialogue.chosen", LineJson(reply, HeroIsFemale()));
     });
     dao::saves::OnSaved([&bench](const dao::saves::Slot &slot) {
         bench.Events().Emit("eluvian.game.saved", Json{{"character", Narrow(slot.character)},
