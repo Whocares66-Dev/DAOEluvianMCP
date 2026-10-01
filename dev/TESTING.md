@@ -1,0 +1,68 @@
+# Testing
+
+Two kinds, as in DAOTurnBased. Without the game, on every build: `src/core` by `el_tests` (HTTP, MCP, REST, the registry, the event bus, the frame queue, arguments, logs), `src/server` by `el_server_tests` over loopback, and the bridge by `tools/test_bridge.py` against a stand-in for the game. In the game: everything under `src/game`, by calling the tools over REST and reading what comes back.
+
+## A check in the game
+
+The game closed: `.\tools\build.ps1 -Preset debug -Test`, then `.\tools\deploy.ps1`. Start the game (or the bridge's `game_launch`), then from a shell:
+
+```sh
+B=http://127.0.0.1:8930
+curl -s -m 70 -X POST $B/api/tool/wait_for -d '{"topic":"eluvian.game.loaded","since":0,"timeoutMs":60000}'
+curl -s $B/api/health
+curl -s -X POST $B/api/tool/inspect -d '{"kind":"game"}'
+curl -s -X POST $B/api/tool/inspect -d '{"kind":"creatures","radius":40}'
+curl -s -X POST $B/api/tool/inspect -d '{"kind":"creature","id":"0x82"}'
+curl -s -X POST $B/api/tool/inspect -d '{"kind":"geometry","id":"0x82","target":"0x2df"}'
+curl -s -X POST $B/api/tool/script -d '{"command":"GetCreatureProperty","args":{"oCreature":"0x2df","nProperty":7}}'
+curl -s "$B/api/events?since=0"
+```
+
+`eluvian.log` beside the game's logs has the start-up; `eluvian.json` the port.
+
+## Seen in the game, 2026-09-30
+
+The first run, 18:13 to 18:20: Eluvian built against DAOLib `d25026d` beside turnbased.dll (turn-based-agent's working tree of 17:30) and DAOLib's examples. computer-use-agent loaded Castle Cousland, Aedan's manual save 2, and gave no orders; Eluvian was driven over REST only, and gave none either (turnbased's build of the time called FindPath on every player order).
+
+Worked as built:
+
+- The listener came up at load (`serving MCP at http://127.0.0.1:8930/mcp`) and `health` answered from the first frame. MCP's `initialize` and `tools/list` over `POST /mcp`, as Claude Code sends them.
+- Events in order with frames and times: `eluvian.paused`, `eluvian.mode.changed` none to pregame, pregame to loading, the pause the load took, `eluvian.game.loaded {character: Aedan, kind: manual, number: 2}`. `wait_for` from cursor 0 returned the load the moment it came; another with nothing coming returned `found: false` at its timeout.
+- `inspect kind=game`: mode, pause, speed, hero `0x82` Aedan, the area (Castle Cousland, `bhn200ar_castle_after_siege`), the party with the dog `0x2df` and Eleanor `0x6a8`, the ids turnbased.log uses.
+- `inspect kind=creatures`: eight within 40 m, nearest first, the party's sides right, health (146 of 146 for Aedan), the dead of the siege as dead.
+- `inspect kind=creature`: twelve effects on Aedan, each named (`EFFECT_TYPE_MODIFY_PROPERTY`, `EFFECT_TYPE_REWARD_BONUS`) with the item that made it as its creator (The Lion's Paw, Band of Fire); none timed, none from an ability, so `dao::abilities::Name` was not reached.
+- `inspect kind=geometry`: line of sight clear to the dog at 1.8 m, cut at the door frame towards Lady Landra 38 m away.
+- `script`: `GetGameMode` 8 in the pregame, `GetHero` null there and `0x82` after; `GetCreatureProperty` by parameter name gave the dog's 145 health. `describe` gave a command's parameters and defaults.
+- `game` pause and unpause, the pause caught by `wait_for` from a cursor taken before.
+- `order`'s refusals (`via: "click"` not built, `target` missing): sentences, no order given.
+- `log`: the folder listed, turnbased.log grepped.
+- The bridge, over stdio against the running game: `initialize`, the bridge's and the game's tools listed together, `game_status`, a call forwarded; then `game_quit` closed the game.
+
+Found:
+
+- **The main menu runs in pregame, not chargen.** The mode went none, pregame (8), then loading when the save was chosen; DAOLib's GameModes.h says the main menu runs in CharGen. Told to lib-agent.
+- **A creature's movement keeps its last path.** Aedan, standing since the load, held a path 2.45 m long, two waypoints, the next the first. So the path alone does not say a creature walks; `inspect` now shows the current command (its type and whether the player gave it) and marks the path `beingWalked` only when that command is a move.
+- **The bridge dropped answers when its input ended.** Four requests piped in, one answer out: each request runs on a thread, and the process ended with the input. It now waits up to 30 s for the requests in flight (`test_input_that_ends_still_gets_every_answer`).
+
+Not reached: orders (none were to be given), a fight and its events (`eluvian.script.*`, `eluvian.creature.died`), effects with time left and abilities, turnbased's registrations (its build of the time had none). These are for the next play test, with turnbased's build that registers with Eluvian.
+
+## The third turn-based play test, 2026-09-30
+
+18:29 on: computer-use-agent's fight in the Howe hall with turnbased `5ae088b`, the first build of the mod that registers with Eluvian, beside the eluvian.dll of 18:11. The tester drove part of it through Eluvian's REST calls (health, inspect creatures, events, an attack order, turnbased_settings) instead of screenshots.
+
+- The mod's tools registered on its first frame (turnbased_end_turn, turnbased_seed, turnbased_settings) and its events reached the bus in order beside the engine's: turnbased.fight_began, round_started, turn_started and turn_ended with their reasons (ended by the player, done, out of movement), joined, cooldown_held; eluvian.script.damaged, attack_impact, ability_cast_impact, command_complete.
+- `inspect kind=turnbased.state` was refused: the mod's descriptor had unescaped quotes inside its description, and the mod logged success without reading the -1. Eluvian's refusal now says where the JSON breaks; the mod checks its returns and tests its descriptors (turn-based-agent).
+- The mod wrote ids as "0x00000082" under "who", where Eluvian writes "0x82" under "id", so a `wait_for` matching an id from `inspect` would never have fired. The mod writes "0x82" under "id" from its next build.
+
+What the tester measured (computer-use-agent, 18:37): a 60-line script played the party's turns through Eluvian alone (inspect creatures on the hostile side near the creature acting, order attack, wait_for turnbased.turn_started or fight_over), and rounds 3 to 7 took 58 s of wall clock, where the first play test took 34 minutes for 11 rounds by computer use. `order attack` reached the mod's gate as the player's ("Dog: attack (action, from player)"); turnbased_settings applied within 120 ms. A wait_for with an old `since` returned an old turn_started at once, so the call after it came 3.9 s into the turn meant; with `since` taken just before, 160 ms. A scenario's wait starts from the cursor before its last tool step, which keeps this right without thought. Game speed 2, set through Eluvian's `game` (since taken out), did not make an 18 m walk faster (3.3 to 3.6 s at both): DAOLib's and the mod's to find. Its wishes: whose turn it is now in a read (turnbased.state), and an event for a refused order with its reason (turnbased.refused); both the mod's.
+
+## The click path and command events in play, 2026-09-30
+
+18:46 to 18:53, computer-use-agent's eight-round fight on the eluvian.dll of 18:41 (turnbased `5ae088b`; log `DAOTurnBased\build\playtest-2026-09-30-6-turnbased.log`).
+
+- `eluvian.command.started` and `ended`: the hero's attack gave started {Attack, playerIssued true}, an attack impact, then ended {success}; a `wait_for` on the end with {id, type} returned 0.4 s before the mod's turn_ended.
+- `scenario`: order, wait for command.ended, expect `/payload/success` true, wait for turnbased.turn_ended, in one call: ok, 4 steps, 3.6 s, each step with its time.
+- `order via:"click"` with an ability and no target, on Eleanor's turn: the mod logged "asking for its target", as for the quickbar key. Finished by the default via 21 s later; the soldier was knocked down.
+- `order via:"click"` attack, in combat on the hero's turn: nothing queued, and the tool said explore mode did not take it. The mod saw the click ("primary action under the cursor") and then "the order queued no command". lib-agent read why: the primary action's handler reads the object set (no re-pick), but orders an attack from every party member selected in the interface, not the controlled creature; and its answer is a void function's leftover register. The tool now ignores that answer and says the events tell who obeyed. Attacks go by the default via.
+- An attack's impact is delivered to the attacker (receiver and creator both the hero). Script events now carry their parameters, named for attack_impact (attacker, target, hit, effectId) and damaged (damager, amount, damageType, ability), from rules_core.nss.
+- A `wait_for` on turn_started with `since` taken after the turn began waits out its timeout: the turn under way has no event ahead of the cursor. `inspect kind=turnbased.state` answers whose turn it is (the mod's next build).
