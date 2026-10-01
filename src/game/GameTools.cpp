@@ -280,14 +280,14 @@ std::set<ObjectId> PartyOf(ObjectId hero)
 
 // ---- deaths ----------------------------------------------------------------
 
-// Deaths, watched rather than heard. EVENT_TYPE_DEATH does not come through
-// the engine's event queue, where DAOLib hears script events: in play,
-// 2026-09-30, four creatures died (two by stage, one in a fight, one more by
-// stage) and not one death was heard, while the turn-based mod saw each
-// fall. So a creature that is hurt (a damage or an attack's impact) or
-// staged is looked at every frame until it is dead, gone, or a minute
-// passes with no more harm, and its death is eluvian.creature.died with
-// the last one who hurt it. On the game's thread only, as every caller is.
+// Deaths, watched as well as heard. A creature that is hurt (a damage or
+// an attack's impact) or staged is looked at every frame until it is dead,
+// gone, or a minute passes with no more harm, and its death is
+// eluvian.creature.died with the last one who hurt it. The engine's own
+// EVENT_TYPE_DEATH was not heard at all before DAOLib bc081ea; since, it
+// comes as eluvian.script.death 1.5 to 2.5 s after this, once the death
+// has played out (play, 2026-09-30). So this is the moment of the death,
+// and that its end. On the game's thread only, as every caller is.
 class DeathWatch
 {
   public:
@@ -1249,7 +1249,9 @@ void DescribeTopics(EventCatalog &topics)
                   {"kind", "manual, auto or quick"},
                   {"number", "the slot's number"}});
     describe("eluvian.creature.died",
-             "A creature died, or a party member fell: seen by watching creatures that were hurt or staged.",
+             "A creature died, or a party member fell, the moment it did: seen by watching creatures that were "
+             "hurt or staged. The engine's own eluvian.script.death comes 1.5 to 2.5 s later, once the death has "
+             "played out.",
              Json{{"id", "the creature"}, {"name", "its name"}, {"killer", "the last who hurt it, if known"}});
     describe("eluvian.command.started",
              "A creature started a command from its queue: an attack, a move, an "
