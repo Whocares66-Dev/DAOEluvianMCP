@@ -23,6 +23,20 @@ inspect {"kind": "game"}                         hero, party, area
 
 With the game already running, `game {"action": "saves"}` lists the saves and `game {"action": "load", ...}` loads one, from the main menu (mode pregame) or in the world; `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` says when it is there. A save made by a test is a new manual one by default (`game {"action": "save", "name": "..."}`), which writes over nothing.
 
+## Conversations and cutscenes
+
+A conversation or a cutscene holds the world until it is answered; `health`'s mode says which (dialog, cutscene).
+
+```
+inspect {"kind": "dialogue"}                     the line spoken last, the replies offered (place, text, icon), cutscene
+dialogue {"action": "continue"}                  as the skip key: cuts the line short; goes through a reply with no text
+dialogue {"action": "choose", "place": 0}        the reply at that place
+dialogue {"action": "skip_cutscene"}             as Escape in a cutscene
+wait_for {"topic": "eluvian.dialogue.*", "since": <cursor>}     .line, .replies, .chosen as they come
+```
+
+The loop: read; with no replies, or a first reply with no text, continue; otherwise choose; wait for what follows from the answer's `cursor`. The game ignores an answer in the moment after replies appear, so if nothing follows in a second, ask again. Which reply to choose is the test's to decide: the texts are the game's own, and some replies end the conversation or start a fight.
+
 ## Reading and acting
 
 ```

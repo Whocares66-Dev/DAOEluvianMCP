@@ -67,6 +67,7 @@ In build order: what the testers said would have settled the most first (turn-ba
 | `wait_for` | listener | Block until an event matching a topic and fields arrives, or time out; returns it. |
 | `game` | frame | Pause and unpause; later save, load by name and list saves, a load's end being an event. Not the game's speed: each plugin's copy of DAOLib scales the frame's clock by its own, so two plugins setting it multiply (DAOLib `ed55ab8`), and the turn-based mod owns it. |
 | `log` | listener | The DAOLib logs (`loader.log`, `eluvian.log`, each plugin's own) from a cursor, filtered. |
+| `dialogue` | frame | Answer the conversation on the screen or skip a cutscene: `choose` the reply at a place, `continue` as the skip key does, `skip_cutscene` as Escape. `inspect kind=dialogue` reads the line spoken and the replies offered. Without it a test stops at the first conversation between it and the fight it wants (the first test with no computer use, 2026-10-01, could not leave the clearing it loaded into). Through DAOLib's `Dialogue.h`. |
 | `stage` | frame | Test set-up: spawn a creature from a template at a point, apply an effect (stun, knockdown, root, grab), set health, mana or stamina, kill, set hostility, move. The fixtures for cases a fight rarely reaches. |
 | `script` | frame | Any script command by name, with arguments, returning its value: the general primitive when no tool fits. |
 | `camera` | frame | Centre on a creature, set yaw, pitch and zoom, read them. Makes the visual checks cheap. |
@@ -100,6 +101,7 @@ Every event carries a sequence number, the frame, real milliseconds and world mi
 
 - `eluvian.command.started` and `eluvian.command.ended` {id, type, playerIssued, result, success}: every creature's commands as its queue runs them (DAOLib `dao::commands`), what a test waits on after an order.
 - `eluvian.*`, from the engine through DAOLib: `area.loaded`, `mode.changed`, `paused`, `combat.began`, `combat.ended`, `creature.died`, `load.finished`, `save.finished`. Script events, messages, the game mode and `OnGameLoaded` cover these (below); a command's start and end is asked of DAOLib.
+- `eluvian.dialogue.line` {index, speaker, text}, `eluvian.dialogue.replies` {replies} and `eluvian.dialogue.chosen` {index, text}: a conversation as it goes, ambient lines among them.
 - A mod's, under its own prefix, documented by the mod. The turn-based mod's, the first (its names have changed since; its docs have them): `turn.started` (id, round, side, yours, movement), `turn.ended` (reason), `refused` (id, command, reason), `round.started`, `joined`, `fell`, `gone`, `up`, `condition.held`, `condition.ended`, `condition.still_held`, `cooldown.held`, `cooldown.released`, `speed.set`, `fight.began`, `fight.over` (reason).
 
 ## Test arenas
