@@ -1,0 +1,143 @@
+// eluvian.dll: Eluvian MCP, a test bench serving the running game to agents
+// (MCP, POST /mcp) and scripts (REST, /api/) on 127.0.0.1. A DAOLib plugin.
+//
+// At load it makes the bench (core/Bench.h), adds its tools, starts the
+// listener (server/HttpServer.h) and adds a frame callback. The callback
+// runs on the scripts' thread, paused or not; it notes the frame
+// (game/Health.h) and runs the calls the listener queued for the game
+// (core/FrameQueue.h), so every read and order happens where the game
+// allows it. Other plugins add their tools through src/api/EluvianAPI.h.
+//
+// dev/DESIGN.md is the design; README.md how to connect.
+#include "core/Bench.h"
+#include "core/Http.h"
+#include "core/Mcp.h"
+#include "core/Rest.h"
+#include "core/Scenario.h"
+#include "game/GameTools.h"
+#include "game/Health.h"
+#include "plugin/HostApi.h"
+#include "server/HttpServer.h"
+
+#include "dao/Frame.h"
+#include "dao/Log.h"
+#include "dao/Plugin.h"
+
+#include <spdlog/spdlog.h>
+
+#include <Windows.h>
+
+#include <charconv>
+#include <cstdint>
+#include <cstdlib>
+#include <format>
+#include <fstream>
+#include <string_view>
+
+namespace
+{
+
+using namespace eluvian;
+
+// 8930: beside devbench's 8920 and 8921 for Skyrim; the Ghidra MCP has 8090.
+constexpr std::uint16_t kDefaultPort = 8930;
+constexpr int kPortTries = 10;
+
+constexpr std::string_view kInstructions =
+    "Eluvian serves a running Dragon Age: Origins. Start with `health` (is the game up, in which mode), then "
+    "`inspect kind=game`. Creatures are named by id strings like \"0x7d9\", as the logs write them; `inspect "
+    "kind=creatures` lists them with positions, sides and health, `inspect kind=creature` gives one with its "
+    "effects. Act, then wait: `order` answers with a `cursor`, and `wait_for` from that cursor returns the event "
+    "you expect (eluvian.command.ended, eluvian.creature.died, or a mod's own) instead of a guessed sleep. "
+    "Mods that register with Eluvian add tools, inspect kinds and events of their own; `health` lists them. "
+    "`log` reads a log from a cursor (`since: \"end\"` marks the end, to read from after acting). `script` calls any "
+    "script command by name when no tool fits. Calls run on the game's frame: while an area loads they are "
+    "refused, and if frames stop they time out; `health` says which.";
+
+std::uint16_t PortSetting()
+{
+    char *text = nullptr;
+    std::size_t size = 0;
+    if (_dupenv_s(&text, &size, "ELUVIAN_PORT") == 0 && text != nullptr)
+    {
+        const std::string_view value(text);
+        unsigned port = 0;
+        const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), port);
+        std::free(text);
+        if (error == std::errc{} && port > 0 && port < 65536)
+        {
+            return static_cast<std::uint16_t>(port);
+        }
+        spdlog::warn("ELUVIAN_PORT is not a port; using {}", kDefaultPort);
+    }
+    return kDefaultPort;
+}
+
+struct State
+{
+    // Events are stamped with the frame from the watch's count, which is
+    // atomic; DAOLib's own is read only on the frame thread. 16384 events:
+    // every creature's commands come by the dozen a second in a fight.
+    Bench bench{BenchOptions{std::chrono::milliseconds(5000), 16384, [this] { return watch.Frames(); }}};
+    game::Watch watch{bench};
+    McpEndpoint mcp{bench, ServerInfo{"eluvian", EL_VERSION_STRING, std::string(kInstructions)}};
+    RestEndpoint rest{bench};
+    HttpServer server{[this](const HttpRequest &request) { return Route(request, mcp, rest); }};
+    std::uint16_t port = 0;
+};
+
+// Made at load and never freed: the listener's threads may still be running
+// when the process ends, and the OS takes everything then.
+State *g = nullptr;
+
+// Where scripts and the bridge find the port: eluvian.json beside the logs.
+void WriteRuntime(std::uint16_t port)
+{
+    const auto file = dao::LogDirectory() / "eluvian.json";
+    std::ofstream out(file, std::ios::trunc);
+    out << Json{{"pid", GetCurrentProcessId()},
+                {"port", port},
+                {"mcp", std::format("http://127.0.0.1:{}/mcp", port)},
+                {"rest", std::format("http://127.0.0.1:{}/api/", port)},
+                {"version", EL_VERSION_STRING}}
+               .dump(2);
+}
+
+} // namespace
+
+extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
+{
+    dao::OpenLog("eluvian");
+    spdlog::info("eluvian {}", EL_VERSION_STRING);
+    if (info == nullptr || !info->expectedExecutable)
+    {
+        spdlog::error("not the DAOrigins.exe DAOLib was read from; Eluvian stays off");
+        return false;
+    }
+    g = new State();
+    AddEventTools(g->bench);
+    AddLogTool(g->bench, dao::LogDirectory());
+    AddScenarioTool(g->bench);
+    game::AddHealthTool(g->bench, g->watch, [] {
+        return Json{{"port", g->port}, {"version", EL_VERSION_STRING}, {"plugins", plugin::RegisteredByPlugins()}};
+    });
+    game::AddGameTools(g->bench, g->watch);
+    game::AddEngineEvents(g->bench);
+    plugin::BindHostApi(g->bench);
+
+    dao::OnFrame([] {
+        g->watch.OnFrame();
+        g->bench.Frames().Drain();
+    });
+
+    g->port = g->server.Start(PortSetting(), kPortTries);
+    if (g->port == 0)
+    {
+        spdlog::error("no free port from {} to {} on 127.0.0.1: the bench is not served", PortSetting(),
+                      PortSetting() + kPortTries - 1);
+        return true; // the game plays on; the plugins that register still can
+    }
+    WriteRuntime(g->port);
+    spdlog::info("serving MCP at http://127.0.0.1:{}/mcp and REST at http://127.0.0.1:{}/api/", g->port, g->port);
+    return true;
+}
