@@ -1352,9 +1352,20 @@ ObjectId StageSpawn(const Args &args, Json &answer)
                                     "`template` (its tag names the instance, not this)",
                                     name));
     }
+    // The game puts a creature at the nearest place it can stand: a point
+    // inside a wall gave one 5 m off in the next room, with no word of it
+    // (computer-use-agent, 2026-10-01). `moved` says how far from the point
+    // asked for it was made.
+    const float moved = Distance(point, api::GetPosition(id));
+    answer["asked"] = VectorJson(point);
+    answer["moved"] = moved;
     // Read in the frame it was made, a spawned creature is not set up yet:
     // health 1 of 1 in the answer, 85 of 85 three seconds on (2026-09-30).
-    answer["note"] = "a creature spawned is set up over the next frames; inspect it again for its health";
+    answer["note"] = moved > 1.0F
+                         ? "the point asked for is not a place to stand: the creature was made `moved` metres from "
+                           "it, perhaps in another room (see `creature`'s position and room). It is set up over "
+                           "the next frames; inspect it again for its health"
+                         : "a creature spawned is set up over the next frames; inspect it again for its health";
     return id;
 }
 
@@ -1422,7 +1433,8 @@ void AddStage(Bench &bench, const Watch &watch)
         StageGroup);
     add("spawn",
         "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "
-        "`facing` degrees, in the controlled creature's area; it is set up over the next frames",
+        "`facing` degrees, in the controlled creature's area; `moved` says how far from the point the game "
+        "put it (a point inside a wall is not kept); it is set up over the next frames",
         StageSpawn);
 }
 
