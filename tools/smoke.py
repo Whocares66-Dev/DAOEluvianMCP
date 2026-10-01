@@ -100,6 +100,21 @@ def checks(run: Run) -> None:
         tool("inspect", {"kind": "popup"}),
         lambda a: a["popup"] is None,
     )
+    aim = tool("screen", {"target": hero})
+    check(
+        "screen, a pixel to click the hero at",
+        aim,
+        lambda a: (
+            a["view"]["width"] > 100 and a["aim"]["inView"] and 0 < a["aim"]["fx"] < 1
+        ),
+    )
+    check(
+        "screen, and the hero is what lies under it",
+        tool("screen", {"pixel": [aim["aim"]["x"], aim["aim"]["y"]]})
+        if aim.get("aim")
+        else {},
+        lambda a: a["hits"][0]["object"]["id"] == hero,
+    )
     check(
         "inspect data, a path the tree has not",
         tool("inspect", {"kind": "data", "path": "Nothing.AtAll"}),

@@ -16,6 +16,7 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `travel` | Walk a creature to a target or point, opening what is shut on the way; stops and says why when a fight, a conversation or a pause takes the journey from it |
 | `dialogue` | Answer the conversation on the screen: choose a reply, continue, skip a cutscene |
 | `camera` | Read it; face a target, follow a creature, turn: so a screenshot shows what the test means |
+| `screen` | For the real mouse: a pixel to click a creature or object at (on its body, with nothing in front), a world point's pixel, what lies under a pixel; each as the game's pixels, a fraction of the picture and a desktop pixel |
 | `script` | Any of the game's script commands by name, with its answer |
 | `stage` | A test's set-up: conditions, health, cooldowns, a death, a spawn, a creature's group (a fight the party is not in), and mods' own actions |
 | `screenshot` | The game as a picture, interface and all: its window drawn from inside the game (nothing over it gets in the way), or the game's own, as its screenshot key takes it |

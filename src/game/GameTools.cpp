@@ -48,10 +48,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddDialogue(bench, watch);
     AddCamera(bench, watch);
     AddInput(bench, watch);
-    // Not yet: `screen`'s first call hung the frame thread in play (the game
-    // stalled, 2026-10-01, on DAOLib d5a1f3e's dao::world::ScreenSize or
-    // what it calls). Back when lib-agent has found why.
-    static_cast<void>(&AddScreen);
+    AddScreen(bench, watch);
 }
 
 namespace

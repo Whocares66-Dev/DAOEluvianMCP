@@ -246,3 +246,11 @@ A sweep of the ruins' fights for the turn-based mod's room rule, 2026-10-01, 09:
 For the real mouse, 2026-10-01, about 10:35: `inspect kind=window` gave the client area at (160, 111) on the desktop, 1600 by 1000, not minimised, not the foreground window; `inspect kind=cursor` answered with no object and no hits, the mouse not being over the game. Neither has yet been used with a real click. `tools/smoke.py`: 40 of 40.
 
 `screen`, and a game hung, 2026-10-01, 11:04: the first call of the new `screen` tool (no arguments: the view's size and the window), on DAOLib `d5a1f3e`, never answered. `health` read state stalled, 68 s with no frame, explore mode, no crash log; the game was force-quit, no save written. The handler's first call into DAOLib is `dao::world::ScreenSize()`; the window's own part had answered on the frame thread in `inspect kind=window` minutes before. The tool is built but not registered until the cause is found; `inspect kind=data` from the same hour is fine (`tools/smoke.py` 41 of 41 before `screen` went in).
+
+`screen` on DAOLib `2327f19`, 2026-10-01, about 11:20 (the hang was `ScreenSize` calling the wrong object's slot, which wrote into the camera; fixed there). One call at a time, at the ruins' entrance, the close view:
+
+- The view 1600 by 1000, the window's client area the same, at (160, 111) on the desktop.
+- Lyna's feet at pixel (800, 926), in front and in view; a point 5 m behind the camera `inFront` false. The pick 60 pixels above her feet: Lyna, then the ground.
+- `aim` for Lyna (800, 683), for Tamlen (546, 632, his feet at 553, 913), and for a wolf spawned 2.5 m behind him from the camera (576, 673): the pick at each aim met that creature first. Bare corners of the picture and a pixel outside it: no hits.
+- After nine such calls a 5 m walk ended success, the camera's yaw, pitch and zoom as before, frames running. `tools/smoke.py`: 43 of 43 with two `screen` checks.
+- Not yet done: the real mouse moved to an `aim`'s desktop pixel, and `inspect kind=cursor` asked whether the game has the creature under it. That is the tester's.
