@@ -184,3 +184,9 @@ A conversation answered, 2026-10-01, 04:45 to 04:49 (the Elven Ruins from Lyna's
 - `dialogue action=skip_cutscene` is not yet seen. Opening the mirror room's door read as mode loading for a second, not cutscene.
 - A move across the ruins ended COMMAND_FAILED_PATH_ACTION_REQUIRED where a shut door stood on the way; `order action=use` on the door itself walked there and opened it.
 - That door's opening made the game autosave by plot (`eluvian.game.saved` auto 3) though no area transition was crossed: a test that must write no save stops before it. The save it made holds the test's state, and was left for the user to decide on.
+
+The walk there, 2026-10-01, 05:28 (the ruins' entrance, Lyna's AutoSave_2 loaded only, DAOLib `cb08d00`):
+
+- `inspect kind=geometry` with `walk: true`, from Lyna: to Tamlen 0.9 m off, found, 0.91 m, 2 waypoints; to a spider 40.7 m off in the same room, found, 44.18 m, 29 waypoints; to creatures 80 to 143 m off in rooms never seen, behind shut doors, not found, "gave up part way" with `reached` (-3.8, 0.4, 0.0) and 53.4 m so far, the same point each time. No `blocker` was named: the pathfinder's answer there was 1, not 6.
+- After five searches a move order of 6 m ended success, 6.0 m walked: the creature is left as it was.
+- The run wrote no save (`eluvian.game.saved` did not come), and the saves' folder was as before it.
