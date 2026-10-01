@@ -113,9 +113,26 @@ void AddScreenshot(Bench &bench, const Watch &watch)
             Json answer = {{"source", source}};
             if (source == "game")
             {
-                file = GameScreenshot(bench, watch);
-                std::ifstream in(file, std::ios::binary);
-                jpeg.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+                // The game's file as it wrote it, and the picture written again
+                // plain beside Eluvian's own: the game's JPEG has an Exif header
+                // some readers will not take.
+                const auto original = GameScreenshot(bench, watch);
+                std::string bytes;
+                {
+                    std::ifstream in(original, std::ios::binary);
+                    bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+                }
+                const auto picture = ReencodeJpeg(bytes, 0.9F);
+                const auto folder = Screenshots() / "Eluvian";
+                std::error_code error;
+                std::filesystem::create_directories(folder, error);
+                file = folder / ("Game" + original.filename().string());
+                std::ofstream(file, std::ios::binary)
+                    .write(picture.jpeg.data(), static_cast<std::streamsize>(picture.jpeg.size()));
+                answer["width"] = picture.width;
+                answer["height"] = picture.height;
+                answer["original"] = original.string();
+                jpeg = picture.jpeg;
             }
             else
             {

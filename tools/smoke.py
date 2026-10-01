@@ -112,6 +112,28 @@ def checks(run: Run) -> None:
         lambda a: "error" not in a,
     )
 
+    # The pause key's binding flips the pause. Here, before anything that may start a fight:
+    # in one a mod may give the key another meaning, and the game pauses by itself.
+    before = tool("inspect", {"kind": "game"}).get("paused")
+    check(
+        "input, the pause key's binding",
+        tool("input", {"binding": "UserTogglePauseMessage"}),
+        lambda a: a["sent"] is True,
+    )
+    time.sleep(0.4)
+    check(
+        "which flipped the pause",
+        tool("inspect", {"kind": "game"}),
+        lambda a: a["paused"] is (not before),
+    )
+    tool("input", {"binding": "UserTogglePauseMessage"})
+    time.sleep(0.4)
+    check(
+        "and flipped it back",
+        tool("inspect", {"kind": "game"}),
+        lambda a: a["paused"] is before,
+    )
+
     here = me.get("position", {"x": 0, "y": 0, "z": 0})
     point = [here["x"] - 4, here["y"], here["z"]]
     order = tool("order", {"action": "move", "id": hero, "point": point})
@@ -237,24 +259,6 @@ def checks(run: Run) -> None:
         "the box's answer reaches the scripts",
         wait("eluvian.script.popup_result", start, ms=3000),
         lambda a: a["found"],
-    )
-    check(
-        "input, the pause key's binding",
-        tool("input", {"binding": "UserTogglePauseMessage"}),
-        lambda a: a["sent"] is True,
-    )
-    time.sleep(0.4)
-    check(
-        "which paused the game",
-        tool("inspect", {"kind": "game"}),
-        lambda a: a["paused"] is True,
-    )
-    tool("input", {"binding": "UserTogglePauseMessage"})
-    time.sleep(0.4)
-    check(
-        "and unpaused it",
-        tool("inspect", {"kind": "game"}),
-        lambda a: a["paused"] is False,
     )
     check(
         "input refuses a text that names a save",

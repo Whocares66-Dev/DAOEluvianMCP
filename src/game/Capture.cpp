@@ -90,20 +90,13 @@ class ComScope
     HRESULT result_;
 };
 
-std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int height, float quality)
+// A picture's source written as a JPEG of `quality`, with nothing but the
+// picture in it.
+std::string EncodeSource(IWICImagingFactory *factory, IWICBitmapSource *source, UINT width, UINT height, float quality)
 {
-    const ComScope com;
-    ComPtr<IWICImagingFactory> factory;
-    Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)),
-          "making the image factory");
-    ComPtr<IWICBitmap> bitmap;
-    Check(factory->CreateBitmapFromMemory(static_cast<UINT>(width), static_cast<UINT>(height),
-                                          GUID_WICPixelFormat32bppBGRA, static_cast<UINT>(width) * 4,
-                                          static_cast<UINT>(bgra.size()), const_cast<BYTE *>(bgra.data()), &bitmap),
-          "taking the pixels");
     ComPtr<IWICFormatConverter> converter;
     Check(factory->CreateFormatConverter(&converter), "making a converter");
-    Check(converter->Initialize(bitmap.Get(), GUID_WICPixelFormat24bppBGR, WICBitmapDitherTypeNone, nullptr, 0.0,
+    Check(converter->Initialize(source, GUID_WICPixelFormat24bppBGR, WICBitmapDitherTypeNone, nullptr, 0.0,
                                 WICBitmapPaletteTypeCustom),
           "converting the pixels");
     ComPtr<IStream> stream;
@@ -122,7 +115,7 @@ std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int hei
     value.fltVal = quality;
     Check(options->Write(1, &option, &value), "setting the quality");
     Check(frame->Initialize(options.Get()), "starting the frame");
-    Check(frame->SetSize(static_cast<UINT>(width), static_cast<UINT>(height)), "sizing the frame");
+    Check(frame->SetSize(width, height), "sizing the frame");
     WICPixelFormatGUID format = GUID_WICPixelFormat24bppBGR;
     Check(frame->SetPixelFormat(&format), "setting the frame's format");
     Check(frame->WriteSource(converter.Get(), nullptr), "writing the frame");
@@ -143,7 +136,44 @@ std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int hei
     return jpeg;
 }
 
+std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int height, float quality)
+{
+    const ComScope com;
+    ComPtr<IWICImagingFactory> factory;
+    Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)),
+          "making the image factory");
+    ComPtr<IWICBitmap> bitmap;
+    Check(factory->CreateBitmapFromMemory(static_cast<UINT>(width), static_cast<UINT>(height),
+                                          GUID_WICPixelFormat32bppBGRA, static_cast<UINT>(width) * 4,
+                                          static_cast<UINT>(bgra.size()), const_cast<BYTE *>(bgra.data()), &bitmap),
+          "taking the pixels");
+    return EncodeSource(factory.Get(), bitmap.Get(), static_cast<UINT>(width), static_cast<UINT>(height), quality);
+}
+
 } // namespace
+
+Picture ReencodeJpeg(const std::string &jpeg, float quality)
+{
+    const ComScope com;
+    ComPtr<IWICImagingFactory> factory;
+    Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)),
+          "making the image factory");
+    ComPtr<IWICStream> stream;
+    Check(factory->CreateStream(&stream), "making a stream");
+    Check(stream->InitializeFromMemory(reinterpret_cast<BYTE *>(const_cast<char *>(jpeg.data())),
+                                       static_cast<DWORD>(jpeg.size())),
+          "reading the picture's bytes");
+    ComPtr<IWICBitmapDecoder> decoder;
+    Check(factory->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder),
+          "decoding the picture");
+    ComPtr<IWICBitmapFrameDecode> frame;
+    Check(decoder->GetFrame(0, &frame), "reading the picture's frame");
+    UINT width = 0;
+    UINT height = 0;
+    Check(frame->GetSize(&width, &height), "measuring the picture");
+    return Picture{EncodeSource(factory.Get(), frame.Get(), width, height, quality), static_cast<int>(width),
+                   static_cast<int>(height)};
+}
 
 Picture CaptureGameWindow(float quality)
 {

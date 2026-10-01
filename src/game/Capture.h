@@ -28,4 +28,10 @@ struct Picture
 // could not draw it.
 Picture CaptureGameWindow(float quality);
 
+// A JPEG decoded and written again as a plain one. The game's own
+// screenshots carry an Exif header that some readers will not take: an
+// image reader rejected one until it was saved again, and so did the
+// model's own (2026-10-01). Throws ToolError if the bytes are no picture.
+Picture ReencodeJpeg(const std::string &jpeg, float quality);
+
 } // namespace eluvian::game
