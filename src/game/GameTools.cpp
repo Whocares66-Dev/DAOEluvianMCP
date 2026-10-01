@@ -311,8 +311,14 @@ Json Abilities(ObjectId id)
     for (const auto ability : found)
     {
         Json entry = AbilityJson(ability);
-        entry["available"] = api::IsAbilityAvailable(id, ability) != 0;
+        // `available` is the scripts' IsAbilityAvailable, which a cooldown
+        // does not change: Dual Striking read available with 29.99 of 30 s
+        // left (2026-10-01). `ready` is what a tester means: available and
+        // not cooling down.
+        const bool available = api::IsAbilityAvailable(id, ability) != 0;
         const auto cooldown = dao::abilities::GetCooldown(id, ability);
+        entry["available"] = available;
+        entry["ready"] = available && (!cooldown || cooldown->remaining <= 0);
         entry["cooldown"] = cooldown ? Json{{"remaining", cooldown->remaining}, {"total", cooldown->total}} : Json();
         abilities.push_back(std::move(entry));
     }
