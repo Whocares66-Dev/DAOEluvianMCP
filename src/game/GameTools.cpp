@@ -1351,9 +1351,10 @@ void AddGame(Bench &bench, const Watch &watch)
                  "The game itself. `action`: pause, unpause; saves, the saves of `character` (or every one) with "
                  "each one's area, name, time played and level, as the load screen shows them; load, a save by "
                  "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
-                 "manual) and `number`, from the main menu or in the world, as the load screen loads; save, a "
-                 "quicksave (`kind` quick, the default) or a manual save (`kind` manual, `number` or the next "
-                 "free, `name`). A load or save answers that the game was asked, and `cursor`: wait_for "
+                 "manual) and `number`, from the main menu or in the world, as the load screen loads; save, a new "
+                 "manual save in the next free slot, with `name` (the default: it writes over nothing), a manual "
+                 "save to slot `number` (which writes over what is there), or `kind` quick, which writes over "
+                 "the player's quicksave. A load or save answers that the game was asked, and `cursor`: wait_for "
                  "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
                  "cutscene. (Not the game's speed: each plugin's copy of DAOLib scales the clock by its own, so "
                  "two setting it multiply; a mod that sets speed owns it.)",
@@ -1417,7 +1418,10 @@ void AddGame(Bench &bench, const Watch &watch)
                             {"cursor", cursor},
                             {"note", "wait_for eluvian.game.loaded from `cursor`; the game may still decline"}};
             }
-            const auto kind = KindArg(args, "quick");
+            // A new manual save by default: a test's save must not write over
+            // the player's own, as a quicksave does (computer-use-agent would
+            // not call this for that reason, 2026-09-30).
+            const auto kind = KindArg(args, "manual");
             const auto number = static_cast<std::int32_t>(args.Integer("number", -1, -1, 500));
             if (!dao::saves::Save(kind, number, Wide(args.String("name", ""))))
             {
@@ -1426,6 +1430,7 @@ void AddGame(Bench &bench, const Watch &watch)
             }
             return Json{{"began", true},
                         {"kind", dao::saves::Name(kind)},
+                        {"slot", number < 0 ? Json("the game's choice: eluvian.game.saved names it") : Json(number)},
                         {"cursor", cursor},
                         {"note", "wait_for eluvian.game.saved from `cursor`"}};
         });
