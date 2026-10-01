@@ -235,4 +235,10 @@ A key's message without the key, 2026-10-01, 08:58 (DAOLib `0632df5`; the ruins,
 - The game autosaved at the mirror room's door (AutoSave_4), which the user has said is no concern.
 - `screenshot source=game` now answers the picture written again as a plain JPEG (the game's own carries an Exif header a reader rejected).
 
-`travel` to a thing that fills its own place, 2026-10-01, 10:00 (eluvian.dll of `dd5a424`): to the shut door 0x1f1 from the ruins' entrance, 53.5 m: stopped for the spiders' fight, then arrived, 0.5 m; to the chest 0x1fd: arrived, 1.09 m. `tools/smoke.py` on the same build: 38 of 38.
+`travel` to a thing that fills its own place, 2026-10-01, about 09:50 (eluvian.dll of `dd5a424`): to the shut door 0x1f1 from the ruins' entrance, 53.5 m: stopped for the spiders' fight, then arrived, 0.5 m; to the chest 0x1fd: arrived, 1.09 m. `tools/smoke.py` on the same build: 38 of 38.
+
+A sweep of the ruins' fights for the turn-based mod's room rule, 2026-10-01, 09:58 to 10:02 (`build/sweep.py`: Lyna's AutoSave_2 at debug level, the mod's dll of 09:54:55, no computer use):
+
+- `travel` to room 1579 and on to the mirror room, with a survey at each fight it stopped for, the mod's `turnbased_end_turn` to reach an enemy's turn, `camera` for what the view follows, then the fight ended with `stage`. Four fights: two spiders in room 1574; three spiders across rooms 1578 and 1579 after door 0x1f1; two skeletons in 1580; the Bereskarn across 1575 and 1580 after the mirror room's door.
+- In each, every creature in the order stood in a room that read shown or had an attack target in the party, no hostile in combat was left out, and on the enemy's turn the camera followed that enemy, its room `seen` in view. One rule line in the mod's log (the rooms the party has seen), no warning, no error.
+- The game autosaved at the mirror room's door, into AutoSave_1 this time: its slots go round, so that one wrote over the autosave of 01:12.
