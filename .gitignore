@@ -24,3 +24,6 @@ __pycache__/
 
 # Claude Code runtime state
 /.claude/scheduled_tasks.lock
+
+# A local scratchpad for review notes, not part of the tree (as DAOLib's).
+dev/REVIEW.md

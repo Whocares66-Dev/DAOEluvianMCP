@@ -28,6 +28,7 @@
 #include <Windows.h>
 
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
@@ -109,7 +110,17 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
 {
     dao::OpenLog("eluvian");
     spdlog::info("eluvian {}", EL_VERSION_STRING);
-    if (info == nullptr || !info->expectedExecutable)
+    // The loader's contract first, before anything of LoaderInfo's is read:
+    // a loader of another API, or one whose struct ends before the fields
+    // used here, is not this plugin's (as the other plugins check).
+    if (info == nullptr || info->apiVersion != dao::kPluginApiVersion ||
+        info->structSize < offsetof(dao::LoaderInfo, expectedExecutable) + sizeof(info->expectedExecutable))
+    {
+        spdlog::error("the loader's plugin API is {}, not the {} Eluvian was built for; Eluvian stays off",
+                      info != nullptr ? info->apiVersion : 0, dao::kPluginApiVersion);
+        return false;
+    }
+    if (!info->expectedExecutable)
     {
         spdlog::error("not the DAOrigins.exe DAOLib was read from; Eluvian stays off");
         return false;
