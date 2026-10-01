@@ -25,11 +25,12 @@ inspect {"kind": "game"}                         hero, party, area, mode explore
 
 ```
 inspect {"kind": "creatures", "side": "hostile", "radius": 30}     who is around, with ids, health, what each is doing
-inspect {"kind": "creature", "id": "0x7d9"}                        one in full: effects with time left, its command, its path
-inspect {"kind": "geometry", "id": "0x82", "target": "0x7d9"}      distance, line of sight
+inspect {"kind": "creature", "id": "0x7d9"}                        one in full: effects with time left, abilities and cooldowns, its command
+inspect {"kind": "geometry", "id": "0x82", "target": "0x7d9"}      distance, line of sight; "walk": true adds the path there
 order {"action": "attack", "target": "0x7d9"}                      answers given and cursor
 wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}, "since": <cursor>}
 stage {"action": "effect", "id": "0x82", "effect": "knockdown", "seconds": 6}   a case a fight rarely brings
+stage {"action": "cooldown", "id": "0x6a8", "ability": 617, "seconds": 0}        an ability made ready, or held
 script {"command": "GetRemainingCooldown", "args": {"oCreature": "0x82", "nAbilityId": 617}}   anything else
 ```
 

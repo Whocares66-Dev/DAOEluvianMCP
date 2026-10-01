@@ -251,6 +251,43 @@ Json AbilityJson(std::int32_t ability)
     return answer;
 }
 
+// The abilities a creature acts with, and each one's cooldown: those on its
+// quickbar and those its tactics use (no script command lists a creature's
+// abilities whole). A cooldown is in seconds of game time, null for an
+// ability the creature has no record for.
+Json Abilities(ObjectId id)
+{
+    constexpr std::int32_t kQuickslots = 60;
+    constexpr std::int32_t kTactics = 50;
+    std::set<std::int32_t> found;
+    for (std::int32_t slot = 0; slot < kQuickslots; ++slot)
+    {
+        if (const auto ability = api::GetQuickslot(id, slot); ability > 0)
+        {
+            found.insert(ability);
+        }
+    }
+    const auto tactics = std::min(api::GetNumTactics(id), kTactics);
+    for (std::int32_t index = 0; index < tactics; ++index)
+    {
+        if (const auto ability = api::GetTacticCommandParam(id, index);
+            ability > 0 && api::HasAbility(id, ability) != 0)
+        {
+            found.insert(ability);
+        }
+    }
+    Json abilities = Json::array();
+    for (const auto ability : found)
+    {
+        Json entry = AbilityJson(ability);
+        entry["available"] = api::IsAbilityAvailable(id, ability) != 0;
+        const auto cooldown = dao::abilities::GetCooldown(id, ability);
+        entry["cooldown"] = cooldown ? Json{{"remaining", cooldown->remaining}, {"total", cooldown->total}} : Json();
+        abilities.push_back(std::move(entry));
+    }
+    return abilities;
+}
+
 Json Effects(ObjectId id)
 {
     Json effects = Json::array();
@@ -365,8 +402,11 @@ void AddInspect(Bench &bench, const Watch &watch)
               {{"id", {{"description", "kind=creature and kind=geometry: the creature; default the one controlled"}}},
                {"target", {{"description", "kind=geometry: the creature to measure to"}}},
                {"point", {{"description", "kind=geometry: the point to measure to, {x, y, z} or [x, y, z]"}}},
-               {"waypoints",
-                {{"type", "boolean"}, {"description", "kind=geometry: list the points of the path being walked"}}},
+               {"waypoints", {{"type", "boolean"}, {"description", "kind=geometry: list the paths' points"}}},
+               {"walk",
+                {{"type", "boolean"},
+                 {"description", "kind=geometry: also search the path the creature would walk there, and its "
+                                 "length (result 1 found, 5 none, 8 no mesh there)"}}},
                {"near",
                 {{"description", "kind=creatures: measure distances from this creature; default "
                                  "the one controlled"}}},
@@ -468,7 +508,9 @@ void AddInspect(Bench &bench, const Watch &watch)
     bench.Tools().AddKind(
         "inspect",
         KindSpec{"creature",
-                 "One creature in full: its summary (with the command it is carrying out), facing, appearance, its "
+                 "One creature in full: its summary (with the command it is carrying out), facing, appearance, the "
+                 "abilities on its quickbar and in its tactics with each one's cooldown (seconds left, and of how "
+                 "many), its "
                  "movement's path (`beingWalked` says whether it is walking it now), and every effect "
                  "on it: its type (EFFECT_TYPE_*), creator, ability (id and name) and time left (seconds; null "
                  "for effects that do not run out)."},
@@ -487,6 +529,7 @@ void AddInspect(Bench &bench, const Watch &watch)
             creature["facing"] = api::GetFacing(id);
             creature["appearance"] = api::GetAppearanceType(id);
             creature["effects"] = Effects(id);
+            creature["abilities"] = Abilities(id);
             creature["path"] = PathNow(id, api::GetPosition(id), false);
             return creature;
         });
@@ -498,9 +541,9 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "(`point`): the straight distance, the line of sight as the engine judges it (eye height to eye "
                  "height; where it is cut, if it is; only walls and placeables block, not creatures), and the "
                  "creature's movement path with its length and what is left of it; `beingWalked` says "
-                 "whether it is walking it now (`waypoints: true` lists its points). Not the path it would walk: that "
-                 "search is the "
-                 "creature's own, and asking it changed the creature's walking in play (2026-09-30)."},
+                 "whether it is walking it now (`waypoints: true` lists its points). `walk: true` also searches the "
+                 "path it would walk there and gives its length: a search apart from the creature's own, new and "
+                 "not yet seen in play."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -538,11 +581,33 @@ void AddInspect(Bench &bench, const Watch &watch)
             answer["distance"] = Distance(from, to);
             answer["lineOfSight"] =
                 Json{{"clear", sight.clear}, {"blockedAt", sight.blockedAt ? VectorJson(*sight.blockedAt) : Json()}};
-            // DAOLib's FindPath is left out: in the play test of 2026-09-30 it
-            // answered late, left its result as the creature's own path, and
-            // may have stopped a creature walking (lib-agent). Reading the
-            // path a creature walks is only a read.
             answer["path"] = PathNow(id, from, waypoints);
+            // The walk there, only when asked for. DAOLib's first FindPath
+            // drove the creature's own search and, in play, 2026-09-30, left
+            // creatures unable to walk; the one since (b2e1460) searches
+            // apart from any creature's, and is not yet seen in play. A read
+            // that might still touch the game is the caller's to choose.
+            if (args.Bool("walk", false))
+            {
+                const auto search =
+                    dao::world::Pathfind(id, to, args.OptionalId("target", kCreatureHint).value_or(kInvalidObject));
+                Json walk = {{"found", search.path.has_value()}, {"result", search.result}, {"slices", search.slices}};
+                if (search.path)
+                {
+                    walk["length"] = search.path->Length();
+                    walk["waypointCount"] = search.path->waypoints.size();
+                    if (waypoints)
+                    {
+                        Json points = Json::array();
+                        for (const auto &point : search.path->waypoints)
+                        {
+                            points.push_back(VectorJson(point));
+                        }
+                        walk["waypoints"] = std::move(points);
+                    }
+                }
+                answer["walk"] = std::move(walk);
+            }
             return answer;
         });
 }
@@ -978,6 +1043,34 @@ ObjectId StageHealth(const Args &args, Json & /*answer*/)
     return id;
 }
 
+ObjectId StageCooldown(const Args &args, Json &answer)
+{
+    const ObjectId id = CreatureArg(args);
+    const auto ability = static_cast<std::int32_t>(args.Integer("ability", -1, 0, 1 << 30));
+    if (ability < 0)
+    {
+        throw ToolError("stage: action cooldown needs `ability`, an ability's id (inspect kind=creature lists them)");
+    }
+    const double remaining = args.Number("seconds", 0);
+    const auto before = dao::abilities::GetCooldown(id, ability);
+    // The whole it is shown against: given, else what it was, else what is left.
+    const double total = args.Number("total", before && before->total > 0 ? before->total : remaining);
+    if (remaining < 0 || total < 0 || remaining > 3600)
+    {
+        throw ToolError("stage: `seconds` is the cooldown left, 0 (ready) to 3600");
+    }
+    if (!dao::abilities::SetCooldown(id, ability, static_cast<float>(remaining),
+                                     static_cast<float>(std::max(total, remaining))))
+    {
+        throw ToolError(
+            std::format("stage: {} has no record for ability {}: it does not have it", FormatId(id), ability));
+    }
+    const auto after = dao::abilities::GetCooldown(id, ability);
+    answer["ability"] = AbilityJson(ability);
+    answer["cooldown"] = after ? Json{{"remaining", after->remaining}, {"total", after->total}} : Json();
+    return id;
+}
+
 ObjectId StageKill(const Args &args, Json &answer)
 {
     const ObjectId id = CreatureArg(args);
@@ -1037,17 +1130,20 @@ void AddStage(Bench &bench, const Watch &watch)
         "from. Mods that register with Eluvian may add actions of their own (an arena, a state only they know). "
         "The effects are the engine's bare ones, applied as scripts apply them; a death comes a frame or more "
         "later, as eluvian.creature.died.",
-        Json{{"type", "object"},
-             {"properties",
-              {{"id", {{"description", "The creature"}}},
-               {"effect", {{"description", "A condition's name or an EFFECT_TYPE_* number"}}},
-               {"seconds", {{"type", "number"}, {"description", "action=effect: how long; default 6"}}},
-               {"creator", {{"description", "Whom the effect is from; default none"}}},
-               {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}},
-               {"value", {{"type", "number"}, {"description", "action=health: the current health"}}},
-               {"template", {{"type", "string"}, {"description", "action=spawn: the creature's template"}}},
-               {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
-               {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}}}}},
+        Json{
+            {"type", "object"},
+            {"properties",
+             {{"id", {{"description", "The creature"}}},
+              {"effect", {{"description", "A condition's name or an EFFECT_TYPE_* number"}}},
+              {"seconds",
+               {{"type", "number"}, {"description", "action=effect: how long, default 6; action=cooldown: time left"}}},
+              {"total", {{"type", "number"}, {"description", "action=cooldown: the whole it counts down from"}}},
+              {"creator", {{"description", "Whom the effect is from; default none"}}},
+              {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}},
+              {"value", {{"type", "number"}, {"description", "action=health: the current health"}}},
+              {"template", {{"type", "string"}, {"description", "action=spawn: the creature's template"}}},
+              {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
+              {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}}}}},
         Thread::Frame};
     spec.kindProperty = "action";
     bench.Tools().Add(std::move(spec));
@@ -1074,6 +1170,9 @@ void AddStage(Bench &bench, const Watch &watch)
     add("remove_effects", "takes effects off creature `id`: by `effect`, `ability`, `creator`, or all",
         StageRemoveEffects);
     add("health", "sets creature `id`'s current health to `value`", StageHealth);
+    add("cooldown",
+        "sets creature `id`'s cooldown on `ability` to `seconds` left (0 makes it ready), of `total` if given",
+        StageCooldown);
     add("kill", "deals creature `id` more damage than it has; it dies a frame or more later", StageKill);
     add("spawn",
         "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "

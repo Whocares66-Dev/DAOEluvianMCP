@@ -60,7 +60,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-09-30, against DAOLib `bc081ea`: 89 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean. Seen in the game the same day, reads only (`dev/TESTING.md`): orders and a fight not yet.
+Last green 2026-09-30, against DAOLib `79da8ee`: 94 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean. Seen in the game the same day, reads only (`dev/TESTING.md`): orders and a fight not yet.
 
 ## Writing files from the shell
 
