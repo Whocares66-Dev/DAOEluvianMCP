@@ -14,7 +14,9 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace eluvian
@@ -26,12 +28,25 @@ class UnknownTool : public std::runtime_error
     using std::runtime_error::runtime_error;
 };
 
+// One call of a tool, as it ended: for a record of what the bench was
+// asked to do, which the events alone do not show.
+struct CallRecord
+{
+    std::string_view tool;
+    const Json &args;
+    Thread thread = Thread::Frame;
+    double ms = 0;          // from the call to its answer
+    std::string_view error; // empty when it answered
+};
+
 struct BenchOptions
 {
     // How long a frame tool's call may wait for a frame to take it.
     std::chrono::milliseconds frameTimeout{5000};
     std::size_t eventCapacity = 4096;
     EventBus::FrameSource frame = {}; // stamps each event with the frame it came in
+    // Told of every call as it ends, on the thread that made it (a listener's).
+    std::function<void(const CallRecord &)> onCall = {};
 };
 
 class Bench

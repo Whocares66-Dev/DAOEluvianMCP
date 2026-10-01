@@ -10,6 +10,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace eluvian;
 using namespace std::chrono_literals;
@@ -170,4 +171,37 @@ TEST_CASE("events describes the topics there are, filtered like a read", "[bench
     answer = bench.Invoke("events", Json{{"describe", true}, {"topic", "mymod.*"}}).data;
     REQUIRE(answer["topics"].size() == 1);
     CHECK(answer["topics"][0]["from"] == "mymod");
+}
+
+TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
+{
+    struct Seen
+    {
+        std::string tool;
+        Json args;
+        Thread thread;
+        std::string error;
+    };
+    std::vector<Seen> seen;
+    BenchOptions options;
+    options.onCall = [&seen](const CallRecord &call) {
+        CHECK(call.ms >= 0);
+        seen.push_back(Seen{std::string(call.tool), call.args, call.thread, std::string(call.error)});
+    };
+    Bench bench(options);
+    bench.Tools().Add(ToolSpec{"echo", "Echo.", {}, Thread::Listener},
+                      [](const Json &args) -> ToolResult { return args; });
+    bench.Tools().Add(ToolSpec{"refuse", "Refuse.", {}, Thread::Listener},
+                      [](const Json &) -> ToolResult { throw ToolError("refuse: not now"); });
+
+    bench.Invoke("echo", Json{{"id", "0x7d9"}});
+    CHECK_THROWS_AS(bench.Invoke("refuse", Json::object()), ToolError);
+    CHECK_THROWS_AS(bench.Invoke("nothing", Json::object()), UnknownTool); // no tool, so no call to tell of
+
+    REQUIRE(seen.size() == 2);
+    CHECK(seen[0].tool == "echo");
+    CHECK(seen[0].args["id"] == "0x7d9");
+    CHECK(seen[0].thread == Thread::Listener);
+    CHECK(seen[0].error.empty());
+    CHECK(seen[1].error == "refuse: not now");
 }

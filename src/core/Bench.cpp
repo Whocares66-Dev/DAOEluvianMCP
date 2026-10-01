@@ -4,7 +4,9 @@
 #include "core/LogTail.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -34,15 +36,39 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
     {
         throw UnknownTool("no tool \"" + std::string(tool) + "\"; tools/list (or GET /api/tools) lists them");
     }
-    if (call->thread == Thread::Listener)
+    const auto thread = call->thread;
+    const auto start = std::chrono::steady_clock::now();
+    const auto record = [&](std::string_view error) {
+        if (options_.onCall)
+        {
+            const double ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            options_.onCall(CallRecord{tool, args, thread, ms, error});
+        }
+    };
+    try
     {
-        return call->handler(args);
+        ToolResult result;
+        if (thread == Thread::Listener)
+        {
+            result = call->handler(args);
+        }
+        else
+        {
+            // The handler and arguments go to the frame thread behind shared
+            // pointers: copying them there must not throw on the way.
+            auto handler = std::make_shared<const ToolHandler>(std::move(call->handler));
+            auto arguments = std::make_shared<const Json>(args);
+            result = frames_.RunAndWait([handler, arguments] { return (*handler)(*arguments); }, options_.frameTimeout);
+        }
+        record({});
+        return result;
     }
-    // The handler and arguments go to the frame thread behind shared
-    // pointers: copying them there must not throw on the way.
-    auto handler = std::make_shared<const ToolHandler>(std::move(call->handler));
-    auto arguments = std::make_shared<const Json>(args);
-    return frames_.RunAndWait([handler, arguments] { return (*handler)(*arguments); }, options_.frameTimeout);
+    catch (const std::exception &error)
+    {
+        record(error.what());
+        throw;
+    }
 }
 
 void Bench::Close()

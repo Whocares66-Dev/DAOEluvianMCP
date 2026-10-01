@@ -92,11 +92,38 @@ std::size_t EventsSetting()
     return Setting("ELUVIAN_EVENTS", 32768, 1024, 262144);
 }
 
+// What the bench was asked to do, in eluvian.log: each call with its
+// arguments, how it ended and how long it took, so a session can be read
+// afterwards (the events say what happened in the game, not what an agent
+// did to it). The reads an agent repeats all session (health, events,
+// wait_for, log) are at debug, the rest at info.
+void LogCall(const CallRecord &call)
+{
+    std::string args = call.args.dump();
+    if (args.size() > 300)
+    {
+        args.resize(300);
+        args += "...";
+    }
+    const bool routine =
+        call.tool == "health" || call.tool == "events" || call.tool == "wait_for" || call.tool == "log";
+    const auto level = routine ? spdlog::level::debug : spdlog::level::info;
+    if (call.error.empty())
+    {
+        spdlog::log(level, "call {} {}: answered in {:.0f} ms", call.tool, args, call.ms);
+    }
+    else
+    {
+        spdlog::log(level, "call {} {}: refused after {:.0f} ms: {}", call.tool, args, call.ms, call.error);
+    }
+}
+
 struct State
 {
     // Events are stamped with the frame from the watch's count, which is
     // atomic; DAOLib's own is read only on the frame thread.
-    Bench bench{BenchOptions{std::chrono::milliseconds(5000), EventsSetting(), [this] { return watch.Frames(); }}};
+    Bench bench{
+        BenchOptions{std::chrono::milliseconds(5000), EventsSetting(), [this] { return watch.Frames(); }, &LogCall}};
     game::Watch watch{bench};
     McpEndpoint mcp{bench, ServerInfo{"eluvian", EL_VERSION_STRING, std::string(kInstructions)}};
     RestEndpoint rest{bench};
