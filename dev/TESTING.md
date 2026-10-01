@@ -97,3 +97,9 @@ Eluvian 0.2.0, 20:07 to 20:14, two fights with turnbased's newest build (compute
 - Both deaths come now. After four staged kills: `eluvian.creature.died` first (killer null), the mod's turnbased.fell within 0.1 s, `eluvian.script.death` 1.5 to 2.5 s later. After a death from a real blow (Aedan's on a soldier): `died` with killer Aedan, turnbased.fell 43 ms later, `script.death` with creator Aedan 2.1 s after `died`. DAOLib `bc081ea` works; the watch is kept for the moment of the death, the engine's event marks its end.
 - `inspect kind=game`'s controlled and selected followed the mod's hand-over of control between turns.
 - `script BeginConversation` in a fight answered 1 and started nothing: the engine's answer, not to be trusted there.
+
+Screenshots, 20:29 to 20:46:
+
+- The game's script command `Screenshot` writes nothing in this build: called by name with no arguments and with a file name, in combat and in explore, it answered at once and no file appeared anywhere (computer-use-agent). The screenshot key's own pictures (`Screenshots\User\Screenshot<time>.jpg`) come another way, asked of lib-agent.
+- So Eluvian draws the game's window itself, from inside the process: PrintWindow with PW_RENDERFULLCONTENT into a bitmap, encoded as JPEG by WIC. At the main menu it gave the whole 1600 by 1000 menu, Flash interface and all, while the game sat behind other windows; over MCP, a 71 KB JPEG at quality 0.6 as image content, in 149 ms. Not yet taken in a fight.
+- The bridge's `game_launch` started the game and answered once Eluvian served at the main menu (pregame, turnbased's registrations in); its `game_quit` closed it. Its `game_saves` matched the load screen entry for entry, without the space the menu shows in "Castle Cousland".
