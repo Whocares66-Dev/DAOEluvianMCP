@@ -198,3 +198,9 @@ A message box's button pressed, and the walk from where it stopped, 2026-10-01, 
 - `screenshot` of the window was black all over in this run while `source=game` was whole: the display was asleep. The answer now says `black` and to use `source=game`.
 - `inspect kind=geometry` with `walk` and `trace`, on DAOLib `52e87a7`: from the entrance the walks to creatures behind shut doors still ended "gave up part way" at (-3.77, 0.39, 0.00), 53.4 m, the search's second leg ending as the first. From that very point (the hero moved there and standing, door 0x1f1 1.2 m off and shut) the same walks answered "something is in the way" in 3 slices, with no `blocker` named. Both sent to lib-agent.
 - No run wrote a save.
+
+The walk search on DAOLib `2f549df`, 2026-10-01, 05:55 (the ruins, loaded only):
+
+- Standing 1.2 m from the shut door 0x1f1: `walk` to creatures beyond it answered "something is in the way" with `blocker` 0x1f1, the door, and the note to use it first. That is the answer a test needs before a move that would end COMMAND_FAILED_PATH_ACTION_REQUIRED.
+- From the entrance, 53 m short of that door: still "gave up part way" with no `blocker`; the search's probes past the give-up ended without the pathfinder's 6. Sent to lib-agent with the answers.
+- A move after the searches ended success; no save was written.
