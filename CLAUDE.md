@@ -25,7 +25,8 @@ src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_G
 src/api/      EluvianAPI.h: the C ABI other plugins include. MIT, unlike the rest (GPLv3).
 tests/        Catch2 over src/core; tests/server over src/server
 tools/        build.ps1, deploy.ps1, console.ps1, check-powershell.ps1 (DAOTurnBased's, for this tree);
-              eluvian_bridge.py, the stdio MCP server an agent keeps across game restarts (.mcp.json),
+              eluvian_bridge.py, the stdio MCP server an agent keeps across game restarts (.mcp.json;
+              `--call TOOL [JSON]` for one call from a shell),
               and test_bridge.py, run by ctest
 dev/          the design
 extern/DAOLib the submodule
@@ -60,7 +61,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-10-01, against DAOLib `788079b`: 104 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use.
+Last green 2026-10-01, against DAOLib `788079b`: 104 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
 
 ## Writing files from the shell
 

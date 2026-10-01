@@ -10,17 +10,19 @@ An agent asks the game what it wants to know (the creatures, their health, their
 
 | Tool | What |
 |---|---|
-| `health` | Is the game alive and in what mode, answered even while it loads or hangs |
-| `inspect` | `kind`: `game` (mode, pause, area, hero, party), `creatures` (positions, sides, health, what each is doing), `creature` (one in full, with its effects), `geometry` (distance, line of sight, the path walked), and kinds plugins add |
-| `order` | The player's orders by id: attack, move, ability, use; through the engine's own click functions |
+| `health` | Is the game alive and in what mode, answered even while it loads or hangs; who started it (`owner`) |
+| `inspect` | `kind`: `game` (mode, pause, area, hero, party, a message box if one is up), `creatures` (positions, sides and groups, health, rooms and whether the party has seen them, what each is doing), `creature` (one in full, with its effects and abilities), `geometry` (distance, line of sight, the path walked), `placeables` (doors, chests, levers: state and lock), `dialogue` (the line spoken, the replies offered), `popup` (the game's message box), and kinds plugins add |
+| `order` | The player's orders by id: attack, move, ability, use; through the engine's own click functions or explore mode's click |
+| `dialogue` | Answer the conversation on the screen: choose a reply, continue, skip a cutscene |
+| `camera` | Read it; face a target, follow a creature, turn: so a screenshot shows what the test means |
 | `script` | Any of the game's script commands by name, with its answer |
-| `stage` | A test's set-up: conditions, health, a death, a spawn, and mods' own actions |
+| `stage` | A test's set-up: conditions, health, cooldowns, a death, a spawn, a creature's group (a fight the party is not in), and mods' own actions |
 | `screenshot` | The game as a picture, interface and all: its window drawn from inside the game (nothing over it gets in the way), or the game's own, as its screenshot key takes it |
 | `game` | Pause, unpause; the saves with their area, name and time played; load one; save |
 | `events`, `wait_for` | The event bus from a cursor; block until an event happens; `describe` lists the topics and what they hold |
 | `scenario` | Steps in one call: tools, waits for events, pauses, checks; a transcript back |
-| `log` | DAOLib's logs from a cursor |
-| `game_saves`, `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: the saves on disk, is it running, start it, close it |
+| `log` | DAOLib's logs from a cursor; `eluvian.log` holds every tool call with its arguments, time and refusal |
+| `game_saves`, `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: the saves on disk, is it running and whose it is, start it (into a save, under an owner's name), close it |
 
 ## Building
 
