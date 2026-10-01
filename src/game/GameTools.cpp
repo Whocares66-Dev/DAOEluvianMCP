@@ -403,10 +403,6 @@ void AddInspect(Bench &bench, const Watch &watch)
                {"target", {{"description", "kind=geometry: the creature to measure to"}}},
                {"point", {{"description", "kind=geometry: the point to measure to, {x, y, z} or [x, y, z]"}}},
                {"waypoints", {{"type", "boolean"}, {"description", "kind=geometry: list the paths' points"}}},
-               {"walk",
-                {{"type", "boolean"},
-                 {"description", "kind=geometry: also search the path the creature would walk there, and its "
-                                 "length (result 1 found, 5 none, 8 no mesh there)"}}},
                {"near",
                 {{"description", "kind=creatures: measure distances from this creature; default "
                                  "the one controlled"}}},
@@ -541,9 +537,8 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "(`point`): the straight distance, the line of sight as the engine judges it (eye height to eye "
                  "height; where it is cut, if it is; only walls and placeables block, not creatures), and the "
                  "creature's movement path with its length and what is left of it; `beingWalked` says "
-                 "whether it is walking it now (`waypoints: true` lists its points). `walk: true` also searches the "
-                 "path it would walk there and gives its length: a search apart from the creature's own, new and "
-                 "not yet seen in play."},
+                 "whether it is walking it now (`waypoints: true` lists its points). Not yet the path it would walk "
+                 "there: that search is not safe to ask yet."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -582,32 +577,12 @@ void AddInspect(Bench &bench, const Watch &watch)
             answer["lineOfSight"] =
                 Json{{"clear", sight.clear}, {"blockedAt", sight.blockedAt ? VectorJson(*sight.blockedAt) : Json()}};
             answer["path"] = PathNow(id, from, waypoints);
-            // The walk there, only when asked for. DAOLib's first FindPath
-            // drove the creature's own search and, in play, 2026-09-30, left
-            // creatures unable to walk; the one since (b2e1460) searches
-            // apart from any creature's, and is not yet seen in play. A read
-            // that might still touch the game is the caller's to choose.
-            if (args.Bool("walk", false))
-            {
-                const auto search =
-                    dao::world::Pathfind(id, to, args.OptionalId("target", kCreatureHint).value_or(kInvalidObject));
-                Json walk = {{"found", search.path.has_value()}, {"result", search.result}, {"slices", search.slices}};
-                if (search.path)
-                {
-                    walk["length"] = search.path->Length();
-                    walk["waypointCount"] = search.path->waypoints.size();
-                    if (waypoints)
-                    {
-                        Json points = Json::array();
-                        for (const auto &point : search.path->waypoints)
-                        {
-                            points.push_back(VectorJson(point));
-                        }
-                        walk["waypoints"] = std::move(points);
-                    }
-                }
-                answer["walk"] = std::move(walk);
-            }
+            // Not the walk there. DAOLib's first FindPath drove the creature's
+            // own search and, in play, 2026-09-30, left creatures unable to
+            // walk; its Pathfind since searches apart from any creature's, but
+            // fails once the party has walked and is being reworked
+            // (lib-agent, 2026-10-01: "don't expose it yet"). A read must not
+            // be able to disturb the game; it comes back when seen safe.
             return answer;
         });
 }

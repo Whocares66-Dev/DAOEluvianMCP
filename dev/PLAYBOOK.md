@@ -28,7 +28,7 @@ With the game already running, `game {"action": "saves"}` lists the saves and `g
 ```
 inspect {"kind": "creatures", "side": "hostile", "radius": 30}     who is around, with ids, health, what each is doing
 inspect {"kind": "creature", "id": "0x7d9"}                        one in full: effects with time left, abilities and cooldowns, its command
-inspect {"kind": "geometry", "id": "0x82", "target": "0x7d9"}      distance, line of sight; "walk": true adds the path there
+inspect {"kind": "geometry", "id": "0x82", "target": "0x7d9"}      distance, line of sight, the path being walked
 order {"action": "attack", "target": "0x7d9"}                      answers given and cursor
 wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}, "since": <cursor>}
 stage {"action": "effect", "id": "0x82", "effect": "knockdown", "seconds": 6}   a case a fight rarely brings
