@@ -203,18 +203,30 @@ Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints)
 // The room a creature stands in and whether the party has seen it: the
 // game draws a room never seen black, with what stands in it (DAOLib's
 // dao::world::Room, seen in Castle Cousland, 2026-10-01). Null where the
-// area has no rooms to ask.
+// area has no rooms to ask. Outdoors the "rooms" are the terrain's cells:
+// in the Forest Clearing their numbers read 262147, 196611 and the like,
+// `seen` in view everywhere, and none ever loaded, the party's own included
+// (the same day), so `shown` goes by `seen` alone (DAOLib 66d5567). `wanted`
+// and `load` are the game's own two states, by name where DAOLib names
+// them and by number where it does not.
 Json RoomJson(ObjectId id)
 {
+    using dao::world::Room;
     const auto room = dao::world::RoomOf(id);
     if (!room)
     {
         return nullptr;
     }
-    const char *seen = room->seen == dao::world::Room::kNeverSeen ? "never"
-                       : room->seen == dao::world::Room::kInView  ? "in view"
-                                                                  : "before";
-    return Json{{"number", room->number}, {"seen", seen}, {"loaded", room->Loaded()}, {"shown", room->Shown()}};
+    const char *seen = room->seen == Room::kNeverSeen ? "never" : room->seen == Room::kInView ? "in view" : "before";
+    const Json wanted = room->state == Room::kDropped     ? Json("dropped")
+                        : room->state == Room::kWanted    ? Json("kept")
+                        : room->state == Room::kWantedNow ? Json("now")
+                                                          : Json(room->state);
+    const Json load = room->load == Room::kLoading     ? Json("loading")
+                      : room->load == Room::kLoaded    ? Json("loaded")
+                      : room->load == Room::kNotLoaded ? Json("not loaded")
+                                                       : Json(room->load);
+    return Json{{"number", room->number}, {"seen", seen}, {"shown", room->Shown()}, {"wanted", wanted}, {"load", load}};
 }
 
 Json Summary(ObjectId id, ObjectId hero, const std::set<ObjectId> &party)
@@ -472,8 +484,9 @@ void AddInspect(Bench &bench, const Watch &watch)
         KindSpec{"creatures",
                  "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
                  "(party, hostile, neutral), position, distance, dead, health and mana or stamina, combat state, "
-                 "whom it attacks, its `room` (number, and `seen` by the party: never, which the game draws "
-                 "black with what stands in it, in view, or before), and the command it is carrying out."},
+                 "whom it attacks, its `room` (number; `seen` by the party: never, which the game draws "
+                 "black with what stands in it, in view, or before; `shown`; and how much the game wants "
+                 "the room and whether it is in memory), and the command it is carrying out."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
