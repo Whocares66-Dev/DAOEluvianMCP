@@ -15,7 +15,8 @@ DAOLib's `CLAUDE.md` has the game, the one exe build every address is from, the 
 
 ```
 src/core/     the bench without the game: HTTP parsing and routes, MCP's JSON-RPC, REST, the tool
-              registry, the event bus, the queue to the frame thread, arguments, logs from a cursor.
+              registry, the event bus, the queue to the frame thread, arguments, logs from a cursor, and the
+              tools that only decide over other tools' answers (scenario, travel).
               No <Windows.h>, no DAOLib, no dao:: type. Tested.
 src/server/   the socket loop under core/Http.h: Winsock, 127.0.0.1, a thread per connection. Tested
               over loopback.
@@ -64,7 +65,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-10-01, against DAOLib `0632df5`: 105 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
+Last green 2026-10-01, against DAOLib `0632df5`: 115 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
 
 ## Writing files from the shell
 

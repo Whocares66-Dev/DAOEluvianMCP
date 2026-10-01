@@ -125,6 +125,13 @@ def checks(run: Run) -> None:
         lambda a: a["found"],
     )
 
+    back = [here["x"], here["y"], here["z"]]
+    check(
+        "travel, a walk back to where the hero stood",
+        tool("travel", {"id": hero, "point": back, "budgetMs": 20000}, timeout=40),
+        lambda a: a["arrived"] is True,
+    )
+
     spawn = tool(
         "stage",
         {
