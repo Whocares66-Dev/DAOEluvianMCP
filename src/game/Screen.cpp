@@ -7,6 +7,9 @@
 
 #include "game/Capture.h"
 
+#include <array>
+#include <optional>
+
 namespace eluvian::game
 {
 
@@ -62,6 +65,77 @@ Json HitsJson(std::span<const dao::world::Hit> hits)
     return list;
 }
 
+// The object a click at a pixel would act on by the pick: the first object
+// among its hits.
+ObjectId PickedAt(float x, float y)
+{
+    for (const auto &hit : dao::world::PickAt(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)))
+    {
+        if (hit.kind == dao::world::Hit::Kind::Object)
+        {
+            return hit.object;
+        }
+    }
+    return kInvalidObject;
+}
+
+struct Aim
+{
+    dao::world::ScreenPoint point;
+    int clear = 0; // of the eight pixels 10 away around it, how many also pick the object
+};
+
+// A pixel well inside what the pick meets of an object, not at its edge.
+// DAOLib's AimAt answers the first height at which the pick meets the
+// object at all, and that sat on the top edge of a spider's body: a real
+// mouse sent there, through a scaled frame of the desktop, missed, and the
+// click became a move order (computer-use-agent, 2026-10-01). So from
+// that pixel and the feet's, the places between are tried, and a little to
+// each side, and the one with the most of its neighbours on the object
+// wins: the middle of the body as the game picks it.
+std::optional<Aim> AimInside(ObjectId target, const dao::world::ScreenPoint &edge,
+                             const std::optional<dao::world::ScreenPoint> &feet)
+{
+    constexpr float kStep = 10;
+    constexpr std::array<std::array<float, 2>, 8> kAround = {{{-kStep, 0},
+                                                              {kStep, 0},
+                                                              {0, -kStep},
+                                                              {0, kStep},
+                                                              {-kStep, -kStep},
+                                                              {kStep, -kStep},
+                                                              {-kStep, kStep},
+                                                              {kStep, kStep}}};
+    const float fromX = feet && feet->inFront ? feet->x : edge.x;
+    const float fromY = feet && feet->inFront ? feet->y : edge.y + 80;
+    std::optional<Aim> best;
+    for (const float along : {0.6F, 0.75F, 0.45F, 0.9F, 0.3F, 1.0F})
+    {
+        for (const float aside : {0.0F, -14.0F, 14.0F})
+        {
+            const float x = fromX + (edge.x - fromX) * along + aside;
+            const float y = fromY + (edge.y - fromY) * along;
+            if (PickedAt(x, y) != target)
+            {
+                continue;
+            }
+            int clear = 0;
+            for (const auto &offset : kAround)
+            {
+                clear += PickedAt(x + offset[0], y + offset[1]) == target ? 1 : 0;
+            }
+            if (!best || clear > best->clear)
+            {
+                best = Aim{dao::world::ScreenPoint{x, y, true, true}, clear};
+                if (clear == 8)
+                {
+                    return best; // wholly inside: no better to find
+                }
+            }
+        }
+    }
+    return best;
+}
+
 } // namespace
 
 void AddScreen(Bench &bench, const Watch &watch)
@@ -69,8 +143,10 @@ void AddScreen(Bench &bench, const Watch &watch)
     bench.Tools().Add(
         ToolSpec{"screen",
                  "Where a thing is in the game's picture, for the real mouse. `target` (a creature or object id): "
-                 "`aim`, a pixel to click it at, on its body and where nothing else is in front (null if it is "
-                 "out of view or hidden), and `position`, where its feet are. `point` ({x, y, z}): that world "
+                 "`aim`, a pixel to click it at, well inside its body as the game picks it and where nothing "
+                 "else is in front (null if it is out of view or hidden; `clear` is how many of the eight pixels "
+                 "10 away pick it too, 8 being wholly inside), and `position`, where its feet are. `point` ({x, y, "
+                 "z}): that world "
                  "point's pixel. `pixel` ([x, y] in the game's own pixels): `hits`, what lies under it, nearest "
                  "first, the first object being what a click there would act on. With none of them: the view's "
                  "size and the window. Each place is given as `x`, `y` (the game's pixels from the picture's top "
@@ -102,9 +178,17 @@ void AddScreen(Bench &bench, const Watch &watch)
             if (const auto target = args.OptionalId("target", "a creature or object id"))
             {
                 answer["target"] = Brief(*target);
-                const auto aim = dao::world::AimAt(*target);
-                answer["aim"] = aim ? PointJson(*aim, *view, window) : Json(nullptr);
+                const auto edge = dao::world::AimAt(*target);
                 const auto feet = dao::world::ToScreen(api::GetPosition(*target));
+                const auto inside = edge ? AimInside(*target, *edge, feet) : std::nullopt;
+                const auto aim = inside ? std::optional(inside->point) : edge;
+                answer["aim"] = aim ? PointJson(*aim, *view, window) : Json(nullptr);
+                if (aim)
+                {
+                    // How surely a click near it lands on the object: of the
+                    // eight pixels 10 away, how many pick it too.
+                    answer["aim"]["clear"] = inside ? inside->clear : 0;
+                }
                 answer["position"] = feet ? PointJson(*feet, *view, window) : Json(nullptr);
                 if (!aim)
                 {

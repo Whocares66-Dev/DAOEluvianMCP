@@ -254,3 +254,9 @@ For the real mouse, 2026-10-01, about 10:35: `inspect kind=window` gave the clie
 - `aim` for Lyna (800, 683), for Tamlen (546, 632, his feet at 553, 913), and for a wolf spawned 2.5 m behind him from the camera (576, 673): the pick at each aim met that creature first. Bare corners of the picture and a pixel outside it: no hits.
 - After nine such calls a 5 m walk ended success, the camera's yaw, pitch and zoom as before, frames running. `tools/smoke.py`: 43 of 43 with two `screen` checks.
 - Not yet done: the real mouse moved to an `aim`'s desktop pixel, and `inspect kind=cursor` asked whether the game has the creature under it. That is the tester's.
+
+`screen` with the real mouse, 2026-10-01, 11:20 to 11:35 (computer-use-agent's clicks, then a steadier aim):
+
+- The mouse sent to a spider's `aim` (the `desktop` pixel scaled into the tester's frame): its label came up, `inspect kind=cursor` said the spider, and the right-click was an attack. The same call for a spider standing behind Tamlen answered no aim, which was true.
+- A second spider's `aim` sat on the top edge of its body. The mouse sent there: `inspect kind=cursor` had no object and no hits at all, while `screen` with that `pixel` said the spider; the click became a move order. 28 of the tester's pixels lower both agreed and the click attacked. So `inspect kind=cursor` is what to click by, and an aim on an edge does not survive a scaled frame.
+- Since then `aim` is a pixel well inside what the pick meets: from DAOLib's first hit and the feet, the places between and a little to each side are tried, and the one with the most of its eight neighbours (10 px away) on the object wins; `clear` says how many. Seen: Lyna (800, 781), Tamlen (179, 676), two wolves, each `clear` 8, the pick at each the creature; 13 to 23 ms a call.
