@@ -14,12 +14,14 @@ For an agent testing the game or a mod in it. Every call below is an MCP tool (t
 
 ```
 game_saves {"character": "Aedan"}             bridge: the saves on disk, newest first, before the game runs
-game_launch {"load": {"character": "Aedan", "kind": "manual", "number": 2}}
+game_launch {"owner": "my-name", "load": {"character": "Aedan", "kind": "manual", "number": 2}}
                                                  bridge: starts the game once, loads the save without the menus,
                                                  and answers when the world is there
 health {}                                        state running, mode explore; the mods registered
 inspect {"kind": "game"}                         hero, party, area
 ```
+
+Several agents may share the one game. `game_launch` answers `launched` false when a game already runs, and says who started it (`health`'s `owner`; none means it was started by hand, the player's own): read that answer before acting, since every other call would go to that game. A game that is not yours is to read, not to drive or close.
 
 With the game already running, `game {"action": "saves"}` lists the saves and `game {"action": "load", ...}` loads one, from the main menu (mode pregame) or in the world; `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` says when it is there. A save made by a test is a new manual one by default (`game {"action": "save", "name": "..."}`), which writes over nothing.
 

@@ -159,3 +159,9 @@ A fight out of the party's sight, staged, 2026-10-01, 02:04 to 02:15 (the Elven 
 - On that, `group` in every creature's summary and `stage action=group`. Seen: a spider spawned beside a genlock in room 1579 (never seen) read group 1, side hostile; `stage action=group` to 2 answered `was` 1, `hostileToParty` false, `hostileToGroup1` true, and its side read neutral after. No fight followed there: that genlock is one the story has not made active yet. A room whose creatures are active is the one to stage it in.
 - `camera action=follow` on the creature in the never-seen room: the screenshot is black but for the interface, and its `room` reads `seen` never. So "the camera is on a black room" can be told by a call and shown by a picture.
 - `order action=use` with no `via` on a door in a turn-based fight: by click, success, the door's state 0 to 2 (computer-use-agent). `inspect kind=placeables` by the door listed it and the pressure plates near it.
+
+The message box read, and a game driven by mistake, 2026-10-01, 04:13:
+
+- `inspect kind=popup` after the scripts' `ShowPopup(379897, 1)`: text "Shield Pummel", resolved, and two buttons, Yes sending "GUIPopupLayer.ScriptDialogResult 1 1 -1" and No "... 1 2 -1"; null before it. `inspect kind=game` carried the same. A save asked for with that box up loaded all the same. Nothing presses a button yet.
+- That box went up in another agent's game. It had started the game eight seconds before my `game_launch`, which answered `launched` false, `already`; my script read no further and its next calls went to the port, which was that game's. Since then: `game_launch` takes `owner` and `health` gives it, the refusal says whose the running game is and that it is not the caller's to drive, and the tester's guide says to read the launch's answer first.
+- Eluvian's `deploy.ps1` and the bridge's `game_launch` work beside another install's running game (EA's, which DAOLib's own work runs).
