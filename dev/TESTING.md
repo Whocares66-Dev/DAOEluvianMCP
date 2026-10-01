@@ -165,3 +165,13 @@ The message box read, and a game driven by mistake, 2026-10-01, 04:13:
 - `inspect kind=popup` after the scripts' `ShowPopup(379897, 1)`: text "Shield Pummel", resolved, and two buttons, Yes sending "GUIPopupLayer.ScriptDialogResult 1 1 -1" and No "... 1 2 -1"; null before it. `inspect kind=game` carried the same. A save asked for with that box up loaded all the same. Nothing presses a button yet.
 - That box went up in another agent's game. It had started the game eight seconds before my `game_launch`, which answered `launched` false, `already`; my script read no further and its next calls went to the port, which was that game's. Since then: `game_launch` takes `owner` and `health` gives it, the refusal says whose the running game is and that it is not the caller's to drive, and the tester's guide says to read the launch's answer first.
 - Eluvian's `deploy.ps1` and the bridge's `game_launch` work beside another install's running game (EA's, which DAOLib's own work runs).
+
+Whose game it is, and what a chest takes, 2026-10-01, 04:38 to 04:42:
+
+- `game_launch` with `owner`: `health` and `game_status` gave `owner` "eluvian-agent" for the game I started, and null for one a tester started with Start-Process. Another agent read it and waited for that game to end.
+- `eluvian_bridge.py --call game_status`, `game_launch` and `game_quit` from a shell.
+- `stage action=group` on a tester's run: `was` 1, group 2, `hostileToParty` false, `hostileToGroup1` true, and the fight out of sight followed at once (computer-use-agent).
+- `order action=use` by command with `objectAction`, on the chest 0x1fd from 1.6 m: at state 1 (locked) `open`, `open_inventory`, `use` and `examine` each ended COMMAND_FAILED with the state unchanged, and `unlock` ended success, state 1 to 0; at state 0 `open` ended COMMAND_FAILED and `open_inventory` success. The command must carry the action the object takes as it is; a click chooses it.
+- A script message box held nothing: loads, orders, a fight and stage calls went on under it for six minutes (computer-use-agent). One `screenshot` of the window came back black in that time, cause not known; `source=game` is to be tried when it does again.
+- An attack by click on a creature behind a shut door 12 m off: the creature walked 3 m and stood at UseObject with the attack queued, the turn-based mod on or off; from 3 m it opened the door and went through (computer-use-agent). Whether a real click does the same is not known.
+- Still not seen: `dialogue` choose, continue and skip_cutscene.

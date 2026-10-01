@@ -1099,7 +1099,9 @@ void AddOrder(Bench &bench, const Watch &watch)
                           {"description", "action=use by command: what to do with the object: open, close, "
                                           "unlock, use (default), examine, disarm, dialog, open_inventory, "
                                           "trigger_trap, topple, area_transition, and the rest of "
-                                          "PLACEABLE_ACTION_*"}}}}},
+                                          "PLACEABLE_ACTION_*. It must be the one the object takes as it "
+                                          "is, or the command ends COMMAND_FAILED: a locked chest (state "
+                                          "1) took unlock, then open_inventory; a door open"}}}}},
                       {"required", {"action"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {
