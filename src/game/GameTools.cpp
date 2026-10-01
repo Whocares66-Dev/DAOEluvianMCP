@@ -513,6 +513,10 @@ void AddInspect(Bench &bench, const Watch &watch)
                 {{"type", "boolean"},
                  {"description", "kind=geometry: also search the path the creature would walk there: its length, "
                                  "or what is in the way"}}},
+               {"trace",
+                {{"type", "boolean"},
+                 {"description", "kind=geometry with walk: the search's own record (each slice's answer, a line "
+                                 "for a log), for whoever reads the pathfinder"}}},
                {"near",
                 {{"description", "kind=creatures: measure distances from this creature; default "
                                  "the one controlled"}}},
@@ -830,6 +834,14 @@ void AddInspect(Bench &bench, const Watch &watch)
                                          "kind=placeables near `reached` lists what is there"
                                        : "a move there ends COMMAND_FAILED_PATH_ACTION_REQUIRED; order action=use "
                                          "on `blocker` first (a shut door opens), then move";
+                }
+                // For DAOLib's own reading of a search that went wrong: each
+                // slice's answer and the search's line for a log.
+                if (args.Bool("trace", false))
+                {
+                    walk["answers"] = search.answers;
+                    walk["slices"] = search.slices;
+                    walk["trace"] = search.trace;
                 }
                 answer["walk"] = std::move(walk);
             }
