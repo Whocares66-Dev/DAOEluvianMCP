@@ -569,7 +569,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "The game's own message box, if one is up: `popup` with its text and each button's label and "
                  "what pressing it sends; null with none. Answers in any mode, the main menu too. A box holds "
                  "the game until it is answered, and nothing else says it is there: ask when a load or another "
-                 "order was taken and nothing followed. Reading only: no tool presses a button yet."},
+                 "order was taken and nothing followed. game action=press presses a button."},
         [](const Json &) -> ToolResult { return Json{{"popup", PopupJson()}}; });
 
     bench.Tools().AddKind(
@@ -839,6 +839,17 @@ void AddInspect(Bench &bench, const Watch &watch)
                 // slice's answer and the search's line for a log.
                 if (args.Bool("trace", false))
                 {
+                    if (search.partial)
+                    {
+                        Json tail = Json::array();
+                        const auto &points = search.partial->waypoints;
+                        for (std::size_t i = points.size() > 3 ? points.size() - 3 : 0; i < points.size(); ++i)
+                        {
+                            tail.push_back(VectorJson(points[i]));
+                        }
+                        walk["partialTail"] = std::move(tail);
+                        walk["partialWaypoints"] = points.size();
+                    }
                     walk["answers"] = search.answers;
                     walk["slices"] = search.slices;
                     walk["trace"] = search.trace;
@@ -1662,6 +1673,38 @@ Json SlotJson(const dao::saves::Slot &slot)
     return answer;
 }
 
+// The game's own messages by their text, as a movie's button sends its
+// callback and a key binding names what it does: the general way in at the
+// input layer, where no tool fits. DAOLib's dao::messages::SendText
+// (bf85cb1).
+void AddInput(Bench &bench, const Watch &watch)
+{
+    bench.Tools().Add(
+        ToolSpec{
+            "input",
+            "Send the game one of its own messages by its text, \"Receiver.Message arguments\": what the "
+            "interface's buttons send and key bindings name (\"GUIPopupLayer.ScriptDialogResult 1 1 -1\", "
+            "\"CClientExoApp.GUIDialogResult 1 0\"). inspect kind=popup shows what each button of a box "
+            "sends. The general way in when no tool fits, as `script` is for script commands; the game "
+            "does whatever the message means, so know what it is. Answers `sent`: false means the engine "
+            "knows no such receiver or message.",
+            Json{{"type", "object"},
+                 {"properties", {{"message", {{"type", "string"}, {"description", "Receiver.Message arguments"}}}}},
+                 {"required", {"message"}}},
+            Thread::Frame},
+        [&bench, &watch](const Json &raw) -> ToolResult {
+            const Args args(raw, "input");
+            if (watch.Mode() < 0)
+            {
+                throw ToolError("input: the game is still starting; health says when it runs");
+            }
+            const auto message = args.String("message");
+            const auto cursor = bench.Events().Next();
+            const bool sent = dao::messages::SendText(Wide(message));
+            return Json{{"message", message}, {"sent", sent}, {"cursor", cursor}};
+        });
+}
+
 // The camera, so a picture shows what a test means it to: a tester asked
 // for a way to turn it to a target before a screenshot (2026-10-01). The
 // turn is at once, not eased: a test wants the frame after to be the view.
@@ -1859,33 +1902,91 @@ void AddGame(Bench &bench, const Watch &watch)
         // multiply, and each reads back only its own (DAOLib ed55ab8,
         // 2026-09-30). One plugin owns the speed: in a turn-based test the
         // mod, through turnbased_settings' ai_turn_speed.
-        ToolSpec{"game",
-                 "The game itself. `action`: pause, unpause; saves, the saves of `character` (or every one) with "
-                 "each one's area, name, time played and level, as the load screen shows them; load, a save by "
-                 "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
-                 "manual) and `number`, from the main menu or in the world, as the load screen loads; save, a new "
-                 "manual save in the next free slot, with `name` (the default: it writes over nothing), a manual "
-                 "save to slot `number` (which writes over what is there), or `kind` quick, which writes over "
-                 "the player's quicksave. A load or save answers that the game was asked, and `cursor`: wait_for "
-                 "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
-                 "cutscene. (Not the game's speed: each plugin's copy of DAOLib scales the clock by its own, so "
-                 "two setting it multiply; a mod that sets speed owns it.)",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"pause", "unpause", "saves", "load", "save"}}}},
-                        {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
-                        {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
-                        {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
-                        {"name", {{"type", "string"}, {"description", "action=save: a manual save's name"}}}}},
-                      {"required", {"action"}}},
-                 Thread::Frame},
+        ToolSpec{
+            "game",
+            "The game itself. `action`: pause, unpause; saves, the saves of `character` (or every one) with "
+            "each one's area, name, time played and level, as the load screen shows them; load, a save by "
+            "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
+            "manual) and `number`, from the main menu or in the world, as the load screen loads; save, a new "
+            "manual save in the next free slot, with `name` (the default: it writes over nothing), a manual "
+            "save to slot `number` (which writes over what is there), or `kind` quick, which writes over "
+            "the player's quicksave. A load or save answers that the game was asked, and `cursor`: wait_for "
+            "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
+            "cutscene. press, a `button` of the game's message box by its label or place (inspect "
+            "kind=popup reads the box): the game is sent what a click on it sends. (Not the game's speed: each "
+            "plugin's copy of DAOLib scales the clock by its own, so "
+            "two setting it multiply; a mod that sets speed owns it.)",
+            Json{{"type", "object"},
+                 {"properties",
+                  {{"action", {{"type", "string"}, {"enum", {"pause", "unpause", "saves", "load", "save", "press"}}}},
+                   {"button", {{"description", "action=press: the button's label (\"Cancel\") or place from 0"}}},
+                   {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
+                   {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
+                   {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
+                   {"name", {{"type", "string"}, {"description", "action=save: a manual save's name"}}}}},
+                 {"required", {"action"}}},
+            Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "game");
-            const auto action = args.Choice("action", {"pause", "unpause", "saves", "load", "save"});
+            const auto action = args.Choice("action", {"pause", "unpause", "saves", "load", "save", "press"});
             auto *app = dao::CClientExoApp::Get();
             if (app == nullptr || watch.Mode() < 0)
             {
                 throw ToolError("game: the game is still starting; health says when it runs");
+            }
+            if (action == "press")
+            {
+                // A message box's button, by its place or its label: the game
+                // is sent what the button sends (DAOLib bf85cb1). Until this a
+                // box a test met could only be read, and a person had to click.
+                const auto popup = dao::gui::CurrentPopup();
+                if (!popup)
+                {
+                    throw ToolError("game: no message box is up to press a button of; inspect kind=popup reads one");
+                }
+                std::size_t index = popup->buttons.size();
+                const auto &wanted = args.Raw().value("button", Json());
+                if (wanted.is_number_integer())
+                {
+                    index = wanted.get<std::size_t>();
+                }
+                else if (wanted.is_string())
+                {
+                    const auto label = wanted.get<std::string>();
+                    for (std::size_t i = 0; i < popup->buttons.size(); ++i)
+                    {
+                        const auto has = Narrow(popup->buttons[i].label);
+                        if (std::ranges::equal(has, label, [](unsigned char a, unsigned char b) {
+                                return std::tolower(a) == std::tolower(b);
+                            }))
+                        {
+                            index = i;
+                        }
+                    }
+                }
+                if (index >= popup->buttons.size())
+                {
+                    std::string labels;
+                    for (const auto &button : popup->buttons)
+                    {
+                        labels += (labels.empty() ? "" : ", ") + Narrow(button.label);
+                    }
+                    throw ToolError(std::format("game: press needs `button`, its label or its place from 0; "
+                                                "the box \"{}\" has: {}",
+                                                Narrow(popup->text), labels));
+                }
+                Json answer = {{"pressed",
+                                {{"label", Narrow(popup->buttons[index].label)},
+                                 {"sends", Narrow(popup->buttons[index].callback)}}},
+                               {"box", Narrow(popup->text)},
+                               {"cursor", bench.Events().Next()}};
+                if (!dao::gui::PressPopupButton(index))
+                {
+                    throw ToolError("game: the game took no press of that button (the engine made no message of "
+                                    "what it sends)");
+                }
+                answer["popup"] = PopupJson();
+                return answer;
             }
             if (action == "pause" || action == "unpause")
             {
@@ -1991,6 +2092,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddGame(bench, watch);
     AddDialogue(bench, watch);
     AddCamera(bench, watch);
+    AddInput(bench, watch);
 }
 
 namespace

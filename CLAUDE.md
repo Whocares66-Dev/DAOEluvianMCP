@@ -20,7 +20,7 @@ src/core/     the bench without the game: HTTP parsing and routes, MCP's JSON-RP
 src/server/   the socket loop under core/Http.h: Winsock, 127.0.0.1, a thread per connection. Tested
               over loopback.
 src/game/     the tools that read and drive the game, through DAOLib (inspect, script, order, stage,
-              dialogue, camera, game, health), and the engine's events on the bus. Verified by playing.
+              dialogue, camera, input, game, health), and the engine's events on the bus. Verified by playing.
 src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_GetInterface)
 src/api/      EluvianAPI.h: the C ABI other plugins include. MIT, unlike the rest (GPLv3).
 tests/        Catch2 over src/core; tests/server over src/server
@@ -61,7 +61,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-10-01, against DAOLib `52e87a7`: 104 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
+Last green 2026-10-01, against DAOLib `bf85cb1`: 104 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
 
 ## Writing files from the shell
 
