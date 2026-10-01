@@ -55,31 +55,48 @@ constexpr std::string_view kInstructions =
     "script command by name when no tool fits. Calls run on the game's frame: while an area loads they are "
     "refused, and if frames stop they time out; `health` says which.";
 
-std::uint16_t PortSetting()
+// A whole number from the environment, within [low, high]; `fallback` when
+// the variable is not set, or is not such a number (said in the log).
+unsigned Setting(const char *name, unsigned fallback, unsigned low, unsigned high)
 {
     char *text = nullptr;
     std::size_t size = 0;
-    if (_dupenv_s(&text, &size, "ELUVIAN_PORT") == 0 && text != nullptr)
+    if (_dupenv_s(&text, &size, name) != 0 || text == nullptr)
     {
-        const std::string_view value(text);
-        unsigned port = 0;
-        const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), port);
-        std::free(text);
-        if (error == std::errc{} && port > 0 && port < 65536)
-        {
-            return static_cast<std::uint16_t>(port);
-        }
-        spdlog::warn("ELUVIAN_PORT is not a port; using {}", kDefaultPort);
+        return fallback;
     }
-    return kDefaultPort;
+    const std::string_view value(text);
+    unsigned number = 0;
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), number);
+    const bool good = error == std::errc{} && end == value.data() + value.size() && number >= low && number <= high;
+    std::free(text);
+    if (!good)
+    {
+        spdlog::warn("{} is not a number from {} to {}; using {}", name, low, high, fallback);
+        return fallback;
+    }
+    return number;
+}
+
+std::uint16_t PortSetting()
+{
+    return static_cast<std::uint16_t>(Setting("ELUVIAN_PORT", kDefaultPort, 1, 65535));
+}
+
+// How many events the bus keeps. A session of eight turn-based fights made
+// 12,700 in 66 minutes (2026-09-30), which the first 16,384 would have begun
+// to drop before an hour and a half; 32,768 is a few megabytes of the
+// game's 32-bit space. ELUVIAN_EVENTS chooses another.
+std::size_t EventsSetting()
+{
+    return Setting("ELUVIAN_EVENTS", 32768, 1024, 262144);
 }
 
 struct State
 {
     // Events are stamped with the frame from the watch's count, which is
-    // atomic; DAOLib's own is read only on the frame thread. 16384 events:
-    // every creature's commands come by the dozen a second in a fight.
-    Bench bench{BenchOptions{std::chrono::milliseconds(5000), 16384, [this] { return watch.Frames(); }}};
+    // atomic; DAOLib's own is read only on the frame thread.
+    Bench bench{BenchOptions{std::chrono::milliseconds(5000), EventsSetting(), [this] { return watch.Frames(); }}};
     game::Watch watch{bench};
     McpEndpoint mcp{bench, ServerInfo{"eluvian", EL_VERSION_STRING, std::string(kInstructions)}};
     RestEndpoint rest{bench};

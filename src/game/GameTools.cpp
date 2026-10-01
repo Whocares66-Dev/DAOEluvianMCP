@@ -1342,7 +1342,9 @@ struct ScriptEventTopic
 
 // The script events a test waits on, by the name of their topic,
 // eluvian.script.<name>. Not heartbeats and perception, which come by the
-// dozen a second and say little.
+// dozen a second and say little; nor EVENT_TYPE_COMMAND_COMPLETE, the most
+// frequent of all in play (2,094 of a session's 12,743 events, 2026-09-30),
+// which eluvian.command.ended says better: who, what, and how it ended.
 constexpr ScriptEventTopic kScriptEvents[] = {
     {dao::script::EventType::Damaged, "damaged"},
     {dao::script::EventType::Death, "death"},
@@ -1352,7 +1354,6 @@ constexpr ScriptEventTopic kScriptEvents[] = {
     {dao::script::EventType::AbilityCastImpact, "ability_cast_impact"},
     {dao::script::EventType::ApplyEffect, "apply_effect"},
     {dao::script::EventType::RemoveEffect, "remove_effect"},
-    {dao::script::EventType::CommandComplete, "command_complete"},
     {dao::script::EventType::GamemodeChange, "gamemode_change"},
     {dao::script::EventType::ArealoadPostloadexit, "area_loaded"},
     {dao::script::EventType::PartymemberAdded, "partymember_added"},
