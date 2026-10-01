@@ -625,6 +625,10 @@ class Bridge:
             except (Unreachable, StillWaiting) as error:
                 return {"error": f"asked, but the wait for the load failed: {error}"}
             if status == 200 and isinstance(event, dict) and event.get("found"):
+                # The event comes while the mode still reads loading (seen 2026-10-01); the
+                # world is there, and tools answer, a moment after.
+                while self.mode() == "loading" and time.monotonic() < deadline:
+                    self.sleep(0.5)
                 return {"save": body.get("save"), "event": event.get("event")}
             mode = self.mode()
             waited = time.monotonic() - asked_at
