@@ -69,6 +69,9 @@ struct ToolSpec
     Json inputSchema = Json{{"type", "object"}};
     Thread thread = Thread::Frame;
     bool readOnly = false; // MCP's readOnlyHint: changes nothing in the game
+    // For a tool made of kinds (one without a handler of its own): the
+    // argument that chooses the kind, `kind` for inspect, `action` for stage.
+    std::string kindProperty = "kind";
 };
 
 } // namespace eluvian

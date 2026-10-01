@@ -71,6 +71,10 @@ void AddEventTools(Bench &bench)
                         "default: the oldest event still held."}};
     eventsSchema["properties"]["limit"] = {
         {"type", "integer"}, {"minimum", 1}, {"maximum", 1000}, {"description", "At most this many; 100 by default."}};
+    eventsSchema["properties"]["describe"] = {
+        {"type", "boolean"},
+        {"description", "List the topics there are (those passing `topic`) with what each means and what its "
+                        "payload holds, instead of reading events."}};
     bench.Tools().Add(
         ToolSpec{"events",
                  "The bench's events since a cursor: what happened in the game (eluvian.*) and what mods emit (their "
@@ -81,6 +85,10 @@ void AddEventTools(Bench &bench)
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "events");
             const auto filter = EventFilter::FromArgs(args.Raw());
+            if (args.Bool("describe", false))
+            {
+                return Json{{"topics", bench.Topics().List(filter)}};
+            }
             const auto since = static_cast<std::uint64_t>(args.Integer("since", 0, 0, kNoLimit));
             const auto limit = static_cast<std::size_t>(args.Integer("limit", 100, 1, 1000));
             const auto page = bench.Events().Since(since, filter, limit);

@@ -151,3 +151,23 @@ TEST_CASE("log reads nothing outside its folder, and says how to find a log", "[
     CHECK_THROWS_WITH(bench.Invoke("log", Json{{"file", "turnbased"}, {"grep", "("}}),
                       ContainsSubstring("not a regular expression"));
 }
+
+TEST_CASE("events describes the topics there are, filtered like a read", "[bench]")
+{
+    Bench bench;
+    AddEventTools(bench);
+    CHECK(bench.Topics().Describe(
+        TopicSpec{"eluvian.creature.died", "A creature died.", Json{{"id", "the creature"}}, "eluvian"}));
+    CHECK(bench.Topics().Describe(TopicSpec{"mymod.thing_happened", "A thing.", Json::object(), "mymod"}));
+    CHECK_FALSE(bench.Topics().Describe(TopicSpec{"mymod.thing_happened", "A thing, again.", Json::object(), "mymod"}));
+
+    auto answer = bench.Invoke("events", Json{{"describe", true}}).data;
+    REQUIRE(answer["topics"].size() == 2);
+    CHECK(answer["topics"][0]["topic"] == "eluvian.creature.died");
+    CHECK(answer["topics"][0]["fields"]["id"] == "the creature");
+    CHECK(answer["topics"][1]["description"] == "A thing, again.");
+
+    answer = bench.Invoke("events", Json{{"describe", true}, {"topic", "mymod.*"}}).data;
+    REQUIRE(answer["topics"].size() == 1);
+    CHECK(answer["topics"][0]["from"] == "mymod");
+}

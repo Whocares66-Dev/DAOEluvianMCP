@@ -49,15 +49,39 @@ Json Event::ToJson() const
     return Json{{"seq", seq}, {"frame", frame}, {"ms", ms}, {"topic", topic}, {"payload", payload}};
 }
 
+bool EventFilter::AcceptsTopic(std::string_view topic) const
+{
+    return topics.empty() ||
+           std::ranges::any_of(topics, [topic](const std::string &pattern) { return TopicMatches(pattern, topic); });
+}
+
 bool EventFilter::Accepts(const Event &event) const
 {
-    if (!topics.empty() && std::ranges::none_of(topics, [&event](const std::string &pattern) {
-            return TopicMatches(pattern, event.topic);
-        }))
+    return AcceptsTopic(event.topic) && (match.empty() || Subset(match, event.payload));
+}
+
+bool EventCatalog::Describe(TopicSpec spec)
+{
+    const std::lock_guard lock(mutex_);
+    const bool added = !topics_.contains(spec.topic);
+    std::string topic = spec.topic;
+    topics_.insert_or_assign(std::move(topic), std::move(spec));
+    return added;
+}
+
+Json EventCatalog::List(const EventFilter &filter) const
+{
+    const std::lock_guard lock(mutex_);
+    Json list = Json::array();
+    for (const auto &[topic, spec] : topics_)
     {
-        return false;
+        if (filter.AcceptsTopic(topic))
+        {
+            list.push_back(Json{
+                {"topic", topic}, {"description", spec.description}, {"fields", spec.fields}, {"from", spec.from}});
+        }
     }
-    return match.empty() || Subset(match, event.payload);
+    return list;
 }
 
 EventFilter EventFilter::FromArgs(const Json &args)

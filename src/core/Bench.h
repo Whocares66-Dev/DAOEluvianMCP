@@ -51,6 +51,10 @@ class Bench
     {
         return events_;
     }
+    EventCatalog &Topics()
+    {
+        return topics_;
+    }
     FrameQueue &Frames()
     {
         return frames_;
@@ -67,6 +71,7 @@ class Bench
     BenchOptions options_;
     ToolRegistry tools_;
     EventBus events_;
+    EventCatalog topics_;
     FrameQueue frames_;
 };
 

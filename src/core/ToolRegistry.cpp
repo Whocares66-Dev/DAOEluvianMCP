@@ -73,16 +73,18 @@ std::optional<Call> ToolRegistry::Resolve(std::string_view tool, const Json &arg
     {
         return Call{entry.spec.name, {}, entry.spec.thread, entry.handler};
     }
-    const auto kindArg = args.is_object() ? args.find("kind") : args.end();
+    const std::string &property = entry.spec.kindProperty;
+    const auto kindArg = args.is_object() ? args.find(property) : args.end();
     if (kindArg == args.end() || !kindArg->is_string())
     {
-        throw ToolError(entry.spec.name + " needs `kind`, one of: " + KindList(entry.kinds));
+        throw ToolError(entry.spec.name + " needs `" + property + "`, one of: " + KindList(entry.kinds));
     }
     const auto &kindName = kindArg->get_ref<const std::string &>();
     const auto kit = entry.kinds.find(kindName);
     if (kit == entry.kinds.end())
     {
-        throw ToolError(entry.spec.name + " has no kind \"" + kindName + "\"; the kinds are: " + KindList(entry.kinds));
+        throw ToolError(entry.spec.name + " has no " + property + " \"" + kindName +
+                        "\"; the choices are: " + KindList(entry.kinds));
     }
     return Call{entry.spec.name, kindName, kit->second.spec.thread, kit->second.handler};
 }
@@ -98,7 +100,8 @@ Json ToolRegistry::Describe() const
         if (!entry.handler)
         {
             Json kinds = Json::array();
-            description += "\n\nKinds:";
+            const std::string &property = entry.spec.kindProperty;
+            description += "\n\n`" + property + "`:";
             for (const auto &[kindName, kind] : entry.kinds)
             {
                 kinds.push_back(kindName);
@@ -109,12 +112,12 @@ Json ToolRegistry::Describe() const
                 description += " none registered yet.";
             }
             schema["type"] = "object";
-            schema["properties"]["kind"]["type"] = "string";
-            schema["properties"]["kind"]["enum"] = kinds;
+            schema["properties"][property]["type"] = "string";
+            schema["properties"][property]["enum"] = kinds;
             Json required = schema.value("required", Json::array());
-            if (std::find(required.begin(), required.end(), "kind") == required.end())
+            if (std::find(required.begin(), required.end(), property) == required.end())
             {
-                required.push_back("kind");
+                required.push_back(property);
             }
             schema["required"] = required;
         }

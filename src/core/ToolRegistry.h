@@ -3,7 +3,7 @@
 // ToolRegistry, C:\modding\devbench\src\ToolRegistry.h).
 //
 // A tool is either one handler, or a base whose work is split into kinds
-// chosen by its `kind` argument: `inspect kind="creature"`, and kinds other
+// chosen by one argument (`kind` for inspect, `action` for stage): `inspect kind="creature"`, and kinds other
 // plugins add (`inspect kind="mymod.state"`). A kind keeps the list of
 // tools short while staying discoverable: adding one rewrites the base's
 // schema (the kind's name joins the `kind` enum) and its description (a line

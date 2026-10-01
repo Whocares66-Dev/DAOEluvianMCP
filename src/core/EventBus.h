@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -54,9 +55,36 @@ struct EventFilter
     Json match = Json::object();
 
     [[nodiscard]] bool Accepts(const Event &event) const;
+    // Whether a topic passes, by `topics` alone.
+    [[nodiscard]] bool AcceptsTopic(std::string_view topic) const;
     // From a tool's arguments: `topic` (a string or an array) and `match`.
     // Throws ToolError for a wrong type.
     static EventFilter FromArgs(const Json &args);
+};
+
+// What each topic means, written where it is emitted: the engine's by
+// Eluvian, a plugin's by the plugin (EluvianAPI.h's DescribeEvent). So an
+// agent lists the topics there are, and what their payloads hold, before it
+// waits for one, as it reads a tool's description before calling it.
+struct TopicSpec
+{
+    std::string topic;
+    std::string description;
+    Json fields = Json::object(); // a payload field's name to what it holds
+    std::string from;             // "eluvian", or the plugin that described it
+};
+
+class EventCatalog
+{
+  public:
+    // Adds or replaces a topic's description; true if the topic was new.
+    bool Describe(TopicSpec spec);
+    // The topics passing the filter's `topics`, sorted.
+    [[nodiscard]] Json List(const EventFilter &filter) const;
+
+  private:
+    mutable std::mutex mutex_;
+    std::map<std::string, TopicSpec, std::less<>> topics_;
 };
 
 class EventBus

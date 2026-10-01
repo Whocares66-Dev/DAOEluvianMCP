@@ -109,3 +109,26 @@ TEST_CASE("every change bumps the revision", "[registry]")
     registry.AddKind("inspect", KindSpec{"game", "d"}, Answer(0));
     CHECK(registry.Revision() == start + 2);
 }
+
+TEST_CASE("a base tool may choose its kinds by another argument", "[registry]")
+{
+    ToolRegistry registry;
+    ToolSpec stage{"stage", "Set up a test.", Json{{"type", "object"}}};
+    stage.kindProperty = "action";
+    registry.Add(stage);
+    registry.AddKind("stage", KindSpec{"kill", "Kill a creature."}, Answer("killed"));
+    registry.AddKind("stage", KindSpec{"mymod.arena", "A mod's fight."}, Answer("arena"));
+
+    const auto call = registry.Resolve("stage", Json{{"action", "mymod.arena"}});
+    REQUIRE(call);
+    CHECK(call->handler({}).data == "arena");
+    CHECK_THROWS_WITH(registry.Resolve("stage", Json{{"kind", "kill"}}), ContainsSubstring("needs `action`"));
+    CHECK_THROWS_WITH(registry.Resolve("stage", Json{{"action", "dance"}}),
+                      ContainsSubstring("no action \"dance\"") && ContainsSubstring("kill, mymod.arena"));
+
+    const Json tool = registry.Describe()[0];
+    CHECK(tool["inputSchema"]["properties"]["action"]["enum"] == Json::array({"kill", "mymod.arena"}));
+    CHECK(tool["inputSchema"]["required"] == Json::array({"action"}));
+    CHECK_FALSE(tool["inputSchema"]["properties"].contains("kind"));
+    CHECK_THAT(tool["description"].get<std::string>(), ContainsSubstring("`action`:\n- kill: Kill a creature."));
+}
