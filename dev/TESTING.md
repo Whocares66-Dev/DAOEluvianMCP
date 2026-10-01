@@ -140,3 +140,15 @@ A test driven with no computer use, 2026-10-01, 01:22 to 01:24 (the unmodded gam
 - `game_quit`: closed. The user's saves were as before: nothing saved, no transition crossed.
 - eluvian.log held all 40 calls with their arguments, times and refusals.
 - Still not seen: `game action=save`, a fight with creatures in rooms not seen (indoors), dialogue (no tool yet).
+
+The Elven Ruins, 2026-10-01, 01:49 to 02:05 (Lyna's AutoSave_2, loaded only; computer-use-agent's runs and two of mine):
+
+- Indoors `room` gives the rooms' own numbers: the party's 1574 `seen` in view, `wanted` kept, `load` loaded; six rooms ahead (1575 to 1580) `seen` never, with thirty creatures standing in them. The spiders' fight there: the turn-based mod's rule line, four combatants, the room drawn.
+- `order action=use` by the command path left a chest and a door shut, the command ending COMMAND_FAILED (computer-use-agent; seen again on chest 0x1fd): it always sent PLACEABLE_ACTION_USE. By click both opened, in explore mode, in a turn-based fight and in a real-time one. Since `47bb9ef` a use by the controlled creature goes by click by default (seen: the answer's `via` click, the command's end success), and the command path takes `objectAction`; `open` by command is not yet seen.
+- `inspect kind=placeables`: three within 45 m of the entrance (two ways back to the clearing, a cocoon), each with state, interactive and lock.
+- `camera`: read (following Lyna, yaw 357.5, pitch 85, zoom 1); `face` the cocoon turned the view down the passage at once; `turn` to 90; `follow` a spider 40 m ahead cut the view to its room, and `follow` Lyna brought it back. Screenshots after each showed the view asked for.
+- `eluvian.dialogue.line` carried Tamlen's remark with its text, twice a millisecond apart (DAOLib notes the same). No conversation with replies was in reach: `dialogue` choose, continue and skip_cutscene are not yet seen.
+- A game loaded from inside the game (`game action=load`, then `wait_for eluvian.game.loaded`): explore mode 3 s after asking.
+- `wait_for eluvian.command.ended` matched on `id` alone returned an earlier command's end; match on `type` as well.
+- Once, 40 s after a process's first load and before any fight, `inspect kind=creature` gave the hero no abilities (computer-use-agent); three every time since. Not reproduced.
+- The user's saves were as before after every run.
