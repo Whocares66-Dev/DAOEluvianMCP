@@ -116,6 +116,7 @@ The turn bar's look and portraits, floating text actually drawn, selection circl
 
 - `RegisterTool(name, descriptorJson, handler, context, flags)` and `RegisterInspectKind(kind, ...)`: the handler gets the arguments as JSON and answers once through an `EluvianReply`, `ok(json)` or `error(sentence)`. It is called on the frame thread unless `ELUVIAN_ON_LISTENER`; `ELUVIAN_READ_ONLY` is MCP's read-only hint. The bench's own tool names are refused.
 - `EmitEvent(topic, payloadJson)`, from any thread.
+- From 0.2.0: `RegisterToolExtension(baseTool, key, ...)`, a choice of one of the tools made of choices: `inspect` (by `kind`) or `stage` (by `action`, a set-up only the mod knows, such as its arena), as devbench's extensions of its base tools; and `DescribeEvent(topic, descriptorJson)`, what a topic means and what its payload holds, listed with Eluvian's own by `events describe=true`. A plugin checks `ELUVIAN_HAS(eluvian, member)` first, since an older Eluvian's interface ends before them.
 
 JSON strings cross the boundary, never C++ objects.
 

@@ -14,8 +14,9 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `inspect` | `kind`: `game` (mode, pause, area, hero, party), `creatures` (positions, sides, health, what each is doing), `creature` (one in full, with its effects), `geometry` (distance, line of sight, the path walked), and kinds plugins add |
 | `order` | The player's orders by id: attack, move, ability, use; through the engine's own click functions |
 | `script` | Any of the game's script commands by name, with its answer |
+| `stage` | A test's set-up: conditions, health, a death, a spawn, and mods' own actions |
 | `game` | Pause, unpause |
-| `events`, `wait_for` | The event bus from a cursor; block until an event happens |
+| `events`, `wait_for` | The event bus from a cursor; block until an event happens; `describe` lists the topics and what they hold |
 | `scenario` | Steps in one call: tools, waits for events, pauses, checks; a transcript back |
 | `log` | DAOLib's logs from a cursor |
 | `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: is it running, start it, close it |

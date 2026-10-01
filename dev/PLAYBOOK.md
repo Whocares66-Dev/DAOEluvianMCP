@@ -46,7 +46,7 @@ Or as one call:
 
 ## A mod's own
 
-A mod that registers with Eluvian (`src/api/EluvianAPI.h`) shows up in `health`'s `plugins`; its tools are in the tool list (named with its prefix, `mymod_reset`), its reads are `inspect` kinds (`mymod.state`, listed in `inspect`'s description), and its events come on the same bus under its prefix (`mymod.*`). The mod documents what they mean. The turn-based mod's are in DAOTurnBased (`inspect kind=turnbased.state`, `turnbased_*` tools, `turnbased.*` events: its `dev/TESTING.md`).
+A mod that registers with Eluvian (`src/api/EluvianAPI.h`) shows up in `health`'s `plugins`; its tools are in the tool list (named with its prefix, `mymod_reset`), its reads are `inspect` kinds (`mymod.state`) and its set-ups `stage` actions (`mymod.arena`), each listed in its tool's description, and its events come on the same bus under its prefix (`mymod.*`). `events {"describe": true}` lists every topic there is, Eluvian's and the mods', with what it means and what its payload holds; a mod's own docs say the rest. The turn-based mod's are in DAOTurnBased (`inspect kind=turnbased.state`, `turnbased_*` tools, `turnbased.*` events: its `dev/TESTING.md`).
 
 ## The engine's events
 
