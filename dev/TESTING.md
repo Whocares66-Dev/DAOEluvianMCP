@@ -175,3 +175,12 @@ Whose game it is, and what a chest takes, 2026-10-01, 04:38 to 04:42:
 - A script message box held nothing: loads, orders, a fight and stage calls went on under it for six minutes (computer-use-agent). One `screenshot` of the window came back black in that time, cause not known; `source=game` is to be tried when it does again.
 - An attack by click on a creature behind a shut door 12 m off: the creature walked 3 m and stood at UseObject with the attack queued, the turn-based mod on or off; from 3 m it opened the door and went through (computer-use-agent). Whether a real click does the same is not known.
 - Still not seen: `dialogue` choose, continue and skip_cutscene.
+
+A conversation answered, 2026-10-01, 04:45 to 04:49 (the Elven Ruins from Lyna's AutoSave_2, the game started with owner "eluvian-agent"):
+
+- The statue's conversation with Tamlen, reached by `order action=use` on the mirror room's door, which walks the hero past its trigger: `eluvian.dialogue.line` "I can't believe this. You recognize this statue, don't you?", `eluvian.dialogue.replies` empty while he spoke and, four seconds on, three replies; `inspect kind=dialogue` gave the same, mode dialog.
+- `dialogue action=choose place=0`: answered with the reply chosen; `eluvian.dialogue.chosen` followed, then the next line.
+- `dialogue action=continue` on that line: the replies came at once, one with no text, which the game went through (`eluvian.dialogue.chosen` with empty text), and the conversation ended, mode explore a second later. So the loop in the tool's description works as written.
+- `dialogue action=skip_cutscene` is not yet seen. Opening the mirror room's door read as mode loading for a second, not cutscene.
+- A move across the ruins ended COMMAND_FAILED_PATH_ACTION_REQUIRED where a shut door stood on the way; `order action=use` on the door itself walked there and opened it.
+- That door's opening made the game autosave by plot (`eluvian.game.saved` auto 3) though no area transition was crossed: a test that must write no save stops before it. The save it made holds the test's state, and was left for the user to decide on.
