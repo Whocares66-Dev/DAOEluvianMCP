@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "eluvian": {
+      "command": "python",
+      "args": ["tools/eluvian_bridge.py"]
+    }
+  }
+}
