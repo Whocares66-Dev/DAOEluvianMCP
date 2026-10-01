@@ -152,6 +152,28 @@ std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int hei
 
 } // namespace
 
+WindowPlace GameWindowPlace()
+{
+    WindowPlace place;
+    HWND window = GameWindow();
+    if (window == nullptr)
+    {
+        return place;
+    }
+    place.found = true;
+    place.minimised = IsIconic(window) != FALSE;
+    place.foreground = GetForegroundWindow() == window;
+    RECT client{};
+    GetClientRect(window, &client);
+    POINT origin{0, 0};
+    ClientToScreen(window, &origin);
+    place.x = origin.x;
+    place.y = origin.y;
+    place.width = client.right - client.left;
+    place.height = client.bottom - client.top;
+    return place;
+}
+
 Picture ReencodeJpeg(const std::string &jpeg, float quality)
 {
     const ComScope com;

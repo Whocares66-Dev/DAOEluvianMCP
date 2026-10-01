@@ -100,6 +100,11 @@ def checks(run: Run) -> None:
         tool("inspect", {"kind": "popup"}),
         lambda a: a["popup"] is None,
     )
+    check(
+        "inspect window",
+        tool("inspect", {"kind": "window"}),
+        lambda a: a["client"]["width"] > 100 and a["client"]["height"] > 100,
+    )
 
     check(
         "script call",

@@ -28,6 +28,20 @@ struct Picture
 // could not draw it.
 Picture CaptureGameWindow(float quality);
 
+// Where the game's window is on the desktop: what turns a place in the
+// game's picture into one a real mouse can be sent to.
+struct WindowPlace
+{
+    bool found = false; // the game has a window
+    int x = 0;          // the client area's top left, in desktop pixels
+    int y = 0;
+    int width = 0; // the client area's size
+    int height = 0;
+    bool minimised = false;
+    bool foreground = false; // it is the window the keyboard and mouse go to
+};
+WindowPlace GameWindowPlace();
+
 // A JPEG decoded and written again as a plain one. The game's own
 // screenshots carry an Exif header that some readers will not take: an
 // image reader rejected one until it was saved again, and so did the

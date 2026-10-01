@@ -4,6 +4,8 @@
 // kinds of their own through the C ABI.
 #include "game/Shared.h"
 
+#include "game/Capture.h"
+
 namespace eluvian::game
 {
 
@@ -72,6 +74,24 @@ void AddInspect(Bench &bench, const Watch &watch)
             }
             answer["selected"] = std::move(selected);
             return answer;
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"window",
+                 "The game's window on the desktop, for a test that must use the real mouse: `client`, its "
+                 "picture's top left corner in desktop pixels and its size, and whether it is minimised or the "
+                 "`foreground` window (the one the mouse and keys go to). A place in a screenshot, as a fraction "
+                 "of the picture, times the size, plus the corner, is where to click. Answers in any mode."},
+        [](const Json &) -> ToolResult {
+            const auto place = GameWindowPlace();
+            if (!place.found)
+            {
+                throw ToolError("inspect: the game has no window yet");
+            }
+            return Json{{"client", {{"x", place.x}, {"y", place.y}, {"width", place.width}, {"height", place.height}}},
+                        {"minimised", place.minimised},
+                        {"foreground", place.foreground}};
         });
 
     bench.Tools().AddKind(
