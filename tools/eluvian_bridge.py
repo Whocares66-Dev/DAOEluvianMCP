@@ -162,6 +162,56 @@ class Processes:
         subprocess.run(command, capture_output=True, check=False)
 
 
+SAVE_KINDS = (("Slot_", "manual"), ("AutoSave_", "auto"), ("QuickSave_", "quick"))
+
+
+def list_saves(characters: Path, character: str | None = None) -> list[dict]:
+    """The game's saves, newest first, from their folders:
+    Characters\<character>\Saves\<Slot_|AutoSave_|QuickSave_><n>\<name>.das (dev/SAVES.md in
+    DAOLib). The name is the save's, which the game makes the area's (CastleCousland)."""
+    saves = []
+    if not characters.is_dir():
+        return saves
+    for folder in sorted(characters.iterdir()):
+        if not folder.is_dir() or (
+            character and folder.name.lower() != character.lower()
+        ):
+            continue
+        root = folder / "Saves"
+        if not root.is_dir():
+            continue
+        for slot in root.iterdir():
+            kind = next(
+                (
+                    (k, prefix)
+                    for prefix, k in SAVE_KINDS
+                    if slot.name.startswith(prefix)
+                ),
+                None,
+            )
+            if kind is None or not slot.name[len(kind[1]) :].isdigit():
+                continue
+            das = next(iter(sorted(slot.glob("*.das"))), None)
+            if das is None:
+                continue
+            saved = das.stat().st_mtime
+            saves.append(
+                {
+                    "character": folder.name,
+                    "kind": kind[0],
+                    "number": int(slot.name[len(kind[1]) :]),
+                    "name": das.stem,
+                    "saved": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(saved)),
+                    "folder": str(slot),
+                    "_mtime": saved,
+                }
+            )
+    saves.sort(key=lambda save: save["_mtime"], reverse=True)
+    for save in saves:
+        del save["_mtime"]
+    return saves
+
+
 def text_result(value: object, is_error: bool = False) -> dict:
     text = value if isinstance(value, str) else json.dumps(value)
     result: dict = {"content": [{"type": "text", "text": text}], "isError": is_error}
@@ -171,6 +221,21 @@ def text_result(value: object, is_error: bool = False) -> dict:
 
 
 BRIDGE_TOOLS = [
+    {
+        "name": "game_saves",
+        "description": (
+            "The game's saves on disk, newest first: character, kind (manual, auto, quick), number, "
+            "the save's name (the area's, as the game names it), when it was saved, and its folder. "
+            "Answers while the game is down, to choose what a test starts from."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "character": {"type": "string", "description": "Only this character's"}
+            },
+        },
+        "annotations": {"readOnlyHint": True},
+    },
     {
         "name": "game_status",
         "description": (
@@ -217,12 +282,17 @@ class Bridge:
         cache: Path,
         send: Callable[[dict], None],
         sleep: Callable[[float], None] = time.sleep,
+        characters: Path | None = None,
     ) -> None:
         self.game = game
         self.processes = processes
         self.cache = cache
         self.send = send
         self.sleep = sleep
+        # The saves' root, beside the logs' folder: Documents\BioWare\Dragon Age\Characters.
+        self.characters = (
+            characters if characters is not None else game.folder.parent / "Characters"
+        )
         self.revision: int | None = None
         self.lock = threading.Lock()
 
@@ -394,6 +464,12 @@ class Bridge:
                     "id": request_id,
                     "error": {"code": -32602, "message": "no tool name"},
                 }
+            if name == "game_saves":
+                character = arguments.get("character")
+                saves = list_saves(
+                    self.characters, character if isinstance(character, str) else None
+                )
+                return reply(text_result({"count": len(saves), "saves": saves}))
             if name == "game_status":
                 return reply(text_result(self.game_status()))
             if name == "game_launch":

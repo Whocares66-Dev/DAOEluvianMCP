@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -152,7 +153,9 @@ class BridgeTest(unittest.TestCase):
     def test_tools_are_the_bridges_and_the_games(self) -> None:
         reply = self.bridge.handle(request(1, "tools/list"))
         names = [tool["name"] for tool in reply["result"]["tools"]]
-        self.assertEqual(names, ["game_status", "game_launch", "game_quit", "health"])
+        self.assertEqual(
+            names, ["game_saves", "game_status", "game_launch", "game_quit", "health"]
+        )
 
     def test_the_games_tools_are_kept_for_while_it_is_down(self) -> None:
         self.bridge.handle(request(1, "tools/list"))
@@ -223,6 +226,36 @@ class BridgeTest(unittest.TestCase):
         self.assertIn(
             {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
         )
+
+    def test_saves_are_listed_from_their_folders_newest_first(self) -> None:
+        characters = self.folder / "Characters"
+        for character, slot, name, when in (
+            ("Aedan", "Slot_2", "CastleCousland", 1_700_000_200),
+            ("Aedan", "QuickSave_1", "Ostagar", 1_700_000_300),
+            ("Lyna", "AutoSave_3", "Dalish", 1_700_000_100),
+        ):
+            folder = characters / character / "Saves" / slot
+            folder.mkdir(parents=True)
+            das = folder / f"{name}.das"
+            das.write_bytes(b"")
+            os.utime(das, (when, when))
+        (characters / "Aedan" / "Saves" / "Notes").mkdir()  # not a slot
+        (characters / "Aedan" / "Saves" / "Slot_3").mkdir()  # no save in it
+        self.bridge.characters = characters
+
+        saves = self.call("game_saves")["structuredContent"]["saves"]
+        self.assertEqual(
+            [(s["character"], s["kind"], s["number"], s["name"]) for s in saves],
+            [
+                ("Aedan", "quick", 1, "Ostagar"),
+                ("Aedan", "manual", 2, "CastleCousland"),
+                ("Lyna", "auto", 3, "Dalish"),
+            ],
+        )
+        only = self.call("game_saves", {"character": "lyna"})["structuredContent"]
+        self.assertEqual(only["count"], 1)
+        self.bridge.characters = self.folder / "nowhere"
+        self.assertEqual(self.call("game_saves")["structuredContent"]["count"], 0)
 
     def test_input_that_ends_still_gets_every_answer(self) -> None:
         lines = [

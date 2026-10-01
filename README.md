@@ -19,7 +19,7 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `events`, `wait_for` | The event bus from a cursor; block until an event happens; `describe` lists the topics and what they hold |
 | `scenario` | Steps in one call: tools, waits for events, pauses, checks; a transcript back |
 | `log` | DAOLib's logs from a cursor |
-| `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: is it running, start it, close it |
+| `game_saves`, `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: the saves on disk, is it running, start it, close it |
 
 ## Building
 

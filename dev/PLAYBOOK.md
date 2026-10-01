@@ -13,6 +13,7 @@ For an agent testing the game or a mod in it. Every call below is an MCP tool (t
 ## Getting into the game
 
 ```
+game_saves {"character": "Aedan"}             bridge: the saves on disk, newest first, before the game runs
 game_launch {}                                   bridge: starts the game once, waits for the main menu
 health {}                                        state running, mode pregame (the main menu); the mods registered
 wait_for {"topic": "eluvian.game.loaded", "timeoutMs": 300000}     load the save (by hand for now)
