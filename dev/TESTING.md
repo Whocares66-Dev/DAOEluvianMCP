@@ -66,3 +66,13 @@ What the tester measured (computer-use-agent, 18:37): a 60-line script played th
 - `order via:"click"` attack, in combat on the hero's turn: nothing queued, and the tool said explore mode did not take it. The mod saw the click ("primary action under the cursor") and then "the order queued no command". lib-agent read why: the primary action's handler reads the object set (no re-pick), but orders an attack from every party member selected in the interface, not the controlled creature; and its answer is a void function's leftover register. The tool now ignores that answer and says the events tell who obeyed. Attacks go by the default via.
 - An attack's impact is delivered to the attacker (receiver and creator both the hero). Script events now carry their parameters, named for attack_impact (attacker, target, hit, effectId) and damaged (damager, amount, damageType, ability), from rules_core.nss.
 - A `wait_for` on turn_started with `since` taken after the turn began waits out its timeout: the turn under way has no event ahead of the cursor. `inspect kind=turnbased.state` answers whose turn it is (the mod's next build).
+
+## stage in play, 2026-09-30
+
+19:13 to 19:28, two fights by computer-use-agent on the eluvian.dll of 19:07 and turnbased `b63e52f` (its report: `DAOTurnBased\dev\PLAYTEST-2026-09-30-4.md`; scripts `DAOTurnBased\build\stage3.py`, `stage6.py`).
+
+- `stage effect knockdown` for 6 s put EFFECT_TYPE_KNOCKDOWN on the dog in its own player-run turn and on a soldier in its AI turn; the mod took both as the game's own ("is held ...: 1 of its turns lost", "turn ends: stunned"). Cases no play test had reached before.
+- `stage kill` felled Eleanor in an enemy's turn ("Teyrna Eleanor falls"), and the four enemies one after another, 35 ms apart, to end a fight on purpose.
+- The answer to `kill` named the creature only, so a script reading `creature.dead` found nothing. Every `stage` answer now carries the creature as the change leaves it (health, dead, command); after a kill it still lives in that answer, and the death is `eluvian.creature.died`, which these scripts did not wait on: whether it comes after `stage kill` is still to see.
+- With turnbased `b63e52f`, `inspect kind=turnbased.state` is registered and answers whose turn it is, so a script started in the middle of a turn acts at once; `turnbased.refused` comes with its detail, command and note.
+- Not yet tried: `stage` spawn, health, remove_effects; `order via:"click"` since its answer changed.
