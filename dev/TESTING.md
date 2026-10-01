@@ -114,3 +114,10 @@ Screenshots, 20:29 to 20:46:
 - Attacks: 292 hits, 174 misses, 21 criticals, 10 blocked, 2 backstabs; 3,582 physical damage in 382 events.
 - The bus's rate is what a turn-based session costs: `eluvian.paused` 1,475 (the mod pauses and unpauses each turn), `eluvian.script.command_complete` 2,094. At that rate 16,384 events last under an hour and a half. So the bus keeps 32,768 (`ELUVIAN_EVENTS` chooses another), and command_complete, which `eluvian.command.ended` says better, is no longer on it.
 - For the mod (told to turn-based-agent): `turnbased.up_again` 311 times against 39 falls, two living creatures getting one every 2.6 s for eleven minutes; 1,097 refusals, up to 64 in a second, most of them followers' moves out of turn; one fight ended "the game ended combat" three seconds after its last enemy fell; AI commands timing out as two fights began.
+
+Loading without the menus, 2026-10-01 (computer-use-agent, on the eluvian.dll of 20:52, DAOLib `f253b8c`):
+
+- `game action=saves` listed the user's ten saves. `game action=load` for Aedan's manual save 2, asked at the main menu (health's mode pregame), answered `asked` at once, and the save was loaded and in explore mode within 14 s, no menu touched. DAOLib's `dao::saves::Load` works from the menu.
+- `order action=use` on a door: the hero walked 13 m and opened it.
+- Not called: `save` (its default was then a quicksave, which would have written over the user's; it is a new manual save now).
+- On that the bridge's `game_launch` takes `load`, and starts a test in its save: asks for the load until the menu takes it, then waits for `eluvian.game.loaded`.

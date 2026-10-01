@@ -14,12 +14,14 @@ For an agent testing the game or a mod in it. Every call below is an MCP tool (t
 
 ```
 game_saves {"character": "Aedan"}             bridge: the saves on disk, newest first, before the game runs
-game_launch {}                                   bridge: starts the game once, waits for the main menu
-health {}                                        state running, mode pregame (the main menu); the mods registered
-game {"action": "load", "character": "Aedan", "kind": "manual", "number": 2}     asks, and answers a cursor
-wait_for {"topic": "eluvian.game.loaded", "since": <cursor>, "timeoutMs": 120000}
-inspect {"kind": "game"}                         hero, party, area, mode explore
+game_launch {"load": {"character": "Aedan", "kind": "manual", "number": 2}}
+                                                 bridge: starts the game once, loads the save without the menus,
+                                                 and answers when the world is there
+health {}                                        state running, mode explore; the mods registered
+inspect {"kind": "game"}                         hero, party, area
 ```
+
+With the game already running, `game {"action": "saves"}` lists the saves and `game {"action": "load", ...}` loads one, from the main menu (mode pregame) or in the world; `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` says when it is there. A save made by a test is a new manual one by default (`game {"action": "save", "name": "..."}`), which writes over nothing.
 
 ## Reading and acting
 
