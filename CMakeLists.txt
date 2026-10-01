@@ -129,6 +129,7 @@ add_library(
     src/core/Mcp.cpp
     src/core/Origin.cpp
     src/core/Rest.cpp
+    src/core/Scenario.cpp
     src/core/ToolRegistry.cpp
 )
 el_apply_warnings(el_core)

@@ -30,6 +30,7 @@ add_executable(
     test_origin.cpp
     test_registry.cpp
     test_rest.cpp
+    test_scenario.cpp
 )
 el_apply_warnings(el_tests)
 target_link_libraries(el_tests PRIVATE el_core Catch2::Catch2WithMain)
