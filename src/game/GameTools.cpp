@@ -1,6 +1,7 @@
 #include "game/GameTools.h"
 
 #include "core/Args.h"
+#include "core/Base64.h"
 #include "game/Convert.h"
 
 #include "dao/Abilities.h"
@@ -9,6 +10,7 @@
 #include "dao/Events.h"
 #include "dao/Frame.h"
 #include "dao/GameModes.h"
+#include "dao/Log.h"
 #include "dao/Messages.h"
 #include "dao/Objects.h"
 #include "dao/Orders.h"
@@ -23,7 +25,9 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -31,6 +35,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -1073,6 +1078,99 @@ void AddStage(Bench &bench, const Watch &watch)
         StageSpawn);
 }
 
+// ---- screenshot ------------------------------------------------------------
+
+// The game's own screenshots: <Documents>\BioWare\Dragon Age\Screenshots\
+// User\Screenshot<time>.jpg, as its key writes them (seen on this machine,
+// 2026-09-30). Beside the logs' folder.
+std::filesystem::path ScreenshotFolder()
+{
+    return dao::LogDirectory().parent_path() / "Screenshots";
+}
+
+// The newest .jpg under the folder, and when it was written.
+std::optional<std::filesystem::path> NewestShot(const std::filesystem::path &folder)
+{
+    std::error_code error;
+    std::optional<std::filesystem::path> newest;
+    std::filesystem::file_time_type newestTime{};
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(folder, error))
+    {
+        if (!entry.is_regular_file(error) || entry.path().extension() != ".jpg")
+        {
+            continue;
+        }
+        const auto written = entry.last_write_time(error);
+        if (!newest || written > newestTime)
+        {
+            newest = entry.path();
+            newestTime = written;
+        }
+    }
+    return newest;
+}
+
+void AddScreenshot(Bench &bench, const Watch &watch)
+{
+    bench.Tools().Add(
+        ToolSpec{"screenshot",
+                 "The game's own picture of what it shows, as its screenshot key takes it: no window over the "
+                 "game can spoil it. Answers the picture as an image, with the file's path; `image: false` "
+                 "answers the path alone, to look at later or save tokens.",
+                 Json{{"type", "object"},
+                      {"properties",
+                       {{"image", {{"type", "boolean"}, {"description", "Answer the picture itself; default true"}}}}}},
+                 Thread::Listener, true},
+        [&bench, &watch](const Json &raw) -> ToolResult {
+            const Args args(raw, "screenshot");
+            const bool image = args.Bool("image", true);
+            const auto folder = ScreenshotFolder();
+            const auto before = NewestShot(folder);
+            // The picture is asked for on the frame thread, as the script
+            // command must be; the file comes a frame or more later, waited
+            // for here, off the frame.
+            bench.Frames().RunAndWait(
+                [&watch] {
+                    RequireWorld(watch, "screenshot");
+                    api::Screenshot();
+                },
+                std::chrono::milliseconds(5000));
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            std::optional<std::filesystem::path> shot;
+            std::uintmax_t lastSize = 0;
+            while (std::chrono::steady_clock::now() < deadline)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                const auto newest = NewestShot(folder);
+                if (!newest || newest == before)
+                {
+                    continue;
+                }
+                // Done when its size holds still between two looks.
+                std::error_code error;
+                const auto size = std::filesystem::file_size(*newest, error);
+                if (!error && size > 0 && size == lastSize)
+                {
+                    shot = newest;
+                    break;
+                }
+                lastSize = error ? 0 : size;
+            }
+            if (!shot)
+            {
+                throw ToolError(std::format("screenshot: no new picture in {} within 10 s", folder.string()));
+            }
+            ToolResult result(Json{{"file", shot->string()}, {"bytes", lastSize}});
+            if (image)
+            {
+                std::ifstream in(*shot, std::ios::binary);
+                const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                result.content.push_back(Json{{"type", "image"}, {"data", Base64(bytes)}, {"mimeType", "image/jpeg"}});
+            }
+            return result;
+        });
+}
+
 // ---- game ------------------------------------------------------------------
 
 void AddGame(Bench &bench, const Watch &watch)
@@ -1139,6 +1237,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);
+    AddScreenshot(bench, watch);
     AddGame(bench, watch);
 }
 
