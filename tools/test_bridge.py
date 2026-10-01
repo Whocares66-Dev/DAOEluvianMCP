@@ -335,6 +335,12 @@ class BridgeTest(unittest.TestCase):
             bridge_module.call_once(self.bridge, ["echo", "{not json"], out), 2
         )
 
+    def test_a_journey_is_waited_for_as_long_as_it_may_take(self) -> None:
+        self.assertGreater(
+            bridge_module.call_budget("travel", {"budgetMs": 120000}), 120
+        )
+        self.assertGreater(bridge_module.call_budget("travel", {}), 60)
+
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})
         self.assertTrue(result["structuredContent"]["quit"])

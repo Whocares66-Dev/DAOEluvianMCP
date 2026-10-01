@@ -102,6 +102,16 @@ def call_budget(name: str, arguments: object) -> float:
     given 60 s, then reported as the game not running while its later steps went on)."""
     if name == "scenario":
         return SCENARIO_SECONDS + MARGIN_SECONDS
+    if name == "travel":
+        budget_ms = (
+            arguments.get("budgetMs", 60000) if isinstance(arguments, dict) else 60000
+        )
+        budget = (
+            budget_ms / 1000
+            if isinstance(budget_ms, (int, float)) and budget_ms > 0
+            else 60
+        )
+        return budget + MARGIN_SECONDS
     wait_ms = arguments.get("timeoutMs", 0) if isinstance(arguments, dict) else 0
     waited = wait_ms / 1000 if isinstance(wait_ms, (int, float)) and wait_ms > 0 else 0
     return 60 + waited

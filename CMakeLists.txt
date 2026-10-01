@@ -138,6 +138,7 @@ add_library(
     src/core/Rest.cpp
     src/core/Scenario.cpp
     src/core/ToolRegistry.cpp
+    src/core/Travel.cpp
 )
 el_apply_warnings(el_core)
 target_include_directories(el_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
