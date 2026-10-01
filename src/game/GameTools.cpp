@@ -1083,62 +1083,162 @@ void AddStage(Bench &bench, const Watch &watch)
 
 // ---- screenshot ------------------------------------------------------------
 
-// Where Eluvian keeps its pictures: beside the game's own screenshots, in
-// <Documents>\BioWare\Dragon Age\Screenshots\Eluvian.
-std::filesystem::path ScreenshotFolder()
+// Where the pictures go, beside the game's logs: <Documents>\BioWare\
+// Dragon Age\Screenshots, Eluvian's own in Eluvian, the game's in User.
+std::filesystem::path Screenshots()
 {
-    return dao::LogDirectory().parent_path() / "Screenshots" / "Eluvian";
+    return dao::LogDirectory().parent_path() / "Screenshots";
 }
 
-void AddScreenshot(Bench &bench)
+// The newest .jpg in a folder.
+std::optional<std::filesystem::path> NewestJpeg(const std::filesystem::path &folder)
+{
+    std::error_code error;
+    std::optional<std::filesystem::path> newest;
+    std::filesystem::file_time_type newestTime{};
+    for (const auto &entry : std::filesystem::directory_iterator(folder, error))
+    {
+        if (!entry.is_regular_file(error) || entry.path().extension() != ".jpg")
+        {
+            continue;
+        }
+        const auto written = entry.last_write_time(error);
+        if (!newest || written > newestTime)
+        {
+            newest = entry.path();
+            newestTime = written;
+        }
+    }
+    return newest;
+}
+
+// The game's own picture: the message its screenshot key sends
+// (TakeScreenshotMessage, to the mode controller; DAOLib f253b8c), which
+// has the renderer write a JPEG, interface and all, to Screenshots\User a
+// frame or more later. Sent on the frame thread, waited for here.
+std::filesystem::path GameScreenshot(Bench &bench, const Watch &watch)
+{
+    const auto folder = Screenshots() / "User";
+    const auto before = NewestJpeg(folder);
+    bench.Frames().RunAndWait(
+        [&watch] {
+            RequireWorld(watch, "screenshot");
+            auto *app = dao::CClientExoApp::Get();
+            auto *modes = app != nullptr ? app->GameModes() : nullptr;
+            if (modes == nullptr)
+            {
+                throw ToolError("screenshot: the game's modes are not up yet");
+            }
+            dao::messages::Send(modes, dao::messages::Make<dao::messages::TakeScreenshotMessage>());
+        },
+        std::chrono::milliseconds(5000));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    std::uintmax_t lastSize = 0;
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        const auto newest = NewestJpeg(folder);
+        if (!newest || newest == before)
+        {
+            continue;
+        }
+        // Written when its size holds still between two looks.
+        std::error_code error;
+        const auto size = std::filesystem::file_size(*newest, error);
+        if (!error && size > 0 && size == lastSize)
+        {
+            return *newest;
+        }
+        lastSize = error ? 0 : size;
+    }
+    throw ToolError(std::format("screenshot: the game wrote no picture to {} within 10 s; source \"window\" "
+                                "draws the window instead",
+                                folder.string()));
+}
+
+void AddScreenshot(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"screenshot",
-                 "A picture of the game's window as it is now, interface and all, drawn by Windows from inside "
-                 "the game: no window over the game can spoil it (not while it is minimised). Answers the picture "
-                 "as an image, with its size and the file it was saved to (Screenshots\\Eluvian beside the "
-                 "game's own); `image: false` answers the file alone, to save tokens; `quality` from 0.1 to 1, "
-                 "0.8 by default.",
+                 "A picture of the game as it is now, interface and all; no window over the game gets in the "
+                 "way. `source`: window (the default) has Windows draw the game's window from inside, at once, "
+                 "even while frames stop; game has the game take its own, as its screenshot key does, a frame "
+                 "or more later. Answers the picture as an image, with its size and file (Screenshots\\Eluvian "
+                 "or the game's Screenshots\\User); `image: false` answers the file alone, to save tokens; "
+                 "`quality` from 0.1 to 1 (window only), 0.8 by default.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"image", {{"type", "boolean"}, {"description", "Answer the picture itself; default true"}}},
+                       {{"source", {{"type", "string"}, {"enum", {"window", "game"}}}},
+                        {"image", {{"type", "boolean"}, {"description", "Answer the picture itself; default true"}}},
                         {"quality", {{"type", "number"}, {"description", "JPEG quality, 0.1 to 1; default 0.8"}}}}}},
                  Thread::Listener, true},
-        [](const Json &raw) -> ToolResult {
+        [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "screenshot");
+            const auto source = args.Choice("source", {"window", "game"}, "window");
             const bool image = args.Bool("image", true);
-            const double quality = args.Number("quality", 0.8);
-            if (quality < 0.1 || quality > 1)
+            std::filesystem::path file;
+            std::string jpeg;
+            Json answer = {{"source", source}};
+            if (source == "game")
             {
-                throw ToolError("screenshot: `quality` is from 0.1 to 1");
+                file = GameScreenshot(bench, watch);
+                std::ifstream in(file, std::ios::binary);
+                jpeg.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
             }
-            const auto picture = CaptureGameWindow(static_cast<float>(quality));
-
-            const auto folder = ScreenshotFolder();
-            std::error_code error;
-            std::filesystem::create_directories(folder, error);
-            SYSTEMTIME now{};
-            GetLocalTime(&now);
-            const auto file =
-                folder / std::format("Eluvian{:04}{:02}{:02}{:02}{:02}{:02}{:03}.jpg", now.wYear, now.wMonth, now.wDay,
-                                     now.wHour, now.wMinute, now.wSecond, now.wMilliseconds);
-            std::ofstream(file, std::ios::binary)
-                .write(picture.jpeg.data(), static_cast<std::streamsize>(picture.jpeg.size()));
-
-            ToolResult result(Json{{"file", file.string()},
-                                   {"width", picture.width},
-                                   {"height", picture.height},
-                                   {"bytes", picture.jpeg.size()}});
+            else
+            {
+                const double quality = args.Number("quality", 0.8);
+                if (quality < 0.1 || quality > 1)
+                {
+                    throw ToolError("screenshot: `quality` is from 0.1 to 1");
+                }
+                const auto picture = CaptureGameWindow(static_cast<float>(quality));
+                const auto folder = Screenshots() / "Eluvian";
+                std::error_code error;
+                std::filesystem::create_directories(folder, error);
+                SYSTEMTIME now{};
+                GetLocalTime(&now);
+                file = folder / std::format("Eluvian{:04}{:02}{:02}{:02}{:02}{:02}{:03}.jpg", now.wYear, now.wMonth,
+                                            now.wDay, now.wHour, now.wMinute, now.wSecond, now.wMilliseconds);
+                std::ofstream(file, std::ios::binary)
+                    .write(picture.jpeg.data(), static_cast<std::streamsize>(picture.jpeg.size()));
+                answer["width"] = picture.width;
+                answer["height"] = picture.height;
+                jpeg = picture.jpeg;
+            }
+            answer["file"] = file.string();
+            answer["bytes"] = jpeg.size();
+            ToolResult result(std::move(answer));
             if (image)
             {
-                result.content.push_back(
-                    Json{{"type", "image"}, {"data", Base64(picture.jpeg)}, {"mimeType", "image/jpeg"}});
+                result.content.push_back(Json{{"type", "image"}, {"data", Base64(jpeg)}, {"mimeType", "image/jpeg"}});
             }
             return result;
         });
 }
 
 // ---- game ------------------------------------------------------------------
+
+dao::saves::Kind KindArg(const Args &args, std::string_view fallback)
+{
+    const auto kind = args.Choice("kind", {"manual", "auto", "quick"}, fallback);
+    return kind == "auto" ? dao::saves::Kind::Auto
+                          : (kind == "quick" ? dao::saves::Kind::Quick : dao::saves::Kind::Manual);
+}
+
+Json SlotJson(const dao::saves::Slot &slot)
+{
+    Json answer = {
+        {"character", Narrow(slot.character)}, {"kind", dao::saves::Name(slot.kind)}, {"number", slot.number}};
+    if (const auto meta = slot.Meta())
+    {
+        answer["area"] = Narrow(meta->area);
+        answer["name"] = Narrow(meta->name);
+        answer["secondsPlayed"] = meta->secondsPlayed;
+        answer["level"] = meta->level;
+    }
+    return answer;
+}
 
 void AddGame(Bench &bench, const Watch &watch)
 {
@@ -1149,23 +1249,86 @@ void AddGame(Bench &bench, const Watch &watch)
         // 2026-09-30). One plugin owns the speed: in a turn-based test the
         // mod, through turnbased_settings' ai_turn_speed.
         ToolSpec{"game",
-                 "Pause or unpause the game. Answers the pause after. (Not the game's speed: each plugin's copy "
-                 "of DAOLib scales the clock by its own, so two setting it multiply; a mod that sets speed owns "
-                 "it, through its own tools.)",
+                 "The game itself. `action`: pause, unpause; saves, the saves of `character` (or every one) with "
+                 "each one's area, name, time played and level, as the load screen shows them; load, a save by "
+                 "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
+                 "manual) and `number`, from the main menu or in the world, as the load screen loads; save, a "
+                 "quicksave (`kind` quick, the default) or a manual save (`kind` manual, `number` or the next "
+                 "free, `name`). A load or save answers that the game was asked, and `cursor`: wait_for "
+                 "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
+                 "cutscene. (Not the game's speed: each plugin's copy of DAOLib scales the clock by its own, so "
+                 "two setting it multiply; a mod that sets speed owns it.)",
                  Json{{"type", "object"},
-                      {"properties", {{"action", {{"type", "string"}, {"enum", {"pause", "unpause"}}}}}},
+                      {"properties",
+                       {{"action", {{"type", "string"}, {"enum", {"pause", "unpause", "saves", "load", "save"}}}},
+                        {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
+                        {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
+                        {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
+                        {"name", {{"type", "string"}, {"description", "action=save: a manual save's name"}}}}},
                       {"required", {"action"}}},
                  Thread::Frame},
-        [&watch](const Json &raw) -> ToolResult {
+        [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "game");
-            const auto action = args.Choice("action", {"pause", "unpause"});
+            const auto action = args.Choice("action", {"pause", "unpause", "saves", "load", "save"});
             auto *app = dao::CClientExoApp::Get();
             if (app == nullptr || watch.Mode() < 0)
             {
                 throw ToolError("game: the game is still starting; health says when it runs");
             }
-            app->SetPaused(action == "pause");
-            return Json{{"paused", app->IsPaused()}};
+            if (action == "pause" || action == "unpause")
+            {
+                app->SetPaused(action == "pause");
+                return Json{{"paused", app->IsPaused()}};
+            }
+            if (action == "saves")
+            {
+                std::vector<std::wstring> characters;
+                if (args.Has("character"))
+                {
+                    characters.push_back(Wide(args.String("character")));
+                }
+                else
+                {
+                    characters = dao::saves::Characters();
+                }
+                Json saves = Json::array();
+                for (const auto &character : characters)
+                {
+                    for (const auto &slot : dao::saves::List(character))
+                    {
+                        saves.push_back(SlotJson(slot));
+                    }
+                }
+                return Json{{"current", Narrow(dao::saves::Character())}, {"saves", std::move(saves)}};
+            }
+            RequireWorld(watch, "game");
+            const auto cursor = bench.Events().Next();
+            if (action == "load")
+            {
+                const dao::saves::Slot slot{Wide(args.String("character", "")),
+                                            static_cast<std::int32_t>(args.Integer("number", 1, 0, 500)),
+                                            KindArg(args, "manual")};
+                if (!dao::saves::Load(slot))
+                {
+                    throw ToolError("game: no such save to load: the slot holds none, or the game knows no such "
+                                    "character; action saves lists them");
+                }
+                return Json{{"asked", true},
+                            {"save", SlotJson(slot)},
+                            {"cursor", cursor},
+                            {"note", "wait_for eluvian.game.loaded from `cursor`; the game may still decline"}};
+            }
+            const auto kind = KindArg(args, "quick");
+            const auto number = static_cast<std::int32_t>(args.Integer("number", -1, -1, 500));
+            if (!dao::saves::Save(kind, number, Wide(args.String("name", ""))))
+            {
+                throw ToolError("game: the game began no save: it allows none now (in combat, in a cutscene), or "
+                                "is still starting");
+            }
+            return Json{{"began", true},
+                        {"kind", dao::saves::Name(kind)},
+                        {"cursor", cursor},
+                        {"note", "wait_for eluvian.game.saved from `cursor`"}};
         });
 }
 
@@ -1204,7 +1367,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);
-    AddScreenshot(bench);
+    AddScreenshot(bench, watch);
     AddGame(bench, watch);
 }
 
