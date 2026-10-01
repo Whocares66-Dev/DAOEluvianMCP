@@ -60,7 +60,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-10-01, against DAOLib `79da8ee`: 103 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game the same day, reads only (`dev/TESTING.md`): orders and a fight not yet.
+Last green 2026-10-01, against DAOLib `4262d70`: 104 tests, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 97% of `src/core`'s regions and 98% of its lines run by the tests. Seen in the game the same day, reads only (`dev/TESTING.md`): orders and a fight not yet.
 
 ## Writing files from the shell
 

@@ -200,6 +200,23 @@ Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints)
     return answer;
 }
 
+// The room a creature stands in and whether the party has seen it: the
+// game draws a room never seen black, with what stands in it (DAOLib's
+// dao::world::Room, seen in Castle Cousland, 2026-10-01). Null where the
+// area has no rooms to ask.
+Json RoomJson(ObjectId id)
+{
+    const auto room = dao::world::RoomOf(id);
+    if (!room)
+    {
+        return nullptr;
+    }
+    const char *seen = room->seen == dao::world::Room::kNeverSeen ? "never"
+                       : room->seen == dao::world::Room::kInView  ? "in view"
+                                                                  : "before";
+    return Json{{"number", room->number}, {"seen", seen}, {"loaded", room->Loaded()}, {"shown", room->Shown()}};
+}
+
 Json Summary(ObjectId id, ObjectId hero, const std::set<ObjectId> &party)
 {
     Json creature = Brief(id);
@@ -210,6 +227,8 @@ Json Summary(ObjectId id, ObjectId hero, const std::set<ObjectId> &party)
     creature["manaStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
     creature["template"] = Narrow(api::GetResRef(id)); // what stage spawn takes; the tag is the instance's
     creature["combatState"] = api::GetCombatState(id);
+    creature["attackTarget"] = Brief(api::GetAttackTarget(id));
+    creature["room"] = RoomJson(id);
     creature["command"] = CommandJson(id);
     return creature;
 }
@@ -453,7 +472,8 @@ void AddInspect(Bench &bench, const Watch &watch)
         KindSpec{"creatures",
                  "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
                  "(party, hostile, neutral), position, distance, dead, health and mana or stamina, combat state, "
-                 "and the command it is carrying out."},
+                 "whom it attacks, its `room` (number, and `seen` by the party: never, which the game draws "
+                 "black with what stands in it, in view, or before), and the command it is carrying out."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
