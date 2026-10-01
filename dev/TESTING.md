@@ -152,3 +152,10 @@ The Elven Ruins, 2026-10-01, 01:49 to 02:05 (Lyna's AutoSave_2, loaded only; com
 - `wait_for eluvian.command.ended` matched on `id` alone returned an earlier command's end; match on `type` as well.
 - Once, 40 s after a process's first load and before any fight, `inspect kind=creature` gave the hero no abilities (computer-use-agent); three every time since. Not reproduced.
 - The user's saves were as before after every run.
+
+A fight out of the party's sight, staged, 2026-10-01, 02:04 to 02:15 (the Elven Ruins, loaded only):
+
+- computer-use-agent, with `script`: a spider spawned inside a room never seen and moved to group 2 (SetGroupId) was fought at once by the room's three hostile spiders, the party not in it. GetGroupHostility(2, 1) is 1 and (2, 0) is 0 as the game sets them.
+- On that, `group` in every creature's summary and `stage action=group`. Seen: a spider spawned beside a genlock in room 1579 (never seen) read group 1, side hostile; `stage action=group` to 2 answered `was` 1, `hostileToParty` false, `hostileToGroup1` true, and its side read neutral after. No fight followed there: that genlock is one the story has not made active yet. A room whose creatures are active is the one to stage it in.
+- `camera action=follow` on the creature in the never-seen room: the screenshot is black but for the interface, and its `room` reads `seen` never. So "the camera is on a black room" can be told by a call and shown by a picture.
+- `order action=use` with no `via` on a door in a turn-based fight: by click, success, the door's state 0 to 2 (computer-use-agent). `inspect kind=placeables` by the door listed it and the pressure plates near it.
