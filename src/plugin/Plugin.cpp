@@ -53,7 +53,8 @@ constexpr std::string_view kInstructions =
     "Mods that register with Eluvian add tools, inspect kinds and events of their own; `health` lists them. "
     "`log` reads a log from a cursor (`since: \"end\"` marks the end, to read from after acting). `script` calls any "
     "script command by name when no tool fits. A conversation or cutscene on the screen (health's mode dialog or "
-    "cutscene) is read with `inspect kind=dialogue` and answered with `dialogue`. Calls run on the game's frame: while an area loads they are "
+    "cutscene) is read with `inspect kind=dialogue` and answered with `dialogue`. Calls run on the game's frame: while "
+    "an area loads they are "
     "refused, and if frames stop they time out; `health` says which.";
 
 // A whole number from the environment, within [low, high]; `fallback` when
