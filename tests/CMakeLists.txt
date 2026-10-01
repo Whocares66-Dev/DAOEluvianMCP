@@ -24,8 +24,12 @@ add_executable(
     test_bench.cpp
     test_events.cpp
     test_frame_queue.cpp
+    test_http.cpp
     test_log_tail.cpp
+    test_mcp.cpp
+    test_origin.cpp
     test_registry.cpp
+    test_rest.cpp
 )
 el_apply_warnings(el_tests)
 target_link_libraries(el_tests PRIVATE el_core Catch2::Catch2WithMain)

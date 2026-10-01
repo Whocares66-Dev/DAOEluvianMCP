@@ -124,7 +124,11 @@ add_library(
     src/core/Bench.cpp
     src/core/EventBus.cpp
     src/core/FrameQueue.cpp
+    src/core/Http.cpp
     src/core/LogTail.cpp
+    src/core/Mcp.cpp
+    src/core/Origin.cpp
+    src/core/Rest.cpp
     src/core/ToolRegistry.cpp
 )
 el_apply_warnings(el_core)
