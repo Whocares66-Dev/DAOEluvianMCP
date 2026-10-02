@@ -8,7 +8,8 @@
 // what follows the cursor (a path preview, a cost caption) shows with no
 // hands (turn-based-agent, 2026-10-02). DAOLib's dao::input::PointCursor
 // answers the pick's own read of the mouse, so the real mouse is not moved
-// and the window need not be in front (lib-agent, 491abad).
+// and the window need not be in front; while it holds, the interface's
+// hover test says the mouse is off it, wherever the real one is (1a580d2).
 #include "game/Shared.h"
 
 #include "game/Capture.h"
@@ -262,9 +263,9 @@ void AddScreen(Bench &bench, const Watch &watch)
             "creature or object id: the same pixel screen gives to click it), `point` ({x, y, z} in the "
             "world) or `pixel` ([x, y] in the game's pixels). The game's pick follows from its next pick "
             "(about a fifteenth of a second): wait a quarter second, then inspect kind=cursor says what it "
-            "has under it, and a screenshot shows the rest. The real mouse is not moved and the window need "
-            "not be in front; but while the real mouse is over the game's interface (`overInterface`) the "
-            "game picks nothing, so keep it off the game's menus and bars. The hold ends after `seconds` "
+            "has under it, and a screenshot shows the rest. The real mouse is not moved, nor read for the "
+            "pick, wherever it is, and the window need not be in front; the drawn cursor and the game's "
+            "menus and bars still follow the real mouse. The hold ends after `seconds` "
             "(default 60; 0 for none) or with `release: true`, and while it holds a click acts on the "
             "place held, not under the real mouse.",
             Json{{"type", "object"},
@@ -342,13 +343,9 @@ void AddScreen(Bench &bench, const Watch &watch)
             answer["pointed"] = PlaceJson(at->x, at->y, *view, window);
             answer["holds"] = seconds > 0 ? Json(seconds) : Json("until released");
             answer["foreground"] = window.found && window.foreground;
-            const bool overInterface = dao::gui::MouseOverInterface();
-            answer["overInterface"] = overInterface;
-            if (overInterface)
-            {
-                answer["note"] = "the real mouse is over the game's interface, and the game picks nothing while it "
-                                 "is: move it off the game's menus and bars (or out of the window)";
-            }
+            // The interface's hover test answers "not over it" while the hold
+            // stands (DAOLib 1a580d2): with the real mouse on another monitor
+            // it had said "over it", and the pick kept nothing (2026-10-02).
             return answer;
         });
 }
