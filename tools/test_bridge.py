@@ -525,7 +525,7 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["isError"])
         text = result["content"][0]["text"]
         self.assertIn("EXCEPTION_ACCESS_VIOLATION", text)
-        self.assertIn("wake the display", text)
+        self.assertIn("renderer as it starts", text)
 
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})

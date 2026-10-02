@@ -706,12 +706,14 @@ class Bridge:
             if line.strip().startswith("[") and "] 0x" in line
         ][:4]
         crash = {"file": str(log), "what": what, "frames": frames}
-        # The renderer failing as it starts, before any save: twice on 2026-10-02 with the
-        # display asleep (Windows had the monitor off line), and never with it on.
+        # The renderer failing as it starts, before any save and before any plugin acts: every
+        # start from 08:03 on 2026-10-02, after one at 04:04 had come up with the same files.
+        # First taken for the display asleep; it went on with the display on, cause not found.
         if any("Renderer::" in frame or "D3D" in frame for frame in frames):
             crash["hint"] = (
-                "a crash in the renderer's start-up; it came when the display was asleep, so "
-                "wake the display and launch again"
+                "a crash in the game's renderer as it starts, before any plugin acts; one has "
+                "come at every start since a time with no game file changed, so look outside the "
+                "game: the display, the graphics driver, another program holding the GPU"
             )
         return crash
 
