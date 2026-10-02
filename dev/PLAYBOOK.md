@@ -30,6 +30,8 @@ game_claim {"owner": "my-name", "note": "what for", "minutes": 30}
                                                  bridge: until it ends or is released, another's game_launch and
                                                  Eluvian's deploy are refused, with the note
 game_release {"owner": "my-name"}
+game_events {"topic": "eluvian.creature.*"}      bridge: the last run's events from its file, after the game closed
+                                                 or crashed too; `since`, `topic`, `limit` as events takes them
 game_status {}                                   bridge: is a game running, whose, the claim that stands, and `why`
                                                  where a game runs and Eluvian does not serve in it
 ```

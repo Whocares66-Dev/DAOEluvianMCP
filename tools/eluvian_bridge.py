@@ -80,6 +80,8 @@ def documents_folder() -> Path:
 # Who holds the game and its folder: one file beside the logs that every agent's scripts read
 # (README.md, "The claim").
 CLAIM_FILE = "game.claim.json"
+# Every event of the last run, a JSON object a line (core/EventLog.h).
+EVENTS_FILE = "eluvian.events.jsonl"
 # Its name until 2026-10-02. A bridge started before then writes this one, and a claim there
 # went unseen by one started after, which launched over a tester's run (2026-10-02): both
 # are read until no bridge with the old name runs.
@@ -341,6 +343,29 @@ def text_result(value: object, is_error: bool = False) -> dict:
 
 BRIDGE_TOOLS = [
     {
+        "name": "game_events",
+        "description": (
+            "The last game's events, read from the file it keeps beside the logs "
+            "(eluvian.events.jsonl, every event of the run, written as it happened): for after the "
+            "game has closed or crashed, or for more than the running game's buffer holds. "
+            '`since` (a seq; default the first), `topic` (a name, a prefix ending in ".*", or a '
+            "list of them), `limit` (default 500). Answers `events` as the events tool gives them, "
+            "`next` to read on from, `count` matched, and `running` (whether a game runs now, "
+            "whose file it is then). A new game starts the file again."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "since": {"type": "integer"},
+                "topic": {
+                    "description": 'A topic, a prefix like "turnbased.*", or a list'
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20000},
+            },
+        },
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "game_saves",
         "description": (
             "The game's saves on disk, newest first: character, kind (manual, auto, quick), number, "
@@ -596,6 +621,65 @@ class Bridge:
         ):
             return "loader.log: the loader found no eluvian.dll among its plugins"
         return None
+
+    def game_events(self, arguments: dict) -> dict:
+        """The run's events from the file the game writes (core/EventLog.h)."""
+        file = self.game.folder / EVENTS_FILE
+        if not file.exists():
+            return text_result(
+                f"game_events: no {EVENTS_FILE} in {self.game.folder}; a game with Eluvian "
+                "writes it from its start",
+                is_error=True,
+            )
+        since = arguments.get("since", 0)
+        since = since if isinstance(since, int) else 0
+        limit = arguments.get("limit", 500)
+        limit = min(max(limit if isinstance(limit, int) else 500, 1), 20000)
+        wanted = arguments.get("topic")
+        topics = (
+            [wanted]
+            if isinstance(wanted, str)
+            else [t for t in wanted if isinstance(t, str)]
+            if isinstance(wanted, list)
+            else []
+        )
+
+        def passes(topic: str) -> bool:
+            if not topics:
+                return True
+            for want in topics:
+                if want == "*" or want == topic:
+                    return True
+                if want.endswith(".*") and topic.startswith(want[:-1]):
+                    return True
+            return False
+
+        events: list[dict] = []
+        count = 0
+        last = since
+        with file.open(encoding="utf-8", errors="replace") as lines:
+            for line in lines:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue  # a line the game was writing when it stopped
+                if not isinstance(event, dict) or event.get("seq", 0) < since:
+                    continue
+                last = max(last, event.get("seq", 0) + 1)
+                if not passes(str(event.get("topic", ""))):
+                    continue
+                count += 1
+                if len(events) < limit:
+                    events.append(event)
+        return text_result(
+            {
+                "events": events,
+                "count": count,
+                "next": (events[-1]["seq"] + 1) if len(events) == limit else last,
+                "running": bool(self.processes.running()),
+                "file": str(file),
+            }
+        )
 
     def game_status(self) -> dict:
         pids = self.processes.running()
@@ -993,6 +1077,8 @@ class Bridge:
                 return invalid("tools/call needs a tool `name`")
             if not isinstance(arguments, dict):
                 return invalid("`arguments` must be an object")
+            if name == "game_events":
+                return reply(self.game_events(arguments))
             if name == "game_saves":
                 character = arguments.get("character")
                 saves = list_saves(

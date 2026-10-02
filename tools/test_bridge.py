@@ -186,6 +186,7 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(
             names,
             [
+                "game_events",
                 "game_saves",
                 "game_claim",
                 "game_release",
@@ -472,6 +473,34 @@ class BridgeTest(unittest.TestCase):
         )
         self.assertNotIn("claim", self.call("game_status")["structuredContent"])
         self.assertFalse(self.call("game_launch", {"owner": "tester-b"})["isError"])
+
+    def test_the_last_runs_events_are_read_from_its_file(self) -> None:
+        self.down()
+        self.processes.pids.clear()
+        lines = [
+            {"seq": 1, "topic": "eluvian.mode.changed", "payload": {"mode": "combat"}},
+            {"seq": 2, "topic": "turnbased.turn.ended", "payload": {"round": 1}},
+            {"seq": 3, "topic": "eluvian.creature.died", "payload": {"id": "0x3bf"}},
+            {"seq": 4, "topic": "turnbased.turn.ended", "payload": {"round": 2}},
+        ]
+        (self.folder / "eluvian.events.jsonl").write_text(
+            "".join(json.dumps(line) + "\n" for line in lines) + '{"seq": 5, "top',
+            encoding="utf-8",
+        )
+        everything = self.call("game_events")["structuredContent"]
+        self.assertEqual([e["seq"] for e in everything["events"]], [1, 2, 3, 4])
+        self.assertFalse(everything["running"])
+        turns = self.call("game_events", {"topic": "turnbased.*"})["structuredContent"]
+        self.assertEqual([e["payload"]["round"] for e in turns["events"]], [1, 2])
+        later = self.call("game_events", {"since": 3, "limit": 1})["structuredContent"]
+        self.assertEqual([e["seq"] for e in later["events"]], [3])
+        self.assertEqual(later["next"], 4)
+        self.assertEqual(later["count"], 2)
+
+    def test_no_events_file_says_where_it_looked(self) -> None:
+        result = self.call("game_events")
+        self.assertTrue(result["isError"])
+        self.assertIn("eluvian.events.jsonl", result["content"][0]["text"])
 
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})

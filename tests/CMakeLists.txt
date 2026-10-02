@@ -25,6 +25,7 @@ add_executable(
     test_bench.cpp
     test_erf.cpp
     test_events.cpp
+    test_event_log.cpp
     test_frame_queue.cpp
     test_http.cpp
     test_log_tail.cpp

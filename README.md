@@ -25,6 +25,7 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `scenario` | Steps in one call: tools, waits for events, pauses, checks; a transcript back |
 | `log` | DAOLib's logs from a cursor; `eluvian.log` holds every tool call with its arguments, time and refusal |
 | `game_saves`, `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: the saves on disk, is it running and whose it is (and why Eluvian does not serve, if it does not), start it (into a save, under an owner's name), close it |
+| `game_events` | The bridge's own: the last run's events from the file the game keeps (`eluvian.events.jsonl`, every event as it happened), for after the game closed or crashed |
 | `game_claim`, `game_release` | The bridge's own: say the game and its folder are in use, by whom, for what and until when; another's launch and Eluvian's deploy are refused meanwhile |
 
 ## Building

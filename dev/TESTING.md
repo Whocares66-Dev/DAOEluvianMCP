@@ -331,3 +331,5 @@ For many fights in one launch, 2026-10-02, 02:30 to 02:44 (in turn-based-agent's
 - `stage equip`: Spellweaver on Tamlen was made but not put on (its requirements), and said so; a plain longsword (gen_im_wep_mel_lsw_lsw) was put in his main hand.
 - `order action=ability` with `itemTag` gen_im_qck_health_101: the poultice found on Lyna and the order given; a tag she does not carry is refused, naming it.
 - The smoke test: 61 of 61.
+
+The run's events on disk, 2026-10-02, 03:01: the game kept every event of its run in `eluvian.events.jsonl` beside the logs; after it closed, the bridge's `game_events` read 41 from it, among them the save's load and a staged wolf's death, and with `topic` only those. The next game started the file again. The smoke test: 61 of 61.

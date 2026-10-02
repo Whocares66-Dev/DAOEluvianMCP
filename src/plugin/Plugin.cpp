@@ -10,6 +10,7 @@
 //
 // dev/DESIGN.md is the design; README.md how to connect.
 #include "core/Bench.h"
+#include "core/EventLog.h"
 #include "core/Http.h"
 #include "core/Mcp.h"
 #include "core/Rest.h"
@@ -35,6 +36,7 @@
 #include <cstdlib>
 #include <format>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -156,6 +158,7 @@ struct State
     RestEndpoint rest{bench};
     HttpServer server{[this](const HttpRequest &request) { return Route(request, mcp, rest); }};
     std::uint16_t port = 0;
+    std::unique_ptr<EventLog> events; // every event of the run, beside the logs
 };
 
 // Made at load and never freed: the listener's threads may still be running
@@ -239,6 +242,21 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
         return true; // the game plays on; the plugins that register still can
     }
     WriteRuntime(g->port);
+    // Every event of the run in a file, named as the port's: a second game's
+    // is eluvian.<pid>.events.jsonl.
+    {
+        const auto name = g->port == PortSetting() ? std::string("eluvian.events.jsonl")
+                                                   : std::format("eluvian.{}.events.jsonl", GetCurrentProcessId());
+        g->events = std::make_unique<EventLog>(dao::LogDirectory() / name);
+        if (g->events->Open())
+        {
+            g->bench.Events().SetRecorder([log = g->events.get()](const Event &event) { log->Write(event); });
+        }
+        else
+        {
+            spdlog::warn("{} could not be opened: the run's events are not kept on disk", name);
+        }
+    }
     spdlog::info("serving MCP at http://127.0.0.1:{}/mcp and REST at http://127.0.0.1:{}/api/", g->port, g->port);
     return true;
 }

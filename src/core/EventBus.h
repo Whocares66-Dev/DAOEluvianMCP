@@ -97,6 +97,12 @@ class EventBus
     // Records an event; returns its sequence number. Wakes every waiter.
     std::uint64_t Emit(std::string topic, Json payload);
 
+    // Told of every event as it is emitted, in the bus's order, under its
+    // lock: it must be quick and must not call the bus. The buffer forgets;
+    // a recorder keeps (core/EventLog.h writes each to a file).
+    using Recorder = std::function<void(const Event &)>;
+    void SetRecorder(Recorder recorder);
+
     // The sequence number the next event will have: a cursor for "from now".
     [[nodiscard]] std::uint64_t Next() const;
 
@@ -131,6 +137,7 @@ class EventBus
     std::deque<Event> events_;
     std::uint64_t next_ = 1; // 0 is never a sequence number, so 0 reads "from the oldest"
     bool closed_ = false;
+    Recorder recorder_;
 };
 
 } // namespace eluvian

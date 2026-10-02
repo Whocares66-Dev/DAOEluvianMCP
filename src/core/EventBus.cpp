@@ -133,6 +133,10 @@ std::uint64_t EventBus::Emit(std::string topic, Json payload)
         const std::lock_guard lock(mutex_);
         seq = next_++;
         event.seq = seq;
+        if (recorder_)
+        {
+            recorder_(event); // under the lock, so the record keeps the bus's order
+        }
         events_.push_back(std::move(event));
         if (events_.size() > capacity_)
         {
@@ -141,6 +145,12 @@ std::uint64_t EventBus::Emit(std::string topic, Json payload)
     }
     changed_.notify_all();
     return seq;
+}
+
+void EventBus::SetRecorder(Recorder recorder)
+{
+    const std::lock_guard lock(mutex_);
+    recorder_ = std::move(recorder);
 }
 
 std::uint64_t EventBus::Next() const
