@@ -21,7 +21,7 @@ src/core/     the bench without the game: HTTP parsing and routes, MCP's JSON-RP
 src/server/   the socket loop under core/Http.h: Winsock, 127.0.0.1, a thread per connection. Tested
               over loopback.
 src/game/     the tools that read and drive the game, through DAOLib, a file each (Inspect, Script,
-              Order, Stage, Screenshot, Screen, Game, Input, Camera, Dialogue; Shared.h is what they share;
+              Character, Order, Stage, Screenshot, Screen, Game, Input, Camera, Dialogue; Shared.h is what they share;
               GameTools.cpp registers them and puts the engine's events on the bus), and health.
               Verified by playing.
 src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_GetInterface)

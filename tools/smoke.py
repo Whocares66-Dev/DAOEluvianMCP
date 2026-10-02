@@ -86,6 +86,28 @@ def checks(run: Run) -> None:
     me = tool("inspect", {"kind": "creature", "id": hero})
     check("inspect creature", me, lambda a: "effects" in a and "abilities" in a)
     check(
+        "inspect character",
+        tool("inspect", {"kind": "character", "id": hero}),
+        lambda a: (
+            a["level"] >= 1
+            and a["class"]["label"]
+            and a["attributes"]["strength"]["total"] > 0
+        ),
+    )
+    check(
+        "inspect equipment",
+        tool("inspect", {"kind": "equipment", "id": hero}),
+        lambda a: isinstance(a["slots"], dict) and "weaponSet" in a,
+    )
+    pack = tool("inspect", {"kind": "inventory"})
+    check("inspect inventory", pack, lambda a: a["count"] == len(a["items"]))
+    if pack.get("items"):
+        check(
+            "inspect item",
+            tool("inspect", {"kind": "item", "id": pack["items"][0]["id"]}),
+            lambda a: a["baseType"]["label"] and "properties" in a,
+        )
+    check(
         "inspect placeables",
         tool("inspect", {"kind": "placeables"}),
         lambda a: "placeables" in a,

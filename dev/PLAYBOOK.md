@@ -28,6 +28,9 @@ With the game already running, `game {"action": "saves"}` lists the saves and `g
 ## Looking
 
 ```
+inspect {"kind": "character", "id": "0x82"}      the sheet: race, class, level, attributes, combat numbers, what is worn
+inspect {"kind": "equipment", "id": "0x82"}      each slot's item in full: type, material, stats, properties
+inspect {"kind": "inventory"}                    the party's backpack; {"kind": "item", "id": ...} is one item in full
 inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock
 order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
 inspect {"kind": "geometry", "id": "0x82", "target": "0x2ec", "walk": true}

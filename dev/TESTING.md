@@ -273,3 +273,11 @@ A cutscene played and skipped, 2026-10-01, 14:25 (DAOLib `4757f0e`; the ruins' e
 A pre-rendered movie played and skipped, 2026-10-01, 14:35 (the same place, one call at a time): `script` calling PlayMovie with `bed100cs_duncan_finds_pc.bik` put the game in mode movie within half a second, `inspect kind=dialogue` saying `movie` true and `cutscene` false; `dialogue action=skip_cutscene` two seconds in answered `skipped` movie and the mode was explore again within half a second; the hero walked after. With that every call of DAOLib's `dao::dialogue` has been seen in play.
 
 The walk search with the game paused, 2026-10-01, 15:46 (for lib-agent): `inspect kind=geometry` with `walk`, the hero to a spider 40.7 m off, asked running, paused, paused again and running again: each time found, 44.18 m, 29 waypoints, 20 slices, the same answers slice for slice. A pause changes nothing in it.
+
+A character's sheet, equipment, backpack and items, 2026-10-01, about 17:05 (the user asked for them; the ruins' entrance, loaded only):
+
+- `inspect kind=character`: Lyna an Elf, female, Rogue, level 1, 857 experience, rank Player; strength 12 of base 10, dexterity 22 of 18, cunning 23 of 18; attack 62, defense 62, armor 5.74; what she wears by slot, and the other weapon set's two daggers. Tamlen an Elf Warrior, a follower, state 1.
+- `inspect kind=equipment`: the shortbow (base type "Weapon - Shortbow", material "Bow, Horn", damage 5, value 1700), the boots with four properties and their powers ("Increase Armor" 1, "Increase Chance to Dodge Attacks" 2, ...).
+- `inspect kind=inventory`: 17 items of 70, each with its stack and base type; `inspect kind=item` on the poultice: a stack of 3 of 99, its property "Flag: Is Healing Potion", and the ability using it casts.
+- An item's id given where a creature's is wanted, and the other way, is refused with what to ask instead.
+- The labels come from the game's own rule tables (races, classes, base items, materials, item properties, ranks). Not yet named: an item's stats beyond armor, damage and fatigue (given by number), and a creature's properties beyond those script.ldf names. A race's name in the player's language was missing in that run (its table keeps it in another column); fixed after, not yet seen.
