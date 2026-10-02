@@ -1,6 +1,7 @@
 #include "game/Capture.h"
 
 #include "core/Tool.h"
+#include "game/Convert.h"
 
 #include <Windows.h>
 #include <objidl.h>
@@ -151,6 +152,33 @@ std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int hei
 }
 
 } // namespace
+
+std::optional<std::string> CoveredAt(int x, int y)
+{
+    HWND game = GameWindow();
+    if (game == nullptr)
+    {
+        return std::nullopt;
+    }
+    HWND at = WindowFromPoint(POINT{x, y});
+    if (at == nullptr)
+    {
+        return std::string("nothing: the pixel is off the desktop");
+    }
+    HWND top = GetAncestor(at, GA_ROOT);
+    if (top == game)
+    {
+        return std::nullopt;
+    }
+    std::wstring name(256, L'\0');
+    name.resize(static_cast<std::size_t>(GetWindowTextW(top, name.data(), static_cast<int>(name.size()))));
+    if (name.empty())
+    {
+        name.resize(256);
+        name.resize(static_cast<std::size_t>(GetClassNameW(top, name.data(), static_cast<int>(name.size()))));
+    }
+    return Narrow(name);
+}
 
 WindowPlace GameWindowPlace()
 {

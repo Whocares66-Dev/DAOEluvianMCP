@@ -32,8 +32,13 @@ Json PlaceJson(float x, float y, const dao::world::ViewSize &view, const WindowP
         place["fy"] = fy;
         if (window.found)
         {
-            place["desktop"] = Json{{"x", window.x + static_cast<int>(fx * static_cast<float>(window.width))},
-                                    {"y", window.y + static_cast<int>(fy * static_cast<float>(window.height))}};
+            const int dx = window.x + static_cast<int>(fx * static_cast<float>(window.width));
+            const int dy = window.y + static_cast<int>(fy * static_cast<float>(window.height));
+            place["desktop"] = Json{{"x", dx}, {"y", dy}};
+            if (auto by = CoveredAt(dx, dy))
+            {
+                place["coveredBy"] = std::move(*by);
+            }
         }
     }
     return place;
@@ -151,7 +156,9 @@ void AddScreen(Bench &bench, const Watch &watch)
                  "first, the first object being what a click there would act on. With none of them: the view's "
                  "size and the window. Each place is given as `x`, `y` (the game's pixels from the picture's top "
                  "left), `fx`, `fy` (fractions of the picture) and `desktop` (the pixel to send a real mouse "
-                 "to). After moving the mouse, inspect kind=cursor says what the game has under it.",
+                 "to), with `coveredBy` naming the window on top of the game's there, if one is: a real mouse "
+                 "sent to that pixel clicks it, not the game, so move it or the game first. After moving the "
+                 "mouse, inspect kind=cursor says what the game has under it.",
                  Json{{"type", "object"},
                       {"properties",
                        {{"target", {{"description", "A creature or object id"}}},

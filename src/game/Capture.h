@@ -7,6 +7,7 @@
 // nothing in this build (play, 2026-09-30); the key's way is not read yet.
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace eluvian::game
@@ -41,6 +42,13 @@ struct WindowPlace
     bool foreground = false; // it is the window the keyboard and mouse go to
 };
 WindowPlace GameWindowPlace();
+
+// What a real mouse at a desktop pixel would reach instead of the game: the
+// title (or class) of the window on top of the game's there, or nothing
+// where the game is on top. A desktop app over part of the game took a
+// tester's clicks at a pixel the game's own pick had right, and the
+// game's cursor saw nothing (computer-use-agent, 2026-10-02).
+std::optional<std::string> CoveredAt(int x, int y);
 
 // A JPEG decoded and written again as a plain one. The game's own
 // screenshots carry an Exif header that some readers will not take: an

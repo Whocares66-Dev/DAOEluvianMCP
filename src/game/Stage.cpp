@@ -257,8 +257,12 @@ ObjectId StageSpawn(const Args &args, Json &answer)
     }
     if (id == kInvalidObject)
     {
-        throw ToolError(std::format("stage: no creature from template \"{}\"; inspect gives each creature's "
-                                    "`template` (its tag names the instance, not this)",
+        // Names that made creatures in play, for a tester guessing at one:
+        // "ogre", "hurlock", "genlock" and "bandit" made none (2026-10-02).
+        throw ToolError(std::format("stage: no creature from template \"{}\"; a template is the game's creature "
+                                    "resource, not a kind's name: wolf, bear_black and skeleton_normal make "
+                                    "creatures, and inspect kind=creatures gives each one's `template` in an "
+                                    "area where its kind lives (its tag names the instance, not this)",
                                     name));
     }
     // The game puts a creature at the nearest place it can stand: a point
