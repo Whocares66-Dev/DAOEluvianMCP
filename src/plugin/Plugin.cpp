@@ -191,13 +191,13 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     // a loader of another API, or one whose struct ends before the fields
     // used here, is not this plugin's (as the other plugins check).
     if (info == nullptr || info->apiVersion != dao::kPluginApiVersion ||
-        info->structSize < offsetof(dao::LoaderInfo, expectedExecutable) + sizeof(info->expectedExecutable))
+        info->structSize < offsetof(dao::LoaderInfo, knownExecutable) + sizeof(info->knownExecutable))
     {
         spdlog::error("the loader's plugin API is {}, not the {} Eluvian was built for; Eluvian stays off",
                       info != nullptr ? info->apiVersion : 0, dao::kPluginApiVersion);
         return false;
     }
-    if (!info->expectedExecutable)
+    if (!info->knownExecutable)
     {
         spdlog::error("not the DAOrigins.exe DAOLib was read from; Eluvian stays off");
         return false;

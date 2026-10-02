@@ -262,6 +262,33 @@ class BridgeTest(unittest.TestCase):
             {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
         )
 
+    def test_a_launch_eluvian_refused_says_so_in_the_logs_words(self) -> None:
+        self.down()
+        self.processes.pids.clear()
+        (self.folder / "eluvian.log").write_text(
+            "[19:14:12.971] [100] [error] an older game's line; Eluvian stays off\n"
+            "[19:20:01.002] [4242] [info] eluvian 0.2.0\n"
+            "[19:20:01.003] [4242] [error] the loader's plugin API is 1, not the 2 "
+            "Eluvian was built for; Eluvian stays off\n",
+            encoding="utf-8",
+        )
+        result = self.call("game_launch", {"waitSeconds": 0})
+        self.assertTrue(result["isError"])
+        self.assertIn("the loader's plugin API is 1", result["content"][0]["text"])
+        self.assertNotIn("an older game's line", result["content"][0]["text"])
+
+    def test_status_says_why_a_running_game_does_not_serve(self) -> None:
+        self.down()
+        (self.folder / "loader.log").write_text(
+            "[19:20:01.002] [100] [error] the address library has no file for this build "
+            "of the game; plugins are not loaded\n",
+            encoding="utf-8",
+        )
+        result = self.call("game_status")["structuredContent"]
+        self.assertEqual(result["eluvian"], "not answering")
+        self.assertIn("plugins are not loaded", result["why"])
+        self.assertTrue(result["why"].startswith("loader.log: the address library"))
+
     def test_launch_into_a_save_asks_for_it_and_waits_for_the_world(self) -> None:
         self.processes.pids.clear()
         save = {"character": "Aedan", "kind": "manual", "number": 2}

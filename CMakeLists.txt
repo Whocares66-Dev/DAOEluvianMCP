@@ -249,5 +249,13 @@ target_compile_definitions(
 )
 
 # `cmake --build --preset debug` builds the loader too, so build\<preset>\
-# is a game folder's worth of files: version.dll, daolib\plugins\*.dll.
+# is a game folder's worth of files: version.dll, daolib\plugins\*.dll and
+# daolib\addresses\*.bin.
 add_custom_target(game_folder ALL DEPENDS version eluvian)
+# The address library's files, one per build of the game (DAOLib 8b027c6 on):
+# the loader loads nothing without the running game's. DAOLib makes them with
+# a target of its own `all`, which EXCLUDE_FROM_ALL leaves out here, so the
+# game folder asks for it by name.
+if(TARGET daoaddr_data)
+    add_dependencies(game_folder daoaddr_data)
+endif()

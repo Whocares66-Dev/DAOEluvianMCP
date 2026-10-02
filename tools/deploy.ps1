@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Copy a build's eluvian.dll into the game, or take it out.
+    Copy a build's eluvian.dll and the address library's files into the game, or take
+    eluvian.dll out.
 
 .DESCRIPTION
     After `.\tools\build.ps1 -Preset <preset>`, puts build\<preset>\daolib\plugins\eluvian.dll
@@ -8,8 +9,15 @@
     must not be running: it holds the file open.
 
     DAOLib's loader (version.dll) is copied only if the game has none, or with -Loader: the
-    turn-based mod deploys one too, and any build of it loads every plugin, so Eluvian does
-    not replace another's.
+    turn-based mod deploys one too, and a loader loads every plugin of its own plugin API, so
+    Eluvian does not replace another's. A loader of another API is refused by this plugin:
+    eluvian.log says so in the game's first second, and the bridge's game_launch repeats it.
+    -Loader puts this build's loader in, which the plugins built for the old one then refuse,
+    so agree it with whoever else deploys plugins.
+
+    The address library's files (build\<preset>\daolib\addresses\*.bin, one per build of the
+    game; DAOLib 8b027c6 on) go under bin_ship\daolib\addresses, where the loader and every
+    plugin read the running game's. Without them the loader loads nothing.
 
     -Remove deletes eluvian.dll and its .pdb; the loader and other plugins stay.
 
@@ -82,9 +90,14 @@ $builtLoader = Join-Path $build 'version.dll'
 foreach ($f in @($builtPlugin, $builtLoader)) {
     if (-not (Test-Path $f)) { throw "No $f; run .\tools\build.ps1 -Preset $Preset first" }
 }
+$builtAddresses = Join-Path $build 'daolib\addresses'
+if (-not (Test-Path (Join-Path $builtAddresses '*.bin'))) {
+    throw "No address files in $builtAddresses; run .\tools\build.ps1 -Preset $Preset first"
+}
 
 New-Item -ItemType Directory -Force $plugins | Out-Null
 $gameLoader = Join-Path $Game 'version.dll'
+$keptLoader = -not $Loader -and (Test-Path $gameLoader)
 if ($Loader -or -not (Test-Path $gameLoader)) {
     Copy-Item -Force $builtLoader $gameLoader
     $loaderPdb = Join-Path $build 'version.pdb'
@@ -98,6 +111,20 @@ Copy-Item -Force $builtPlugin $plugin
 $builtPdb = [IO.Path]::ChangeExtension($builtPlugin, '.pdb')
 if (Test-Path $builtPdb) { Copy-Item -Force $builtPdb $pluginPdb }
 Show-Ok "plugin  -> $plugin"
+# The address files are the same for every plugin built on one DAOLib, so the last deploy's
+# stand, as DAOLib's own deploy.ps1 and the turn-based mod's leave them. A game folder that
+# had none had a loader from before them (plugin API 1), which this plugin refuses.
+$addresses = Join-Path $Game 'daolib\addresses'
+$hadAddresses = Test-Path (Join-Path $addresses '*.bin')
+New-Item -ItemType Directory -Force $addresses | Out-Null
+foreach ($file in Get-ChildItem -Path $builtAddresses -Filter '*.bin') {
+    Copy-Item -Force $file.FullName (Join-Path $addresses $file.Name)
+}
+Show-Ok "addresses -> $addresses"
+if ($keptLoader -and -not $hadAddresses) {
+    Show-Info 'the game had no address files, so the loader kept there is likely of an older plugin API:'
+    Show-Info 'Eluvian will refuse it (eluvian.log says so once the game starts). -Loader replaces it.'
+}
 $docs = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'BioWare\Dragon Age\daolib'
 Show-Info "log:      $(Join-Path $docs 'eluvian.log')"
 Show-Info "port:     $(Join-Path $docs 'eluvian.json') once the game runs (8930 unless taken)"

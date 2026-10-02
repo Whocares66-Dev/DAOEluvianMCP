@@ -23,6 +23,21 @@ inspect {"kind": "game"}                         hero, party, area
 
 Several agents may share the one game. `game_launch` answers `launched` false when a game already runs, and says who started it (`health`'s `owner`; none means it was started by hand, the player's own): read that answer before acting, since every other call would go to that game. A game that is not yours is to read, not to drive or close.
 
+No game running does not mean the game is free: a tester may have its own loader and plugins in the folder between two runs. So a test that needs the game or its folder for more than one run claims it, and lets it go:
+
+```
+game_claim {"owner": "my-name", "note": "what for", "minutes": 30}
+                                                 bridge: until it ends or is released, another's game_launch and
+                                                 Eluvian's deploy are refused, with the note
+game_release {"owner": "my-name"}
+game_status {}                                   bridge: is a game running, whose, the claim that stands, and `why`
+                                                 where a game runs and Eluvian does not serve in it
+```
+
+A claim ends by itself at its time (240 minutes at most; claim again to renew). It holds those who go through the bridge or Eluvian's deploy; a game started by hand is the player's and is not held by it.
+
+If `game_launch` answers that the game runs and Eluvian is not serving, its `error` has the log's own line. The usual one is a loader of another plugin API than Eluvian was built for: the loader and every plugin in the game folder are deployed together when DAOLib's API changes.
+
 With the game already running, `game {"action": "saves"}` lists the saves and `game {"action": "load", ...}` loads one, from the main menu (mode pregame) or in the world; `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` says when it is there. A save made by a test is a new manual one by default (`game {"action": "save", "name": "..."}`), which writes over nothing.
 
 ## Looking

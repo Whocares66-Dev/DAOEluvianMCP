@@ -24,18 +24,21 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `events`, `wait_for` | The event bus from a cursor; block until an event happens; `describe` lists the topics and what they hold |
 | `scenario` | Steps in one call: tools, waits for events, pauses, checks; a transcript back |
 | `log` | DAOLib's logs from a cursor; `eluvian.log` holds every tool call with its arguments, time and refusal |
-| `game_saves`, `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: the saves on disk, is it running and whose it is, start it (into a save, under an owner's name), close it |
+| `game_saves`, `game_status`, `game_launch`, `game_quit` | The bridge's own, outside the game: the saves on disk, is it running and whose it is (and why Eluvian does not serve, if it does not), start it (into a save, under an owner's name), close it |
+| `game_claim`, `game_release` | The bridge's own: say the game and its folder are in use, by whom, for what and until when; another's launch and Eluvian's deploy are refused meanwhile |
 
 ## Building
 
 As DAOLib: Visual Studio 2022 with the C++ workload, [vcpkg](https://github.com/microsoft/vcpkg) with `VCPKG_ROOT` set, Python 3, and for formatting and linting LLVM 22+ and PSScriptAnalyzer.
 
 ```powershell
-git submodule update --init                     # extern\DAOLib
+git submodule update --init --recursive         # extern\DAOLib, and its address library
 .\tools\build.ps1 -Preset debug -Test           # the plugin, DAOLib's loader, the tests
 .\tools\deploy.ps1                              # into the game's bin_ship (game closed)
 .\tools\deploy.ps1 -Remove                      # the plugin out again
 ```
+
+The deploy puts in `eluvian.dll` and the address library's files (`daolib\addresses\*.bin`, one per build of the game, which the loader needs), and DAOLib's loader (`version.dll`) only where the game has none; `-Loader` replaces it. The loader and every plugin under it must be built on one plugin API of DAOLib's: where they are not, Eluvian stays off, `eluvian.log` says which API the loader has, and `game_launch` and `game_status` answer with that line as `why`.
 
 ## Connecting
 

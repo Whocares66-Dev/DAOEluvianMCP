@@ -552,6 +552,39 @@ class Bridge:
         except (Unreachable, StillWaiting):
             return None
 
+    def why_silent(self, pid: int) -> str | None:
+        """Why Eluvian does not serve in a game that runs, in the logs' own words, or None
+        where they do not say. The loader and every plugin must be of one plugin API: a
+        loader of another refuses Eluvian, or Eluvian it, in the game's first second, and
+        the loader loads nothing where the address library has no file for the game's
+        build (DAOLib 8b027c6 on). Each log line carries the pid of the game that wrote it."""
+        mark = f"[{pid}]"
+        signs = (
+            ("eluvian.log", ("stays off",)),
+            (
+                "loader.log",
+                (
+                    "eluvian.dll: refused",
+                    "eluvian.dll: LoadLibrary",
+                    "plugins are not loaded",
+                ),
+            ),
+        )
+        for name, wanted in signs:
+            try:
+                lines = (
+                    (self.game.folder / name)
+                    .read_text(encoding="utf-8", errors="replace")
+                    .splitlines()
+                )
+            except OSError:
+                continue
+            for line in lines:
+                if mark in line and any(sign in line for sign in wanted):
+                    said = line.split("] ", 3)[-1].strip()
+                    return f"{name}: {said}"
+        return None
+
     def game_status(self) -> dict:
         pids = self.processes.running()
         health = self.health()
@@ -560,6 +593,12 @@ class Bridge:
             "pids": pids,
             "eluvian": health if health is not None else "not answering",
         }
+        if health is None:
+            for pid in pids:
+                why = self.why_silent(pid)
+                if why:
+                    status["why"] = why
+                    break
         others = self.processes.others()
         if others:
             status["otherInstalls"] = others
@@ -718,6 +757,13 @@ class Bridge:
         answer = {"launched": True, "pid": pid, "health": health}
         if others:
             answer["otherInstalls"] = others
+        if health is None:
+            why = self.why_silent(pid)
+            if why:
+                answer["error"] = (
+                    f"the game runs and Eluvian is not serving in it: {why}"
+                )
+                return text_result(answer, is_error=True)
         save = arguments.get("load")
         if isinstance(save, dict):
             loaded = self.load_save(save, deadline)
