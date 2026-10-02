@@ -3,11 +3,20 @@
 // world point's pixel, or what lies under a pixel. Each place comes in the
 // window's client pixels, as a fraction of the picture, and as a desktop
 // pixel. DAOLib's dao::world::ToScreen, AimAt and PickAt (48df3b4).
+//
+// And `pointer`: the game's cursor pick held at such a place, no click, so
+// what follows the cursor (a path preview, a cost caption) shows with no
+// hands (turn-based-agent, 2026-10-02). DAOLib's dao::input::PointCursor
+// answers the pick's own read of the mouse, so the real mouse is not moved
+// and the window need not be in front (lib-agent, 491abad).
 #include "game/Shared.h"
 
 #include "game/Capture.h"
 
+#include "dao/Input.h"
+
 #include <array>
+#include <chrono>
 #include <optional>
 
 namespace eluvian::game
@@ -141,6 +150,22 @@ std::optional<Aim> AimInside(ObjectId target, const dao::world::ScreenPoint &edg
     return best;
 }
 
+// The pointer's hold, on the frame's thread only: whether the pick is held,
+// and until when (none: until released). A hold left behind would leave a
+// player's clicks acting on the pointed place, so it ends by itself.
+bool g_pointing = false;
+std::optional<std::chrono::steady_clock::time_point> g_pointerUntil;
+
+void ReleasePointer()
+{
+    if (g_pointing)
+    {
+        dao::input::ReleaseCursor();
+    }
+    g_pointing = false;
+    g_pointerUntil.reset();
+}
+
 } // namespace
 
 void AddScreen(Bench &bench, const Watch &watch)
@@ -219,6 +244,110 @@ void AddScreen(Bench &bench, const Watch &watch)
                 const auto y = static_cast<std::int32_t>(pixel[1].get<double>());
                 answer["pixel"] = PlaceJson(static_cast<float>(x), static_cast<float>(y), *view, window);
                 answer["hits"] = HitsJson(dao::world::PickAt(x, y));
+            }
+            return answer;
+        });
+
+    dao::OnFrame([] {
+        if (g_pointing && g_pointerUntil && std::chrono::steady_clock::now() >= *g_pointerUntil)
+        {
+            ReleasePointer();
+        }
+    });
+    bench.Tools().Add(
+        ToolSpec{
+            "pointer",
+            "Hold the game's cursor at a place without a click, as if the mouse rested there, for what "
+            "shows only under the cursor (a path preview, a cost caption, a highlight). `target` (a "
+            "creature or object id: the same pixel screen gives to click it), `point` ({x, y, z} in the "
+            "world) or `pixel` ([x, y] in the game's pixels). The game's pick follows from its next pick "
+            "(about a fifteenth of a second): wait a quarter second, then inspect kind=cursor says what it "
+            "has under it, and a screenshot shows the rest. The real mouse is not moved and the window need "
+            "not be in front; but while the real mouse is over the game's interface (`overInterface`) the "
+            "game picks nothing, so keep it off the game's menus and bars. The hold ends after `seconds` "
+            "(default 60; 0 for none) or with `release: true`, and while it holds a click acts on the "
+            "place held, not under the real mouse.",
+            Json{{"type", "object"},
+                 {"properties",
+                  {{"target", {{"description", "A creature or object id"}}},
+                   {"point", {{"description", "{x, y, z} or [x, y, z] in the world"}}},
+                   {"pixel", {{"description", "[x, y] in the game's pixels"}}},
+                   {"seconds", {{"type", "number"}, {"description", "How long to hold; default 60, 0 until released"}}},
+                   {"release", {{"type", "boolean"}, {"description", "Give the pick back to the mouse"}}}}}},
+            Thread::Frame, true},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "pointer");
+            const Args args(raw, "pointer");
+            if (args.Bool("release", false))
+            {
+                const bool was = g_pointing;
+                ReleasePointer();
+                return Json{{"released", was}};
+            }
+            const double seconds = args.Number("seconds", 60);
+            if (seconds < 0 || seconds > 3600)
+            {
+                throw ToolError("pointer: `seconds` is from 0 (until released) to 3600");
+            }
+            const auto view = dao::world::ScreenSize();
+            if (!view)
+            {
+                throw ToolError("pointer: the game has no view to point in now (health says the mode)");
+            }
+            const auto window = GameWindowPlace();
+            Json answer = Json::object();
+            std::optional<dao::world::ScreenPoint> at;
+            if (const auto target = args.OptionalId("target", "a creature or object id"))
+            {
+                answer["target"] = Brief(*target);
+                const auto edge = dao::world::AimAt(*target);
+                const auto feet = dao::world::ToScreen(api::GetPosition(*target));
+                const auto inside = edge ? AimInside(*target, *edge, feet) : std::nullopt;
+                at = inside ? std::optional(inside->point) : edge;
+                if (!at)
+                {
+                    throw ToolError("pointer: no pixel shows it: it is out of view, or something else is in front "
+                                    "of it wherever it shows; camera action=face or follow may bring it into view");
+                }
+            }
+            else if (args.Has("point"))
+            {
+                at = dao::world::ToScreen(VectorOf(args.Raw().at("point"), "pointer: `point`"));
+                if (!at || !at->inFront || !at->inView)
+                {
+                    throw ToolError("pointer: the point is out of view; camera action=face may bring it into view");
+                }
+            }
+            else if (args.Has("pixel"))
+            {
+                const auto &pixel = args.Raw().at("pixel");
+                if (!pixel.is_array() || pixel.size() != 2 || !pixel[0].is_number() || !pixel[1].is_number())
+                {
+                    throw ToolError("pointer: `pixel` is [x, y] in the game's pixels, from the picture's top left");
+                }
+                at = dao::world::ScreenPoint{pixel[0].get<float>(), pixel[1].get<float>(), true, true};
+            }
+            else
+            {
+                throw ToolError("pointer: give `target`, `point` or `pixel`, or `release: true`");
+            }
+            dao::input::PointCursor(static_cast<std::int32_t>(at->x), static_cast<std::int32_t>(at->y));
+            g_pointing = true;
+            g_pointerUntil = std::nullopt;
+            if (seconds > 0)
+            {
+                g_pointerUntil = std::chrono::steady_clock::now() +
+                                 std::chrono::milliseconds(static_cast<long long>(seconds * 1000));
+            }
+            answer["pointed"] = PlaceJson(at->x, at->y, *view, window);
+            answer["holds"] = seconds > 0 ? Json(seconds) : Json("until released");
+            answer["foreground"] = window.found && window.foreground;
+            const bool overInterface = dao::gui::MouseOverInterface();
+            answer["overInterface"] = overInterface;
+            if (overInterface)
+            {
+                answer["note"] = "the real mouse is over the game's interface, and the game picks nothing while it "
+                                 "is: move it off the game's menus and bars (or out of the window)";
             }
             return answer;
         });

@@ -100,6 +100,16 @@ def checks(run: Run, owner: str) -> None:
         lambda a: "quicksave is the player's" in a.get("error", ""),
     )
     check(
+        "pointer holds the game's cursor at a creature, no click",
+        tool("pointer", {"target": "0x10d", "seconds": 5}),
+        lambda a: "x" in a["pointed"] and a["holds"] == 5,
+    )
+    check(
+        "pointer gives the cursor back",
+        tool("pointer", {"release": True}),
+        lambda a: a["released"] is True,
+    )
+    check(
         "inspect journal, the quests under way",
         tool("inspect", {"kind": "journal"}),
         lambda a: (

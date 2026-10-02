@@ -70,6 +70,8 @@ inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, t
 order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
 inspect {"kind": "geometry", "id": "0x82", "target": "0x2ec", "walk": true}
                                                  the walk there: its length, or the door in the way (`blocker`)
+pointer {"target": "0x2ec"}                      the game's cursor held over it, no click: hover previews show; then
+                                                 inspect kind=cursor and a screenshot. {"release": true} ends it
 travel {"target": "0x2ec"}                       walk there, opening the doors on the way; answers arrived, or why not
 travel {"area": "bed100ar_forest_clearing"}      to another area by the exit that leads there (inspect kind=exits):
                                                  walks, uses it, answers once the new area is in place
