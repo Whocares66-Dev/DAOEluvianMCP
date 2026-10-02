@@ -95,6 +95,14 @@ def checks(run: Run, owner: str) -> None:
         ),
     )
     check(
+        "inspect tactics, a creature's slots",
+        tool("inspect", {"kind": "tactics", "id": hero}),
+        lambda a: (
+            a["slots"] == len(a["tactics"])
+            and all("empty" in t or "command" in t for t in a["tactics"])
+        ),
+    )
+    check(
         "inspect abilities, all a creature knows",
         tool("inspect", {"kind": "abilities", "id": hero}),
         lambda a: (

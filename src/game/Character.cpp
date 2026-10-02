@@ -26,6 +26,10 @@ Json Rule(std::int32_t table, std::int32_t row)
     {
         name = api::GetM2DAInt(table, L"Name", row);
     }
+    if (name <= 0)
+    {
+        name = api::GetM2DAInt(table, L"StrRef", row); // the tactics' tables
+    }
     if (name > 0)
     {
         if (const auto text = Narrow(dao::tlk::String(static_cast<std::uint32_t>(name))); !text.empty())
@@ -355,6 +359,80 @@ void AddCharacter(Bench &bench, const Watch &watch)
                         {"spells", list(dao::abilities::Kind::Spell)},
                         {"skills", list(dao::abilities::Kind::Skill)},
                         {"items", list(dao::abilities::Kind::Item)}};
+        });
+
+    // A creature's tactics, by the scripts' own commands. Slots count from 1
+    // and an unset one has command 0 (read in play 2026-10-01: the hero's
+    // first was Self, condition 101, Use Ability 603; a follower's Enemy,
+    // condition 208, Use Ability 803). The tables name each part by row:
+    // targets, conditions, command types (4 use ability, 5 and 6 a mode on
+    // and off, 7 use item, whose param is the ability), presets, and the
+    // behaviours that property 18 (AI_BEHAVIOR) is a row of.
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"tactics",
+                 "A creature's tactics (`id`, default the one controlled): what it does by itself in a fight "
+                 "when it is not the one controlled. `slots` is how many it has; `tactics` is each in order: "
+                 "`enabled`, its `target` (self, ally, enemy ...), its `condition`, its `command` (attack, use "
+                 "ability, activate mode, use item ...) and the `ability` or `item` the command is for; a slot "
+                 "not set is `empty`. `preset` (null when none is chosen) and `behaviour` are the two choices above "
+                 "the slots."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId id = CreatureOrControlled(args);
+            constexpr std::int32_t kMostSlots = 64;
+            constexpr std::int32_t kCommandUseAbility = 4;
+            constexpr std::int32_t kCommandUseItem = 7;
+            constexpr std::int32_t kPropertyBehaviour = 18;
+            const std::int32_t slots = api::GetNumTactics(id);
+            Json tactics = Json::array();
+            for (std::int32_t slot = 1; slot <= slots && slot <= kMostSlots; ++slot)
+            {
+                Json entry = {{"slot", slot}, {"enabled", api::IsTacticEnabled(id, slot) != 0}};
+                const std::int32_t command = api::GetTacticCommand(id, slot);
+                if (command == 0)
+                {
+                    entry["empty"] = true;
+                    tactics.push_back(std::move(entry));
+                    continue;
+                }
+                entry["target"] = Rule(k::TABLE_AI_TACTICS_TARGET_TYPE, api::GetTacticTargetType(id, slot));
+                entry["condition"] = Rule(k::TABLE_TACTICS_CONDITIONS, api::GetTacticCondition(id, slot));
+                entry["command"] = Rule(k::TABLE_COMMAND_TYPES, command);
+                const std::int32_t param = api::GetTacticCommandParam(id, slot);
+                if (command >= kCommandUseAbility && command <= kCommandUseItem && param != 0)
+                {
+                    entry["ability"] = AbilityJson(param);
+                }
+                else if (param != 0)
+                {
+                    entry["param"] = param;
+                }
+                if (auto tag = Narrow(api::GetTacticCommandItemTag(id, slot)); !tag.empty())
+                {
+                    entry["item"] = std::move(tag);
+                }
+                if (const ObjectId object = api::GetTacticTargetObject(id, slot); api::IsObjectValid(object) != 0)
+                {
+                    entry["targetObject"] = Brief(object);
+                }
+                if (const ObjectId object = api::GetTacticConditionObject(id, slot); api::IsObjectValid(object) != 0)
+                {
+                    entry["conditionObject"] = Brief(object);
+                }
+                tactics.push_back(std::move(entry));
+            }
+            const auto behaviour =
+                static_cast<std::int32_t>(api::GetCreatureProperty(id, kPropertyBehaviour, k::PROPERTY_VALUE_TOTAL));
+            // Preset 0 is the table's INVALID row: none chosen, the slots set by
+            // hand or by the creature's template (a follower read 0 in play).
+            const std::int32_t preset = api::GetTacticPresetID(id);
+            return Json{{"of", Brief(id)},
+                        {"slots", slots},
+                        {"preset", preset > 0 ? Rule(k::TABLE_TACTICS_USER_PRESETS, preset) : Json(nullptr)},
+                        {"behaviour", Rule(k::TABLE_AI_BEHAVIORS, behaviour)},
+                        {"tactics", std::move(tactics)}};
         });
 
     bench.Tools().AddKind(
