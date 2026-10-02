@@ -29,6 +29,7 @@ With the game already running, `game {"action": "saves"}` lists the saves and `g
 
 ```
 inspect {"kind": "character", "id": "0x82"}      the sheet: race, class, level, attributes, combat numbers, what is worn
+inspect {"kind": "abilities", "id": "0x82"}      every talent, spell and skill it knows, not only the quickbar's
 inspect {"kind": "equipment", "id": "0x82"}      each slot's item in full: type, material, stats, properties
 inspect {"kind": "inventory"}                    the party's backpack; {"kind": "item", "id": ...} is one item in full
 inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock

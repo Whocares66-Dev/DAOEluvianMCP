@@ -95,6 +95,13 @@ def checks(run: Run) -> None:
         ),
     )
     check(
+        "inspect abilities, all a creature knows",
+        tool("inspect", {"kind": "abilities", "id": hero}),
+        lambda a: (
+            a["count"] >= len(a["talents"]) + len(a["spells"]) > 0 or a["count"] == 0
+        ),
+    )
+    check(
         "inspect equipment",
         tool("inspect", {"kind": "equipment", "id": hero}),
         lambda a: isinstance(a["slots"], dict) and "weaponSet" in a,

@@ -6,6 +6,8 @@
 // item's properties (seen in play, 2026-10-01).
 #include "game/Shared.h"
 
+#include <cctype>
+
 namespace eluvian::game
 {
 
@@ -61,23 +63,28 @@ constexpr std::array<Named, 19> kSlots = {{{0, "main"},
                                            {18, "dog_warpaint"},
                                            {19, "dog_collar"}}};
 
-// An item's stats by their place (GetItemStat). script.ldf names none; these
-// are the ones play made plain on a bow, a chest piece and boots: the armour
-// a piece gives, a weapon's damage, and the fatigue a piece adds. The rest
-// are given by number until their names are read.
+// An item's stats by their place (GetItemStat), named by the game's own
+// table of them (itemstatdefines, table 109: Armor, Damage, Defense,
+// Attack, CritChanceModifier, ArmorPenetration, AbilityCostModifier,
+// MissileDeflection, OptimumRange, Spellpower, RngdPenalty, AttributeMod;
+// lib-agent, 2026-10-01). AbilityCostModifier is what the game's interface
+// calls fatigue. The scripts' header names two of them otherwise; the
+// table is what the interface reads.
+constexpr std::int32_t kTableItemStatDefines = 109;
+
 std::string StatName(std::int32_t index)
 {
-    switch (index)
+    std::string label = Narrow(api::GetM2DAString(kTableItemStatDefines, L"Label", index));
+    if (label.empty())
     {
-    case 1:
-        return "armor";
-    case 2:
-        return "damage";
-    case 7:
-        return "fatigue";
-    default:
         return std::format("stat{}", index);
     }
+    if (label == "AbilityCostModifier")
+    {
+        return "fatigue";
+    }
+    label[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(label[0])));
+    return label;
 }
 
 std::string_view SlotName(std::int32_t slot)
@@ -222,7 +229,9 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "and whether it can level up, rank, the six attributes (total and base), its combat numbers "
                  "(attack, defense, armor, armor penetration, spellpower and the rest), health and mana or "
                  "stamina, weapon style and set, whether it is plot or immortal, a follower's state and "
-                 "approval, and what it wears, slot by slot in brief. inspect kind=equipment gives the items "
+                 "approval, `properties` (every property it has that is not nothing, by the game's own "
+                 "names: resistances, regeneration, damage), and what it wears, slot by slot in brief. inspect "
+                 "kind=equipment gives the items "
                  "in full, kind=inventory the backpack, kind=creature its effects and abilities."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
@@ -273,8 +282,64 @@ void AddCharacter(Bench &bench, const Watch &watch)
                 sheet["follower"] =
                     Json{{"state", api::GetFollowerState(id)}, {"approval", api::GetFollowerApproval(id)}};
             }
+            // Every property that is not nothing, by the name the game's own
+            // table gives it (the `properties` table's Stat column; lib-agent,
+            // 2026-10-01): resistances, regeneration, damage bonuses and the
+            // rest, beyond the named ones above.
+            Json properties = Json::object();
+            for (std::int32_t property = 1; property < 64; ++property)
+            {
+                const float total = api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL);
+                if (total == 0)
+                {
+                    continue;
+                }
+                std::string name = Narrow(api::GetM2DAString(-1, L"Stat", property, L"properties"));
+                if (name.empty())
+                {
+                    name = std::format("property{}", property);
+                }
+                properties[name] =
+                    Json{{"total", total}, {"base", api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_BASE)}};
+            }
+            sheet["properties"] = std::move(properties);
             sheet["equipment"] = EquipmentJson(id, false);
             return sheet;
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"abilities",
+                 "Everything a creature knows (`id`, default the one controlled), not only what is on its "
+                 "quickbar: its `talents`, `spells`, `skills` and `items`' abilities, each by id and name, with "
+                 "whether it is `ready` and its cooldown. A skill with ranks is an entry per rank it has. "
+                 "`count` is the game's own count of them."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId id = CreatureOrControlled(args);
+            const auto list = [id](dao::abilities::Kind kind) {
+                Json abilities = Json::array();
+                for (const std::int32_t ability : dao::abilities::Known(id, kind))
+                {
+                    Json entry = AbilityJson(ability);
+                    const bool available = api::IsAbilityAvailable(id, ability) != 0;
+                    const auto cooldown = dao::abilities::GetCooldown(id, ability);
+                    entry["ready"] = available && (!cooldown || cooldown->remaining <= 0);
+                    if (cooldown && cooldown->remaining > 0)
+                    {
+                        entry["cooldown"] = Json{{"remaining", cooldown->remaining}, {"total", cooldown->total}};
+                    }
+                    abilities.push_back(std::move(entry));
+                }
+                return abilities;
+            };
+            return Json{{"of", Brief(id)},
+                        {"count", api::GetAbilityCount(id)},
+                        {"talents", list(dao::abilities::Kind::Talent)},
+                        {"spells", list(dao::abilities::Kind::Spell)},
+                        {"skills", list(dao::abilities::Kind::Skill)},
+                        {"items", list(dao::abilities::Kind::Item)}};
         });
 
     bench.Tools().AddKind(
@@ -282,7 +347,8 @@ void AddCharacter(Bench &bench, const Watch &watch)
         KindSpec{"equipment",
                  "What a creature wears (`id`, default the one controlled), each slot's item in full: name, tag, "
                  "template, base type and material (by the game's own labels), value, its stats (armor, damage, "
-                 "fatigue; others by number), its properties with their power, and what using it does. `slots` "
+                 "defense, attack, crit chance, armor penetration, fatigue, optimum range and the rest, by "
+                 "the game's own names), its properties with their power, and what using it does. `slots` "
                  "are the active weapon set's main, offhand and ammo, then chest, head, boots, gloves, cloak, "
                  "the rings, neck and belt; `otherWeapons` is the set not in hand."},
         [&watch](const Json &raw) -> ToolResult {
@@ -299,7 +365,8 @@ void AddCharacter(Bench &bench, const Watch &watch)
         KindSpec{"inventory",
                  "The backpack of a creature (`id`, default the hero, whose backpack is the party's): each item "
                  "in brief (name, tag, template, base type, stack, value, plot), with `count` and the most it "
-                 "holds. `full: true` gives each item as inspect kind=item does. Not what is worn: that is "
+                 "holds, and `money`, the party's purse. `full: true` gives each item as inspect kind=item does. Not "
+                 "what is worn: that is "
                  "inspect kind=equipment."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
