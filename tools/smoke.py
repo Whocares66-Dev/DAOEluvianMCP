@@ -95,6 +95,18 @@ def checks(run: Run, owner: str) -> None:
         ),
     )
     check(
+        "inspect journal, the quests under way",
+        tool("inspect", {"kind": "journal"}),
+        lambda a: (
+            len(a["quests"]) > 0 and all(q["plot"] and q["name"] for q in a["quests"])
+        ),
+    )
+    check(
+        "inspect exits, the ways out of the area",
+        tool("inspect", {"kind": "exits"}),
+        lambda a: a["count"] > 0 and all(e["leadsTo"]["area"] for e in a["exits"]),
+    )
+    check(
         "inspect plot, a story's flags",
         tool("inspect", {"kind": "plot", "plot": "gen00pt_backgrounds"}),
         lambda a: len(a["set"]) == 1 and len(a["flags"]) > 5,

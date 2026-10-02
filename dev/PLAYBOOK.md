@@ -47,6 +47,8 @@ inspect {"kind": "character", "id": "0x82"}      the sheet: race, class, level, 
 inspect {"kind": "abilities", "id": "0x82"}      every talent, spell and skill it knows, not only the quickbar's
 inspect {"kind": "tactics", "id": "0x82"}        its tactics slots: target, condition, command and ability of each
 inspect {"kind": "inventory", "id": "0x1fd"}     what a chest, a body or a pile of bones holds, without opening it
+inspect {"kind": "journal"}                      the quests under way and the one marked: plot, name, objective, text
+inspect {"kind": "exits"}                        the ways out of the area: door or trigger, where each leads, distance
 inspect {"kind": "plot", "plot": "bed000pt_main"}
                                                  a quest's or story's flags by name, which are set, and the journal's
                                                  text for those; "flag": "NAME" asks for one. A plot is named by its

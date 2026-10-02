@@ -11,6 +11,108 @@
 namespace eluvian::game
 {
 
+namespace
+{
+
+// Where an area transition leads. The scripts keep it as local strings on
+// the placeable or the trigger (placeable_h.nss, trigger_core.nss; read by
+// lib-agent, 2026-10-01). A door that chooses its floor when it is used
+// sets them then, so a read before can be empty or the last use's; an exit
+// to the world map names the world map as its area.
+Json LeadsTo(ObjectId id, bool trigger)
+{
+    // A placeable that leads nowhere holds the template's "none" there
+    // (every chest and door of the ruins but the two ways out, 2026-10-02).
+    auto area = Narrow(api::GetLocalString(id, trigger ? L"TRIGGER_AT_DEST_AREA_TAG" : L"PLC_AT_DEST_AREA_TAG"));
+    if (area.empty() || area == "none")
+    {
+        return nullptr;
+    }
+    return Json{{"area", std::move(area)},
+                {"waypoint", Narrow(api::GetLocalString(id, trigger ? L"TRIGGER_AT_DEST_TAG" : L"PLC_AT_DEST_TAG"))}};
+}
+
+// One quest of the journal, from the data tree its window is bound to:
+// Journal.PlotList.<i> for those under way, Journal.CompletedPlots.<i> for
+// those done, Journal.ActivePlot for the one marked (lib-agent, from the
+// constructors of Journal and JournalEntry and the paths in journal.gfx,
+// 2026-10-01). A list has no length to ask: its members are walked until
+// one has no ResRef. Name and Description come in the player's language.
+Json JournalEntry(const std::wstring &at)
+{
+    if (dao::data::Find(at + L"ResRef") == nullptr)
+    {
+        return nullptr;
+    }
+    const auto text = [&at](std::wstring_view field) {
+        const auto *attribute = dao::data::Find(at + std::wstring(field));
+        return attribute != nullptr ? Narrow(attribute->Text()) : std::string();
+    };
+    // Completed and Updated are read as text, "0" or "1": their number was
+    // 0 for both in play (2026-10-02).
+    const auto yes = [&text](std::wstring_view field) { return text(field) == "1"; };
+    Json entry = {{"plot", text(L"ResRef")}, {"name", text(L"Name")}};
+    // The entry showing marks its objective <emp>so</emp> and breaks lines
+    // with \r\n ("<emp>Investigate the cave</emp>\r\nYou've found ..."): the
+    // marked part is given apart, and the text without the marks.
+    const std::string shown = text(L"Description");
+    std::string plain;
+    std::string objective;
+    bool marked = false;
+    for (std::size_t i = 0; i < shown.size(); ++i)
+    {
+        if (shown.compare(i, 5, "<emp>") == 0 || shown.compare(i, 6, "</emp>") == 0)
+        {
+            marked = shown[i + 1] != '/';
+            i = shown.find('>', i);
+            continue;
+        }
+        if (shown[i] == '\r')
+        {
+            continue;
+        }
+        plain += shown[i];
+        if (marked)
+        {
+            objective += shown[i];
+        }
+    }
+    entry["description"] = std::move(plain);
+    if (!objective.empty())
+    {
+        entry["objective"] = std::move(objective);
+    }
+    for (const auto &[key, field] : {std::pair{"group", L"PlotGroup"}, std::pair{"parent", L"ParentPlot"},
+                                     std::pair{"area", L"AreaTag"}, std::pair{"offer", L"OfferId"}})
+    {
+        if (auto value = text(field); !value.empty())
+        {
+            entry[key] = std::move(value);
+        }
+    }
+    entry["updated"] = yes(L"Updated");
+    entry["completed"] = yes(L"Completed");
+    return entry;
+}
+
+Json JournalList(std::wstring_view list)
+{
+    constexpr int kMostEntries = 512;
+    Json entries = Json::array();
+    for (int i = 0; i < kMostEntries; ++i)
+    {
+        Json entry = JournalEntry(std::format(L"Journal.{}.{}.", list, i));
+        if (entry.is_null())
+        {
+            break;
+        }
+        entries.push_back(std::move(entry));
+    }
+    return entries;
+}
+
+} // namespace
+
 void AddInspect(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(ToolSpec{
@@ -26,6 +128,9 @@ void AddInspect(Bench &bench, const Watch &watch)
                {"path", {{"type", "string"}, {"description", "kind=data: a dotted path in the data tree"}}},
                {"paths", {{"type", "array"}, {"description", "kind=data: several paths, answered together"}}},
                {"full", {{"type", "boolean"}, {"description", "kind=inventory: each item in full"}}},
+               {"plot", {{"type", "string"}, {"description", "kind=plot: the plot's resource, like bed000pt_main"}}},
+               {"flag", {{"description", "kind=plot: one flag, by number or name"}}},
+               {"completed", {{"type", "boolean"}, {"description", "kind=journal: list the quests done too"}}},
                {"waypoints", {{"type", "boolean"}, {"description", "kind=geometry: list the paths' points"}}},
                {"walk",
                 {{"type", "boolean"},
@@ -339,7 +444,8 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "nearest first: id, name, tag, template, position, distance, `state` (the placeable's own "
                  "number: a door's or a chest's changes when it opens), whether it is active and can be "
                  "interacted with, what its tooltip says, and its lock: whether it needs a key, the key's tag, "
-                 "and the level to pick it. order action=use uses one."},
+                 "and the level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
+                 "waypoint's there). order action=use uses one."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -376,6 +482,10 @@ void AddInspect(Bench &bench, const Watch &watch)
                 placeable["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
                                          {"keyTag", Narrow(api::GetPlaceableKeyTag(id))},
                                          {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
+                if (auto leads = LeadsTo(id, false); !leads.is_null())
+                {
+                    placeable["leadsTo"] = std::move(leads);
+                }
                 found.emplace_back(distance, std::move(placeable));
             }
             std::ranges::sort(found, {}, &std::pair<float, Json>::first);
@@ -385,6 +495,79 @@ void AddInspect(Bench &bench, const Watch &watch)
                 placeables.push_back(std::move(placeable));
             }
             return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"placeables", std::move(placeables)}};
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"exits",
+                 "The ways out of the area: every door or other placeable and every trigger that takes the "
+                 "party to another area, nearest first, with `leadsTo` (the area's tag and the waypoint's "
+                 "there), its kind, position, distance and whether it is active. A placeable is used with "
+                 "order action=use; a trigger is walked into (travel to its position). Some doors choose where "
+                 "they lead only when used, so their `leadsTo` may be empty or the last use's. Going through "
+                 "one loads the other area, and the game may autosave."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+            if (around == kInvalidObject)
+            {
+                throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+            }
+            const auto from = api::GetPosition(around);
+            std::vector<std::pair<float, Json>> found;
+            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
+            {
+                const auto type = api::GetObjectType(id);
+                if (type != k::OBJECT_TYPE_PLACEABLE && type != k::OBJECT_TYPE_TRIGGER)
+                {
+                    continue;
+                }
+                Json leads = LeadsTo(id, type == k::OBJECT_TYPE_TRIGGER);
+                if (leads.is_null())
+                {
+                    continue;
+                }
+                const auto position = api::GetPosition(id);
+                const float distance = Distance(from, position);
+                Json exit = Brief(id);
+                exit["kind"] = type == k::OBJECT_TYPE_TRIGGER ? "trigger" : "placeable";
+                exit["leadsTo"] = std::move(leads);
+                exit["position"] = VectorJson(position);
+                exit["distance"] = distance;
+                exit["active"] = api::GetObjectActive(id) != 0;
+                found.emplace_back(distance, std::move(exit));
+            }
+            std::ranges::sort(found, {}, &std::pair<float, Json>::first);
+            Json exits = Json::array();
+            for (auto &[distance, exit] : found)
+            {
+                exits.push_back(std::move(exit));
+            }
+            return Json{{"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"exits", std::move(exits)}};
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"journal",
+                 "The quests in the journal: `active`, the one marked, and `quests`, those under way, each with "
+                 "`plot` (its resource: inspect kind=plot with it gives the flags), `name`, `description` and its "
+                 "`objective` as the journal shows them, its group, area, and whether it was `updated` or is "
+                 "`completed`, and `parent` for a quest within another (one done may stay listed here, with "
+                 "`completed` true). `completed: true` "
+                 "lists the quests done too; otherwise only their count. Reading only."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            Json done = JournalList(L"CompletedPlots");
+            Json answer = {{"active", JournalEntry(L"Journal.ActivePlot.")},
+                           {"quests", JournalList(L"PlotList")},
+                           {"completedCount", done.size()}};
+            if (args.Bool("completed", false))
+            {
+                answer["completed"] = std::move(done);
+            }
+            return answer;
         });
 
     bench.Tools().AddKind(

@@ -308,3 +308,9 @@ A tester's two games on the same build that evening (computer-use-agent, 19:37 t
 - `inventory` with a container's id answers what it holds without opening it: the half-buried chest a helmet, the piles of bones a poultice and a dagger, a cocoon six copper. For a container `holds` and `money` are left out.
 - `character`'s `follower`: state active, approval 0, locked false, aiEnabled true, for the hero and for Tamlen (the game counts the hero a follower).
 - The smoke test: 58 of 58.
+
+`inspect kind=journal` and `kind=exits`, 2026-10-02, 00:40 to 00:48 (from lib-agent's reading: the journal's window is bound to the data tree, and the scripts keep an exit's destination as local strings). The paths read first through `inspect kind=data` on the build in the game, one call at a time, before any code over them:
+
+- The journal: four quests under way, the marked one first (Sulcher's Pass, "Travel to Sulcher's Pass"), then The Lost Mysteries of the Ancients, Humans Near the Camp (within it, and done, though it stays among those under way) and The Mysterious Cave ("Investigate the cave"). Completed and Updated are text, "0" or "1": their number was 0 for both. The entry's objective is marked `<emp>` in the text, and its lines broken with `\r\n`. Journal.CompletedPlots held none.
+- The exits: the two "Forest Clearing" placeables lead to bed100ar_forest_clearing, waypoint bed100wp_from_ruins. Every other placeable of the ruins holds "none" there, the template's default, which is no exit. No trigger leads out of the ruins.
+- The smoke test: 60 of 60.
