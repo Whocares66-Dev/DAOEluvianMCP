@@ -290,3 +290,10 @@ The sheet by the game's own names, and all a creature knows, 2026-10-01, 18:41 (
 - A race's name in the player's language ("Elf") is there now.
 
 The smoke test on the build with the character reads, 2026-10-01, 19:14, under a claim of this session's own: 55 of 55. The sheet's `combat` by the game's table: attack 62, defense 62, armor 5.74, armorPenetration 1.86, damageMainHand 13.95, fatigue 3.53, flankingAngle 60, missileShield 10; `pointsToSpend` all 0 at level 1.
+
+On DAOLib's address-library line, plugin API 2, 2026-10-01, 19:35 (Eluvian `3654ee9` on DAOLib `8b027c6`), put into the game together with the turn-based mod's build on the same line, under a claim: the mod's deploy put in the loader, its dll and the address files at 19:34:45, Eluvian's its dll straight after, with no game running between.
+
+- `loader.log`: "address library: 103293 IDs for this build, from ...\daolib\addresses\daoaddresses-4eb19d53.bin", "eluvian.dll: loaded", "turnbased.dll: loaded"; DAOLib's two example plugins, still of API 1, "refused to load", each saying so in its own log.
+- The smoke test at once: 55 of 55. The mod's registrations came through the C ABI as before (one inspect kind, three tools), and its kind answered. `inspect kind=character` and `kind=abilities` as on the build before (attack 62, 12 abilities of 12).
+- No warning or error in `eluvian.log` or the mod's log.
+- Learned from these logs: a line's second bracket is a thread's id, not the game's (the loader's lines and a plugin's first share one; the frame thread's differ). The bridge's `why` had taken it for the pid and would have found nothing; it now goes by the logs' time.

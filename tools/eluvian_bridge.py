@@ -552,37 +552,40 @@ class Bridge:
         except (Unreachable, StillWaiting):
             return None
 
-    def why_silent(self, pid: int) -> str | None:
+    def why_silent(self, since: float | None = None) -> str | None:
         """Why Eluvian does not serve in a game that runs, in the logs' own words, or None
         where they do not say. The loader and every plugin must be of one plugin API: a
-        loader of another refuses Eluvian, or Eluvian it, in the game's first second, and
-        the loader loads nothing where the address library has no file for the game's
-        build (DAOLib 8b027c6 on). Each log line carries the pid of the game that wrote it."""
-        mark = f"[{pid}]"
-        signs = (
-            ("eluvian.log", ("stays off",)),
-            (
-                "loader.log",
-                (
-                    "eluvian.dll: refused",
-                    "eluvian.dll: LoadLibrary",
-                    "plugins are not loaded",
-                ),
-            ),
-        )
-        for name, wanted in signs:
+        loader of another is refused by Eluvian in the game's first second, and the loader
+        loads nothing where the address library has no file for the game's build (DAOLib
+        8b027c6 on). Each game's start writes the logs anew, and a line names the thread
+        that wrote it, not the game (seen 2026-10-01), so what tells this game's log from an
+        older one's is its time: `since` is when the game was started."""
+
+        def lines(name: str) -> list[str]:
+            log = self.game.folder / name
             try:
-                lines = (
-                    (self.game.folder / name)
-                    .read_text(encoding="utf-8", errors="replace")
-                    .splitlines()
-                )
+                if since is not None and log.stat().st_mtime < since:
+                    return []
+                return log.read_text(encoding="utf-8", errors="replace").splitlines()
             except OSError:
-                continue
-            for line in lines:
-                if mark in line and any(sign in line for sign in wanted):
-                    said = line.split("] ", 3)[-1].strip()
-                    return f"{name}: {said}"
+                return []
+
+        def said(line: str) -> str:
+            return line.split("] ", 3)[-1].strip()
+
+        loader = lines("loader.log")
+        for line in loader:
+            if "plugins are not loaded" in line or "eluvian.dll: LoadLibrary" in line:
+                return f"loader.log: {said(line)}"
+            if "eluvian.dll: refused" in line:
+                for own in lines("eluvian.log"):
+                    if "stays off" in own:
+                        return f"eluvian.log: {said(own)}"
+                return f"loader.log: {said(line)}"
+        if any("plugin(s) in" in line for line in loader) and not any(
+            "eluvian.dll" in line for line in loader
+        ):
+            return "loader.log: the loader found no eluvian.dll among its plugins"
         return None
 
     def game_status(self) -> dict:
@@ -594,11 +597,9 @@ class Bridge:
             "eluvian": health if health is not None else "not answering",
         }
         if health is None:
-            for pid in pids:
-                why = self.why_silent(pid)
-                if why:
-                    status["why"] = why
-                    break
+            why = self.why_silent() if pids else None
+            if why:
+                status["why"] = why
         others = self.processes.others()
         if others:
             status["otherInstalls"] = others
@@ -727,6 +728,7 @@ class Bridge:
                 return text_result(
                     f"game_launch: no {self.processes.exe}", is_error=True
                 )
+            started = time.time() - 2  # the logs of this start are no older
             pid = self.processes.start(environment)
         wait = arguments.get("waitSeconds", 180)
         deadline = time.monotonic() + (wait if isinstance(wait, (int, float)) else 180)
@@ -758,7 +760,7 @@ class Bridge:
         if others:
             answer["otherInstalls"] = others
         if health is None:
-            why = self.why_silent(pid)
+            why = self.why_silent(started)
             if why:
                 answer["error"] = (
                     f"the game runs and Eluvian is not serving in it: {why}"

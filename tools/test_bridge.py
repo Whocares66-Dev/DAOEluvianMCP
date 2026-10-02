@@ -262,32 +262,68 @@ class BridgeTest(unittest.TestCase):
             {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
         )
 
-    def test_a_launch_eluvian_refused_says_so_in_the_logs_words(self) -> None:
-        self.down()
-        self.processes.pids.clear()
+    def refused_game(self) -> None:
+        """A game whose loader is of another plugin API than Eluvian: both logs say so."""
+        (self.folder / "loader.log").write_text(
+            "[19:20:01.001] [62804] [info] entry point reached; loading plugins\n"
+            "[19:20:01.004] [62804] [info] eluvian.dll: refused to load\n"
+            "[19:20:01.009] [62804] [info] 1 plugin(s) in C:\\game\\daolib\\plugins\n",
+            encoding="utf-8",
+        )
         (self.folder / "eluvian.log").write_text(
-            "[19:14:12.971] [100] [error] an older game's line; Eluvian stays off\n"
-            "[19:20:01.002] [4242] [info] eluvian 0.2.0\n"
-            "[19:20:01.003] [4242] [error] the loader's plugin API is 1, not the 2 "
+            "[19:20:01.002] [62804] [info] eluvian 0.2.0\n"
+            "[19:20:01.003] [62804] [error] the loader's plugin API is 1, not the 2 "
             "Eluvian was built for; Eluvian stays off\n",
             encoding="utf-8",
         )
+
+    def test_a_launch_eluvian_refused_says_so_in_the_logs_words(self) -> None:
+        self.down()
+        self.processes.pids.clear()
+        start = self.processes.start
+
+        def start_and_log(environment: dict[str, str]) -> int:
+            self.refused_game()
+            return start(environment)
+
+        self.processes.start = start_and_log
         result = self.call("game_launch", {"waitSeconds": 0})
         self.assertTrue(result["isError"])
-        self.assertIn("the loader's plugin API is 1", result["content"][0]["text"])
-        self.assertNotIn("an older game's line", result["content"][0]["text"])
+        self.assertIn(
+            "eluvian.log: the loader's plugin API is 1", result["content"][0]["text"]
+        )
+
+    def test_a_launch_is_not_answered_from_an_older_games_logs(self) -> None:
+        self.down()
+        self.processes.pids.clear()
+        self.refused_game()
+        long_ago = time.time() - 3600
+        for name in ("loader.log", "eluvian.log"):
+            os.utime(self.folder / name, (long_ago, long_ago))
+        result = self.call("game_launch", {"waitSeconds": 0})
+        self.assertFalse(result["isError"])
+        self.assertNotIn("error", result["structuredContent"])
 
     def test_status_says_why_a_running_game_does_not_serve(self) -> None:
         self.down()
         (self.folder / "loader.log").write_text(
-            "[19:20:01.002] [100] [error] the address library has no file for this build "
+            "[19:20:01.002] [62804] [error] the address library has no file for this build "
             "of the game; plugins are not loaded\n",
             encoding="utf-8",
         )
         result = self.call("game_status")["structuredContent"]
         self.assertEqual(result["eluvian"], "not answering")
-        self.assertIn("plugins are not loaded", result["why"])
         self.assertTrue(result["why"].startswith("loader.log: the address library"))
+
+    def test_status_says_when_the_loader_found_no_eluvian(self) -> None:
+        self.down()
+        (self.folder / "loader.log").write_text(
+            "[19:20:01.004] [62804] [info] turnbased.dll: loaded\n"
+            "[19:20:01.009] [62804] [info] 1 plugin(s) in C:\\game\\daolib\\plugins\n",
+            encoding="utf-8",
+        )
+        result = self.call("game_status")["structuredContent"]
+        self.assertIn("no eluvian.dll", result["why"])
 
     def test_launch_into_a_save_asks_for_it_and_waits_for_the_world(self) -> None:
         self.processes.pids.clear()
