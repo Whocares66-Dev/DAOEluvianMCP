@@ -288,3 +288,5 @@ The sheet by the game's own names, and all a creature knows, 2026-10-01, 18:41 (
 - An item's stats by the game's table: the shortbow damage 5, critChanceModifier 6, armorPenetration 2, optimumRange 25, attributeMod 1; the chest piece armor 3, fatigue 2.
 - The sheet's `properties` by the properties table's names (Strength ... Electricity_Damage_Bonus, rows 1 to 59). Those names showed script.ldf wrong on two: its MOVEMENT_SPEED_MODIFIER (20) is the table's Flanking_Angle (60 on Lyna) and its MAGIC_CRIT_MODIFIER (22) the table's Missile_Shield; `combat` goes by the table since.
 - A race's name in the player's language ("Elf") is there now.
+
+The smoke test on the build with the character reads, 2026-10-01, 19:14, under a claim of this session's own: 55 of 55. The sheet's `combat` by the game's table: attack 62, defense 62, armor 5.74, armorPenetration 1.86, damageMainHand 13.95, fatigue 3.53, flankingAngle 60, missileShield 10; `pointsToSpend` all 0 at level 1.
