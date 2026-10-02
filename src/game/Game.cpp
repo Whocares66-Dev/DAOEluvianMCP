@@ -2,6 +2,8 @@
 // pressing a button of its message box.
 #include "game/Shared.h"
 
+#include <set>
+
 namespace eluvian::game
 {
 
@@ -179,7 +181,27 @@ void AddGame(Bench &bench, const Watch &watch)
             // the player's own, as a quicksave does (computer-use-agent would
             // not call this for that reason, 2026-09-30).
             const auto kind = KindArg(args, "manual");
-            const auto number = static_cast<std::int32_t>(args.Integer("number", -1, -1, 500));
+            auto number = static_cast<std::int32_t>(args.Integer("number", -1, -1, 500));
+            // The game's "next free slot" (-1) is set up by its save screen:
+            // in the world without it, a manual save to -1 was declined, and
+            // one to a free slot named began and was written (2026-10-02). So
+            // the free slot is found here, the lowest no save holds.
+            if (number < 0 && kind == dao::saves::Kind::Manual)
+            {
+                std::set<std::int32_t> taken;
+                for (const auto &slot : dao::saves::List(dao::saves::Character()))
+                {
+                    if (slot.kind == kind)
+                    {
+                        taken.insert(slot.number);
+                    }
+                }
+                number = 1;
+                while (taken.contains(number))
+                {
+                    ++number;
+                }
+            }
             // Tests may make saves of their own (the user, 2026-10-02): new
             // ones. A save already there is written over only when asked.
             if (!args.Bool("overwrite", false))
