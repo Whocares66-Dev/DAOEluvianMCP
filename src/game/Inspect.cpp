@@ -136,6 +136,109 @@ void AddInspect(Bench &bench, const Watch &watch)
             return read(args.String("path"));
         });
 
+    // A plot is a quest's or a story's set of flags, named by its resource
+    // (the toolset's plot file: bed000pt_main, gen00pt_party). The scripts'
+    // own commands read it (seen in play 2026-10-01: GetPlotGUID gives the
+    // GUID the others take, "" for no such plot; GetPlotFlagName a flag's
+    // name, "" past the last; GetPartyPlotFlag whether it is set). A flag
+    // is read without asking for the plot's script (nCallScript 0), which
+    // the flags from 256 on are computed by and which may do things. Two of
+    // those read set all the same on the hero's main plot, so the game
+    // answers something for them; whether it is what the script would say
+    // was not looked into.
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"plot",
+                 "The state of a quest or story: the flags of a plot, named by its resource in `plot` "
+                 "(\"bed000pt_main\", \"gen00pt_party\"; the names are the game's plot files, and a mod's own). "
+                 "Answers its `name` as the journal shows it and `flags`, each with `flag`, `name` and `set`, "
+                 "with the `journal` text of a set one that has any; `set` lists the names of those set. "
+                 "`flag` (a number or a name) asks for one. Flags numbered from 256 are computed by the plot's "
+                 "script, which a read here does not run: take those as the game's answer without it. "
+                 "Reading only."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const std::string asked = args.String("plot");
+            std::wstring guid = api::GetPlotGUID(Wide(asked));
+            if (guid.empty() && !api::GetPlotResRef(Wide(asked)).empty())
+            {
+                guid = Wide(asked); // given by its GUID
+            }
+            if (guid.empty())
+            {
+                throw ToolError(std::format("inspect: the game has no plot \"{}\"; a plot is named by its "
+                                            "resource, like bed000pt_main",
+                                            asked));
+            }
+            const ObjectId party = api::GetParty(api::GetHero());
+            const auto flagJson = [&](std::int32_t flag, const std::wstring &name) {
+                Json entry = {{"flag", flag}, {"name", Narrow(name)}};
+                const bool set = api::GetPartyPlotFlag(party, guid, flag, 0) != 0;
+                entry["set"] = set;
+                if (set)
+                {
+                    if (auto journal = Narrow(api::GetPlotSummary(guid, flag)); !journal.empty())
+                    {
+                        entry["journal"] = std::move(journal);
+                    }
+                }
+                return entry;
+            };
+            Json answer = {{"plot", Narrow(api::GetPlotResRef(guid))}, {"guid", Narrow(guid)}};
+            if (const auto entry = api::GetPlotEntryName(guid); entry > 0)
+            {
+                if (auto name = Narrow(dao::tlk::String(static_cast<std::uint32_t>(entry))); !name.empty())
+                {
+                    answer["name"] = std::move(name);
+                }
+            }
+            // The flags are numbered from 0 with gaps (a plot's main flags, then
+            // its defined ones from 256), so every number is asked.
+            constexpr std::int32_t kMostFlags = 512;
+            const bool one = args.Has("flag");
+            const Json wanted = one ? args.Raw().at("flag") : Json(nullptr);
+            if (one && !wanted.is_number_integer() && !wanted.is_string())
+            {
+                throw ToolError("inspect: `flag` is a flag's number or its name, as kind=plot lists them");
+            }
+            Json flags = Json::array();
+            Json set = Json::array();
+            for (std::int32_t flag = 0; flag < kMostFlags; ++flag)
+            {
+                const std::wstring name = api::GetPlotFlagName(guid, flag);
+                if (name.empty())
+                {
+                    continue;
+                }
+                if (one)
+                {
+                    const bool match = wanted.is_string() ? Narrow(name) == wanted.get<std::string>()
+                                                          : wanted.get<std::int64_t>() == flag;
+                    if (match)
+                    {
+                        answer["flag"] = flagJson(flag, name);
+                        return answer;
+                    }
+                    continue;
+                }
+                Json entry = flagJson(flag, name);
+                if (entry["set"].get<bool>())
+                {
+                    set.push_back(entry["name"]);
+                }
+                flags.push_back(std::move(entry));
+            }
+            if (one)
+            {
+                throw ToolError(std::format("inspect: plot \"{}\" has no flag {}; kind=plot without `flag` lists them",
+                                            asked, wanted.dump()));
+            }
+            answer["flags"] = std::move(flags);
+            answer["set"] = std::move(set);
+            return answer;
+        });
+
     bench.Tools().AddKind(
         "inspect",
         KindSpec{"cursor",

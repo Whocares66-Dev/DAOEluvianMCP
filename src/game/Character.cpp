@@ -240,8 +240,10 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "and whether it can level up with the points left to spend, rank, the six attributes (total "
                  "and base), its combat numbers (attack, defense, armor, armor penetration, spellpower, "
                  "weapon damage, fatigue and the rest), health and mana or "
-                 "stamina, weapon style and set, whether it is plot or immortal, a follower's state and "
-                 "approval, `properties` (every property it has that is not nothing, by the game's own "
+                 "stamina, weapon style and set, whether it is plot or immortal, for a member of the party `follower` "
+                 "(its state, "
+                 "approval, whether it is locked in and whether its own AI is on), `properties` (every property it has "
+                 "that is not nothing, by the game's own "
                  "names: resistances, regeneration, damage), and what it wears, slot by slot in brief. inspect "
                  "kind=equipment gives the items "
                  "in full, kind=inventory the backpack, kind=creature its effects and abilities."},
@@ -265,6 +267,22 @@ void AddCharacter(Bench &bench, const Watch &watch)
                 api::GetCreatureProperty(id, k::PROPERTY_SIMPLE_EXPERIENCE, k::PROPERTY_VALUE_TOTAL));
             sheet["canLevelUp"] = api::GetCanLevelUp(id) != 0;
             sheet["rank"] = Rule(k::TABLE_CREATURERANKS, api::GetCreatureRank(id));
+            // A member of the party, the hero among them (IsFollower is true
+            // of the hero too, in play 2026-10-01).
+            if (api::IsFollower(id) != 0)
+            {
+                const auto state = api::GetFollowerState(id);
+                sheet["follower"] = Json{{"state", state == k::FOLLOWER_STATE_ACTIVE         ? Json("active")
+                                                   : state == k::FOLLOWER_STATE_AVAILABLE    ? Json("available")
+                                                   : state == k::FOLLOWER_STATE_UNAVAILABLE  ? Json("unavailable")
+                                                   : state == k::FOLLOWER_STATE_SUSPENDED    ? Json("suspended")
+                                                   : state == k::FOLLOWER_STATE_LOADING      ? Json("loading")
+                                                   : state == k::FOLLOWER_STATE_LOCKEDACTIVE ? Json("lockedActive")
+                                                                                             : Json(state)},
+                                         {"approval", api::GetFollowerApproval(id)},
+                                         {"locked", api::IsFollowerLocked(id) != 0},
+                                         {"aiEnabled", api::IsPartyAIEnabled(id) != 0}};
+            }
             sheet["attributes"] = Json{{"strength", Stat(id, k::PROPERTY_ATTRIBUTE_STRENGTH)},
                                        {"dexterity", Stat(id, k::PROPERTY_ATTRIBUTE_DEXTERITY)},
                                        {"willpower", Stat(id, k::PROPERTY_ATTRIBUTE_WILLPOWER)},
@@ -296,11 +314,6 @@ void AddCharacter(Bench &bench, const Watch &watch)
             sheet["abilityCount"] = api::GetAbilityCount(id);
             const ObjectId hero = api::GetHero();
             sheet["side"] = Side(id, hero, PartyOf(hero));
-            if (id != hero && PartyOf(hero).contains(id))
-            {
-                sheet["follower"] =
-                    Json{{"state", api::GetFollowerState(id)}, {"approval", api::GetFollowerApproval(id)}};
-            }
             // Every property that is not nothing, by the name the game's own
             // table gives it (the `properties` table's Stat column; lib-agent,
             // 2026-10-01): resistances, regeneration, damage bonuses and the
@@ -456,11 +469,12 @@ void AddCharacter(Bench &bench, const Watch &watch)
     bench.Tools().AddKind(
         "inspect",
         KindSpec{"inventory",
-                 "The backpack of a creature (`id`, default the hero, whose backpack is the party's): each item "
-                 "in brief (name, tag, template, base type, stack, value, plot), with `count` and the most it "
-                 "holds, and `money`, the party's purse. `full: true` gives each item as inspect kind=item does. Not "
-                 "what is worn: that is "
-                 "inspect kind=equipment."},
+                 "The backpack of a creature (`id`, default the hero, whose backpack is the party's), or what "
+                 "a container holds without opening it (a chest, a body, a pile of bones: an `id` from inspect "
+                 "kind=placeables): each item in brief (name, tag, template, base type, stack, value, plot), "
+                 "with `count`; for a creature also the most it `holds` and `money`, the party's purse. `full: "
+                 "true` gives each item as inspect kind=item does. Not what is worn: that is inspect "
+                 "kind=equipment."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -476,11 +490,16 @@ void AddCharacter(Bench &bench, const Watch &watch)
             {
                 items.push_back(ItemJson(list.Object(i), full));
             }
-            return Json{{"of", Brief(id)},
-                        {"count", items.size()},
-                        {"holds", api::GetMaxInventorySize(id)},
-                        {"money", api::GetCreatureMoney(id)},
-                        {"items", std::move(items)}};
+            // A container answers the same list (chests, cocoons and piles of
+            // bones did in play, 2026-10-01), with no size or purse of its own.
+            Json answer = {{"of", Brief(id)}, {"count", items.size()}};
+            if (api::GetObjectType(id) == k::OBJECT_TYPE_CREATURE)
+            {
+                answer["holds"] = api::GetMaxInventorySize(id);
+                answer["money"] = api::GetCreatureMoney(id);
+            }
+            answer["items"] = std::move(items);
+            return answer;
         });
 
     bench.Tools().AddKind(

@@ -95,6 +95,16 @@ def checks(run: Run, owner: str) -> None:
         ),
     )
     check(
+        "inspect plot, a story's flags",
+        tool("inspect", {"kind": "plot", "plot": "gen00pt_backgrounds"}),
+        lambda a: len(a["set"]) == 1 and len(a["flags"]) > 5,
+    )
+    check(
+        "inspect plot refuses a plot the game has not",
+        tool("inspect", {"kind": "plot", "plot": "no_such_plot"}),
+        lambda a: "no plot" in a.get("error", ""),
+    )
+    check(
         "inspect tactics, a creature's slots",
         tool("inspect", {"kind": "tactics", "id": hero}),
         lambda a: (

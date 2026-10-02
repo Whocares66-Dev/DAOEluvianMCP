@@ -46,6 +46,11 @@ With the game already running, `game {"action": "saves"}` lists the saves and `g
 inspect {"kind": "character", "id": "0x82"}      the sheet: race, class, level, attributes, combat numbers, what is worn
 inspect {"kind": "abilities", "id": "0x82"}      every talent, spell and skill it knows, not only the quickbar's
 inspect {"kind": "tactics", "id": "0x82"}        its tactics slots: target, condition, command and ability of each
+inspect {"kind": "inventory", "id": "0x1fd"}     what a chest, a body or a pile of bones holds, without opening it
+inspect {"kind": "plot", "plot": "bed000pt_main"}
+                                                 a quest's or story's flags by name, which are set, and the journal's
+                                                 text for those; "flag": "NAME" asks for one. A plot is named by its
+                                                 resource (the game's plot files, or a mod's)
 inspect {"kind": "equipment", "id": "0x82"}      each slot's item in full: type, material, stats, properties
 inspect {"kind": "inventory"}                    the party's backpack; {"kind": "item", "id": ...} is one item in full
 inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock
