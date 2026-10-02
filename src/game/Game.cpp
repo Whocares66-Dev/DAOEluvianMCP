@@ -2,6 +2,8 @@
 // pressing a button of its message box.
 #include "game/Shared.h"
 
+#include <algorithm>
+#include <cctype>
 #include <set>
 
 namespace eluvian::game
@@ -9,6 +11,12 @@ namespace eluvian::game
 
 namespace
 {
+
+// Whether the game in the world was force-loaded: loaded without content
+// its save needs, which a save of it would lose for good. Such a game is
+// never saved (the user's rule, 2026-10-01; force loading for vanilla tests
+// allowed 2026-10-02). Frame thread only, as the tool is.
+bool g_forceLoaded = false;
 
 dao::saves::Kind KindArg(const Args &args, std::string_view fallback)
 {
@@ -41,37 +49,41 @@ void AddGame(Bench &bench, const Watch &watch)
         // multiply, and each reads back only its own (DAOLib ed55ab8,
         // 2026-09-30). One plugin owns the speed: in a turn-based test the
         // mod, through turnbased_settings' ai_turn_speed.
-        ToolSpec{
-            "game",
-            "The game itself. `action`: pause, unpause; saves, the saves of `character` (or every one) with "
-            "each one's area, name, time played and level, as the load screen shows them; load, a save by "
-            "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
-            "manual) and `number`, from the main menu or in the world, as the load screen loads; save, a new "
-            "manual save in the next free slot, with `name` (the default, and what a test does: it writes "
-            "over nothing). A slot `number` that holds a save, and `kind` quick (the player's quicksave), are "
-            "refused unless `overwrite` is true, for a test's own save. A load or save answers that the game "
-            "was asked, and `cursor`: wait_for "
-            "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
-            "cutscene. press, a `button` of the game's message box by its label or place (inspect "
-            "kind=popup reads the box): the game is sent what a click on it sends. (Not the game's speed: each "
-            "plugin's copy of DAOLib scales the clock by its own, so "
-            "two setting it multiply; a mod that sets speed owns it.)",
-            Json{{"type", "object"},
-                 {"properties",
-                  {{"action", {{"type", "string"}, {"enum", {"pause", "unpause", "saves", "load", "save", "press"}}}},
-                   {"button", {{"description", "action=press: the button's label (\"Cancel\") or place from 0"}}},
-                   {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
-                   {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
-                   {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
-                   {"name", {{"type", "string"}, {"description", "action=save: a manual save's name"}}},
-                   {"overwrite",
-                    {{"type", "boolean"},
-                     {"description", "action=save: write over the save in slot `number`, or the quicksave"}}}}},
-                 {"required", {"action"}}},
-            Thread::Frame},
+        ToolSpec{"game",
+                 "The game itself. `action`: pause, unpause; saves, the saves of `character` (or every one) with "
+                 "each one's area, name, time played and level, as the load screen shows them; load, a save by "
+                 "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
+                 "manual) and `number`, from the main menu or in the world, as the load screen loads; forceLoad, "
+                 "the game's Force Load for a load it answered with \"requires the following content\" (inspect "
+                 "kind=popup), which loads without that content: such a game is never saved; save, a new "
+                 "manual save in the next free slot, with `name` (the default, and what a test does: it writes "
+                 "over nothing). A slot `number` that holds a save, and `kind` quick (the player's quicksave), are "
+                 "refused unless `overwrite` is true, for a test's own save. A load or save answers that the game "
+                 "was asked, and `cursor`: wait_for "
+                 "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
+                 "cutscene. press, a `button` of the game's message box by its label or place (inspect "
+                 "kind=popup reads the box): the game is sent what a click on it sends. (Not the game's speed: each "
+                 "plugin's copy of DAOLib scales the clock by its own, so "
+                 "two setting it multiply; a mod that sets speed owns it.)",
+                 Json{{"type", "object"},
+                      {"properties",
+                       {{"action",
+                         {{"type", "string"},
+                          {"enum", {"pause", "unpause", "saves", "load", "forceLoad", "save", "press"}}}},
+                        {"button", {{"description", "action=press: the button's label (\"Cancel\") or place from 0"}}},
+                        {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
+                        {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
+                        {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
+                        {"name", {{"type", "string"}, {"description", "action=save: a manual save's name"}}},
+                        {"overwrite",
+                         {{"type", "boolean"},
+                          {"description", "action=save: write over the save in slot `number`, or the quicksave"}}}}},
+                      {"required", {"action"}}},
+                 Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "game");
-            const auto action = args.Choice("action", {"pause", "unpause", "saves", "load", "save", "press"});
+            const auto action =
+                args.Choice("action", {"pause", "unpause", "saves", "load", "forceLoad", "save", "press"});
             auto *app = dao::CClientExoApp::Get();
             if (app == nullptr || watch.Mode() < 0)
             {
@@ -128,6 +140,15 @@ void AddGame(Bench &bench, const Watch &watch)
                     throw ToolError("game: the game took no press of that button (the engine made no message of "
                                     "what it sends)");
                 }
+                // Force Load pressed as a button is a force-load all the same:
+                // the game it loads is not to be saved either.
+                auto pressed = Narrow(popup->buttons[index].label);
+                std::ranges::transform(pressed, pressed.begin(),
+                                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (pressed.find("force") != std::string::npos)
+                {
+                    g_forceLoaded = true;
+                }
                 answer["popup"] = PopupJson();
                 return answer;
             }
@@ -169,6 +190,7 @@ void AddGame(Bench &bench, const Watch &watch)
                     throw ToolError("game: no such save to load: the slot holds none, or the game knows no such "
                                     "character; action saves lists them");
                 }
+                g_forceLoaded = false;
                 return Json{{"asked", true},
                             {"save", SlotJson(slot)},
                             {"cursor", cursor},
@@ -176,6 +198,29 @@ void AddGame(Bench &bench, const Watch &watch)
                              "wait_for eluvian.game.loaded from `cursor`. If none comes and health's mode does not "
                              "move, the game is showing a message box of its own (a save that needs add-ins "
                              "not registered asks Force Load or Cancel): inspect kind=popup reads it"}};
+            }
+            // The game's own Force Load, for a test on a save made with content
+            // this install has not (the user's vanilla tests, 2026-10-02):
+            // DAOLib's ForceLoad, the dialog's button.
+            if (action == "forceLoad")
+            {
+                if (!dao::saves::ForceLoad())
+                {
+                    throw ToolError("game: no load was asked for to force; action load asks for one, and the "
+                                    "game's dialog for missing content then waits on Force Load");
+                }
+                g_forceLoaded = true;
+                return Json{{"forced", true},
+                            {"cursor", cursor},
+                            {"note", "wait_for eluvian.game.loaded from `cursor`. The game loads without the "
+                                     "content the save needs: it is for testing, and is never saved (action "
+                                     "save refuses until another load)"}};
+            }
+            if (g_forceLoaded)
+            {
+                throw ToolError("game: this game was force-loaded without content its save needs, and a save of "
+                                "it would lose that content for good: it is not saved. Load a save normally to "
+                                "save again");
             }
             // A new manual save by default: a test's save must not write over
             // the player's own, as a quicksave does (computer-use-agent would

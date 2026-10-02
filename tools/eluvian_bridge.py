@@ -450,6 +450,12 @@ BRIDGE_TOOLS = [
                         "character": {"type": "string"},
                         "kind": {"type": "string", "enum": ["manual", "auto", "quick"]},
                         "number": {"type": "integer"},
+                        "forceLoad": {
+                            "type": "boolean",
+                            "description": 'If the game answers the load with "requires the '
+                            "following content\", press Force Load (for the user's vanilla "
+                            "tests); the game is then never saved",
+                        },
                     },
                 },
             },
@@ -1000,6 +1006,8 @@ class Bridge:
         # in pieces, and a mode that has not moved in `load_patience` seconds is that.
         before = self.mode()
         asked_at = time.monotonic()
+        forced = False
+        force = save.get("forceLoad") is True
         while True:
             left = deadline - time.monotonic()
             piece_ms = int(max(1.0, min(left, 5)) * 1000)
@@ -1021,8 +1029,21 @@ class Bridge:
                 # world is there, and tools answer, a moment after.
                 while self.mode() == "loading" and time.monotonic() < deadline:
                     self.sleep(0.5)
-                return {"save": body.get("save"), "event": event.get("event")}
+                loaded = {"save": body.get("save"), "event": event.get("event")}
+                if forced:
+                    loaded["forceLoaded"] = True
+                    loaded["note"] = (
+                        "force-loaded without content the save needs: for testing only, never "
+                        "saved (the game tool refuses a save until another load)"
+                    )
+                return loaded
             popup = self.popup()
+            if popup is not None and force and not forced and self.force_load():
+                # The user allows Force Load for vanilla tests (2026-10-02); the game it loads
+                # is never saved, which the game tool itself holds to.
+                forced = True
+                asked_at = time.monotonic()
+                continue
             if popup is not None:
                 labels = ", ".join(
                     str(button.get("label")) for button in popup.get("buttons", [])
@@ -1030,11 +1051,22 @@ class Bridge:
                 return {
                     "error": "the game answered the load with a message box and waits on it: "
                     f'"{popup.get("text", "")}" [{labels}]. No tool presses its buttons; a person '
-                    "must. Do not Force Load and then save: the save would lose that content.",
+                    "must, or launch again with load's forceLoad true where the user allows it. Do not "
+                    "Force Load and then save: the save would lose that content.",
                     "popup": popup,
                 }
             mode = self.mode()
             waited = time.monotonic() - asked_at
+            if (
+                force
+                and not forced
+                and mode == before
+                and waited >= self.load_patience
+                and self.force_load()
+            ):
+                forced = True
+                asked_at = time.monotonic()
+                continue
             if mode == before and mode != "loading" and waited >= self.load_patience:
                 return {
                     "error": f"the game was asked for the save and did nothing in {waited:.0f} s "
@@ -1048,6 +1080,16 @@ class Bridge:
                     "error": "the game was asked and no eluvian.game.loaded came in time "
                     f"(mode {mode}); it may still be loading: health says"
                 }
+
+    def force_load(self) -> bool:
+        """The game's own Force Load, through its game tool; whether the game took it."""
+        try:
+            status, body = self.game.request(
+                "POST", "/api/tool/game", {"action": "forceLoad"}, timeout=30
+            )
+        except (Unreachable, StillWaiting):
+            return False
+        return status == 200 and isinstance(body, dict) and body.get("forced") is True
 
     def popup(self) -> dict | None:
         """The game's message box, if one is up and this build of Eluvian can read it."""

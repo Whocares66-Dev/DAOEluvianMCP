@@ -20,6 +20,7 @@ class FakeGame(BaseHTTPRequestHandler):
 
     revision = 1
     popup = False  # whether the game's message box is up
+    forced = False  # whether the game was told Force Load
 
     def log_message(self, *args) -> None:  # quiet
         pass
@@ -60,7 +61,11 @@ class FakeGame(BaseHTTPRequestHandler):
             self.answer(200, {"args": args})
         elif self.path == "/api/tool/game":
             # A load, as Eluvian's game tool answers it; no such save for "Nobody".
-            if args.get("character") == "Nobody":
+            if args.get("action") == "forceLoad":
+                FakeGame.forced = True
+                FakeGame.popup = False
+                self.answer(200, {"forced": True, "cursor": 8})
+            elif args.get("character") == "Nobody":
                 self.answer(400, {"error": "game: no such save to load"})
             elif args.get("character") == "Modded":
                 # Asked, and then the game's own dialog: no load follows.
@@ -75,7 +80,10 @@ class FakeGame(BaseHTTPRequestHandler):
             self.answer(200, {"popup": box if FakeGame.popup else None})
         elif self.path == "/api/tool/wait_for":
             event = {"seq": 9, "topic": args.get("topic"), "payload": {"number": 2}}
-            self.answer(200, {"found": args.get("since") == 7, "event": event})
+            found = args.get("since") == 7 or (
+                args.get("since") == 8 and FakeGame.forced
+            )
+            self.answer(200, {"found": found, "event": event})
         elif self.path == "/api/tool/refuse":
             self.answer(400, {"error": "refuse: not now"})
         elif self.path == "/api/tool/picture":
@@ -355,6 +363,21 @@ class BridgeTest(unittest.TestCase):
         text = result["content"][0]["text"]
         self.assertIn("This saved game cannot be loaded.", text)
         self.assertIn("Force Load, Cancel", text)
+
+    def test_force_load_is_pressed_only_when_asked_and_the_game_is_marked(self) -> None:
+        self.processes.pids.clear()
+        FakeGame.popup = True
+        self.addCleanup(setattr, FakeGame, "popup", False)
+        self.addCleanup(setattr, FakeGame, "forced", False)
+        result = self.call(
+            "game_launch",
+            {"load": {"character": "Modded", "forceLoad": True}, "waitSeconds": 300},
+        )
+        self.assertFalse(result["isError"])
+        loaded = result["structuredContent"]["loaded"]
+        self.assertTrue(loaded["forceLoaded"])
+        self.assertIn("never saved", loaded["note"])
+        self.assertTrue(FakeGame.forced)
 
     def test_a_load_the_game_stops_at_a_dialog_is_told_not_waited_out(self) -> None:
         self.processes.pids.clear()

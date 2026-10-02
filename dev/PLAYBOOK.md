@@ -40,6 +40,8 @@ A claim ends by itself at its time (240 minutes at most; claim again to renew). 
 
 If `game_launch` answers that the game runs and Eluvian is not serving, its `error` has the log's own line. The usual one is a loader of another plugin API than Eluvian was built for: the loader and every plugin in the game folder are deployed together when DAOLib's API changes.
 
+A save made with content the install no longer has stops at the game's "requires the following content" dialog. Where the user allows it, `game_launch` with `"load": {..., "forceLoad": true}` presses Force Load there (or `game {"action": "forceLoad"}` with the game running); a game loaded so lacks that content and is never saved: the `game` tool refuses a save until another load.
+
 With the game already running, `game {"action": "saves"}` lists the saves and `game {"action": "load", ...}` loads one, from the main menu (mode pregame) or in the world; `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` says when it is there. A save made by a test is a new manual one by default (`game {"action": "save", "name": "..."}`), which writes over nothing.
 
 ## Looking
