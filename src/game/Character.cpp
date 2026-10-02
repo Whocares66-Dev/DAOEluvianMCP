@@ -200,23 +200,30 @@ ObjectId CreatureOrControlled(const Args &args)
     return id;
 }
 
-// The properties script.ldf names, beyond the six attributes and the two
-// bars; the class is property 27 (the hero read 3, the rogue's row; a
-// warrior companion 1), which the scripts' own headers name and script.ldf
-// does not.
+// A creature's properties by their rows in the game's `properties` table
+// (its Stat column, read in play 2026-10-01). script.ldf names some of them
+// otherwise and wrongly for this build: its MOVEMENT_SPEED_MODIFIER (20) is
+// the table's Flanking_Angle and its MAGIC_CRIT_MODIFIER (22) the table's
+// Missile_Shield; the table is what the game reads. The class is row 27
+// (the hero read 3, the rogue's row; a warrior companion 1).
 constexpr std::int32_t kPropertyClass = 27;
-constexpr std::array<Named, 12> kCombat = {{{k::PROPERTY_ATTRIBUTE_ATTACK, "attack"},
-                                            {k::PROPERTY_ATTRIBUTE_DEFENSE, "defense"},
-                                            {k::PROPERTY_ATTRIBUTE_ARMOR, "armor"},
-                                            {k::PROPERTY_ATTRIBUTE_AP, "armorPenetration"},
-                                            {k::PROPERTY_ATTRIBUTE_SPELLPOWER, "spellpower"},
-                                            {k::PROPERTY_ATTRIBUTE_REGENERATION_HEALTH, "healthRegeneration"},
-                                            {k::PROPERTY_ATTRIBUTE_DISPLACEMENT, "displacement"},
-                                            {k::PROPERTY_ATTRIBUTE_MOVEMENT_SPEED_MODIFIER, "movementSpeedModifier"},
-                                            {k::PROPERTY_ATTRIBUTE_MELEE_CRIT_MODIFIER, "meleeCritModifier"},
-                                            {k::PROPERTY_ATTRIBUTE_MAGIC_CRIT_MODIFIER, "magicCritModifier"},
-                                            {k::PROPERTY_ATTRIBUTE_RANGED_CRIT_MODIFIER, "rangedCritModifier"},
-                                            {k::PROPERTY_ATTRIBUTE_RANGED_AIM_SPEED, "rangedAimSpeed"}}};
+constexpr std::array<Named, 14> kCombat = {{{9, "attack"},
+                                            {10, "defense"},
+                                            {11, "armor"},
+                                            {53, "armorPenetration"},
+                                            {13, "spellpower"},
+                                            {50, "damageMainHand"},
+                                            {49, "damageOffHand"},
+                                            {41, "fatigue"},
+                                            {21, "meleeCritModifier"},
+                                            {23, "rangedCritModifier"},
+                                            {31, "attackSpeedModifier"},
+                                            {20, "flankingAngle"},
+                                            {22, "missileShield"},
+                                            {16, "displacement"}}};
+// What is left to spend at a level-up.
+constexpr std::array<Named, 4> kPoints = {
+    {{34, "attributes"}, {35, "skills"}, {36, "talentsOrSpells"}, {38, "specializations"}}};
 
 } // namespace
 
@@ -226,8 +233,9 @@ void AddCharacter(Bench &bench, const Watch &watch)
         "inspect",
         KindSpec{"character",
                  "A creature's sheet (`id`, default the one controlled): race, gender, class, level, experience "
-                 "and whether it can level up, rank, the six attributes (total and base), its combat numbers "
-                 "(attack, defense, armor, armor penetration, spellpower and the rest), health and mana or "
+                 "and whether it can level up with the points left to spend, rank, the six attributes (total "
+                 "and base), its combat numbers (attack, defense, armor, armor penetration, spellpower, "
+                 "weapon damage, fatigue and the rest), health and mana or "
                  "stamina, weapon style and set, whether it is plot or immortal, a follower's state and "
                  "approval, `properties` (every property it has that is not nothing, by the game's own "
                  "names: resistances, regeneration, damage), and what it wears, slot by slot in brief. inspect "
@@ -265,6 +273,13 @@ void AddCharacter(Bench &bench, const Watch &watch)
                 combat[std::string(named.name)] = api::GetCreatureProperty(id, named.id, k::PROPERTY_VALUE_TOTAL);
             }
             sheet["combat"] = std::move(combat);
+            Json points = Json::object();
+            for (const auto &named : kPoints)
+            {
+                points[std::string(named.name)] =
+                    static_cast<std::int32_t>(api::GetCreatureProperty(id, named.id, k::PROPERTY_VALUE_TOTAL));
+            }
+            sheet["pointsToSpend"] = std::move(points);
             sheet["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
             sheet["manaStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
             const auto style = api::GetWeaponStyle(id);

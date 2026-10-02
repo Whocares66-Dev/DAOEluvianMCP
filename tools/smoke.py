@@ -66,11 +66,11 @@ class Run:
         return self.tool("wait_for", arguments, timeout=ms / 1000 + 20)
 
 
-def checks(run: Run) -> None:
+def checks(run: Run, owner: str) -> None:
     tool, check, wait = run.tool, run.check, run.wait
     health = tool("health")
     start = health.get("cursor", 0)
-    check("health names this run as the owner", health, lambda a: a["owner"] == OWNER)
+    check("health names this run as the owner", health, lambda a: a["owner"] == owner)
 
     game = tool("inspect", {"kind": "game"})
     check("inspect game", game, lambda a: a["hero"]["id"] and "popup" in a)
@@ -423,6 +423,11 @@ def main() -> int:
     parser.add_argument(
         "--keep", action="store_true", help="leave the game running afterwards"
     )
+    parser.add_argument(
+        "--owner",
+        default=OWNER,
+        help="the name to start the game under: the one a claim on the game was made with, if any",
+    )
     options = parser.parse_args()
 
     folder = bridge_module.log_folder()
@@ -438,14 +443,16 @@ def main() -> int:
         "kind": options.kind,
         "number": options.number,
     }
-    launch = bridge.game_launch({"owner": OWNER, "load": save, "waitSeconds": 240})
+    launch = bridge.game_launch(
+        {"owner": options.owner, "load": save, "waitSeconds": 240}
+    )
     answer = launch.get("structuredContent") or {}
     if launch.get("isError") or not answer.get("launched"):
         print(f"not started: {json.dumps(launch, ensure_ascii=False)[:800]}")
         return 2
     run = Run(bridge)
     try:
-        checks(run)
+        checks(run, options.owner)
     finally:
         if not options.keep:
             bridge.game_quit({})

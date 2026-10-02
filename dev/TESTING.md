@@ -281,3 +281,10 @@ A character's sheet, equipment, backpack and items, 2026-10-01, about 17:05 (the
 - `inspect kind=inventory`: 17 items of 70, each with its stack and base type; `inspect kind=item` on the poultice: a stack of 3 of 99, its property "Flag: Is Healing Potion", and the ability using it casts.
 - An item's id given where a creature's is wanted, and the other way, is refused with what to ask instead.
 - The labels come from the game's own rule tables (races, classes, base items, materials, item properties, ranks). Not yet named: an item's stats beyond armor, damage and fatigue (given by number), and a creature's properties beyond those script.ldf names. A race's name in the player's language was missing in that run (its table keeps it in another column); fixed after, not yet seen.
+
+The sheet by the game's own names, and all a creature knows, 2026-10-01, 18:41 (DAOLib `28906b4`; one call at a time on a game of this session's own, the folder claimed for it):
+
+- `inspect kind=abilities`: Lyna 4 talents (Dirty Fighting, Dual-Weapon Training, Dual Striking and the class's hidden one), no spells, 6 skills (Poison-Making, Survival, Combat Training, Coercion and two hidden traits), 2 item abilities (the poultice, elfroot): 12, the game's own count. Tamlen 7 talents, 3 skills, 2 items: 12.
+- An item's stats by the game's table: the shortbow damage 5, critChanceModifier 6, armorPenetration 2, optimumRange 25, attributeMod 1; the chest piece armor 3, fatigue 2.
+- The sheet's `properties` by the properties table's names (Strength ... Electricity_Damage_Bonus, rows 1 to 59). Those names showed script.ldf wrong on two: its MOVEMENT_SPEED_MODIFIER (20) is the table's Flanking_Angle (60 on Lyna) and its MAGIC_CRIT_MODIFIER (22) the table's Missile_Shield; `combat` goes by the table since.
+- A race's name in the player's language ("Elf") is there now.
