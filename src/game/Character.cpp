@@ -287,7 +287,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
             // 2026-10-01): resistances, regeneration, damage bonuses and the
             // rest, beyond the named ones above.
             Json properties = Json::object();
-            for (std::int32_t property = 1; property < 64; ++property)
+            for (std::int32_t property = 1; property < 60; ++property) // the table's rows are 0 to 59
             {
                 const float total = api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL);
                 if (total == 0)
