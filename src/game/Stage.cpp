@@ -110,6 +110,154 @@ ObjectId StageRemoveEffects(const Args &args, Json &answer)
     return id;
 }
 
+// Back to before a fight, so many fights run in one launch (turn-based-
+// agent's balance runs, 2026-10-02): the party, or the creatures named,
+// raised if fallen (the rules' resurrection effect, as the scripts' own
+// ResurrectCreature applies it), health and mana or stamina full, every
+// cooldown cleared, and the dead that are not the party's taken away.
+ObjectId StageReset(const Args &args, Json &answer)
+{
+    const ObjectId hero = api::GetHero();
+    const auto party = PartyOf(hero);
+    std::vector<ObjectId> who(party.begin(), party.end());
+    if (args.Has("ids"))
+    {
+        const Json &ids = args.Raw().at("ids");
+        if (!ids.is_array())
+        {
+            throw ToolError("stage: `ids` is a list of creature ids; leave it out for the party");
+        }
+        who.clear();
+        for (const auto &value : ids)
+        {
+            const auto id = ParseId(value);
+            if (!id || api::GetObjectType(*id) != k::OBJECT_TYPE_CREATURE)
+            {
+                throw ToolError(
+                    std::format("stage: {} in `ids` is no creature; inspect kind=creatures lists them", value.dump()));
+            }
+            who.push_back(*id);
+        }
+    }
+    const bool effects = args.Bool("effects", false);
+    Json reset = Json::array();
+    for (const ObjectId id : who)
+    {
+        Json entry = Brief(id);
+        if (api::IsDead(id) != 0)
+        {
+            if (const auto raise = api::Effect(k::EFFECT_TYPE_RESURRECTION); raise.get() != nullptr)
+            {
+                api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *raise.get(), id);
+            }
+            entry["raised"] = true;
+        }
+        if (effects)
+        {
+            api::RemoveEffectsByParameters(id, k::EFFECT_TYPE_INVALID, k::ABILITY_INVALID, kInvalidObject);
+        }
+        for (const auto property : {k::PROPERTY_DEPLETABLE_HEALTH, k::PROPERTY_DEPLETABLE_MANA_STAMINA})
+        {
+            api::SetCreatureProperty(id, property, api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL),
+                                     k::PROPERTY_VALUE_CURRENT);
+        }
+        int cleared = 0;
+        for (const auto kind : {dao::abilities::Kind::Talent, dao::abilities::Kind::Spell, dao::abilities::Kind::Skill,
+                                dao::abilities::Kind::Item})
+        {
+            for (const std::int32_t ability : dao::abilities::Known(id, kind))
+            {
+                const auto cooldown = dao::abilities::GetCooldown(id, ability);
+                if (cooldown && cooldown->remaining > 0 && dao::abilities::SetCooldown(id, ability, 0, cooldown->total))
+                {
+                    ++cleared;
+                }
+            }
+        }
+        entry["cooldownsCleared"] = cleared;
+        entry["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
+        entry["manaOrStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
+        reset.push_back(std::move(entry));
+    }
+    Json removed = Json::array();
+    if (args.Bool("clearDead", true))
+    {
+        for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(hero))))
+        {
+            if (api::GetObjectType(id) == k::OBJECT_TYPE_CREATURE && !party.contains(id) && api::IsDead(id) != 0)
+            {
+                removed.push_back(Brief(id));
+                api::DestroyObject(id);
+            }
+        }
+    }
+    answer["reset"] = std::move(reset);
+    answer["removed"] = std::move(removed);
+    return hero;
+}
+
+// The slots an item is put in, by the names inspect kind=equipment gives.
+struct EquipSlot
+{
+    std::string_view name;
+    std::int32_t id;
+};
+constexpr std::array<EquipSlot, 12> kEquipSlots = {{{"main", 0},
+                                                    {"offhand", 1},
+                                                    {"ammo", 2},
+                                                    {"chest", 4},
+                                                    {"head", 5},
+                                                    {"boots", 6},
+                                                    {"gloves", 7},
+                                                    {"cloak", 8},
+                                                    {"ring1", 9},
+                                                    {"ring2", 10},
+                                                    {"neck", 11},
+                                                    {"belt", 12}}};
+
+// An item made from its template on a creature and put on, for a test's
+// gear (turn-based-agent, 2026-10-02): the scripts' CreateItemOnObject and
+// EquipItem, the slot the item's own unless one is named.
+ObjectId StageEquip(const Args &args, Json &answer)
+{
+    const ObjectId id = CreatureArg(args);
+    std::string name = args.String("template");
+    if (name.find('.') == std::string::npos)
+    {
+        name += ".uti";
+    }
+    const ObjectId item = api::CreateItemOnObject(dao::Resource{Wide(name)}, id);
+    if (item == kInvalidObject)
+    {
+        throw ToolError(std::format("stage: no item from template \"{}\"; inspect kind=resources with type uti "
+                                    "and a word finds templates",
+                                    name));
+    }
+    std::int32_t slot = k::INVENTORY_SLOT_INVALID;
+    if (args.Has("slot"))
+    {
+        const std::string wanted = args.String("slot");
+        const auto found = std::ranges::find(kEquipSlots, wanted, &EquipSlot::name);
+        if (found == kEquipSlots.end())
+        {
+            throw ToolError(std::format("stage: no slot \"{}\"; main, offhand, ammo, chest, head, boots, gloves, "
+                                        "cloak, ring1, ring2, neck, belt",
+                                        wanted));
+        }
+        slot = found->id;
+    }
+    const bool on = args.Bool("equip", true) && api::EquipItem(id, item, slot) != 0;
+    answer["item"] =
+        Json{{"id", IdJson(item)}, {"name", Narrow(api::GetName(item))}, {"tag", Narrow(api::GetTag(item))}};
+    answer["equipped"] = on;
+    if (args.Bool("equip", true) && !on)
+    {
+        answer["note"] = "made, but not put on: the creature cannot use it there (inspect kind=item says its kind); "
+                         "it is in the backpack";
+    }
+    return id;
+}
+
 ObjectId StageHealth(const Args &args, Json & /*answer*/)
 {
     const ObjectId id = CreatureArg(args);
@@ -310,7 +458,12 @@ void AddStage(Bench &bench, const Watch &watch)
               {"resource", {{"type", "string"}, {"description", "action=cutscene: the cutscene's name"}}},
               {"template", {{"type", "string"}, {"description", "action=spawn: the creature's template"}}},
               {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
-              {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}}}}},
+              {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}},
+              {"ids", {{"type", "array"}, {"description", "action=reset: the creatures; default the party"}}},
+              {"effects", {{"type", "boolean"}, {"description", "action=reset: take every effect off too"}}},
+              {"clearDead", {{"type", "boolean"}, {"description", "action=reset: take the dead away; default true"}}},
+              {"slot", {{"type", "string"}, {"description", "action=equip: main, offhand, chest, head ..."}}},
+              {"equip", {{"type", "boolean"}, {"description", "action=equip: put it on; default true"}}}}}},
         Thread::Frame};
     spec.kindProperty = "action";
     bench.Tools().Add(std::move(spec));
@@ -355,8 +508,20 @@ void AddStage(Bench &bench, const Watch &watch)
     add("spawn",
         "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "
         "`facing` degrees, in the controlled creature's area; `moved` says how far from the point the game "
-        "put it (a point inside a wall is not kept); it is set up over the next frames",
+        "put it (a point inside a wall is not kept); it is set up over the next frames. Templates: inspect "
+        "kind=resources with type utc and a word (ogre_default, hurlock_emissary_off, hurlock_epic_archer)",
         StageSpawn);
+    add("reset",
+        "puts things back as before a fight, for another in the same launch: the party (or `ids`) raised if "
+        "fallen, health and mana or stamina full, every cooldown cleared, with `effects` every effect taken off "
+        "too; and unless `clearDead` is false, the dead that are not the party's taken away. Answers each "
+        "creature as it is after (`reset`) and what was taken away (`removed`)",
+        StageReset);
+    add("equip",
+        "makes an item from `template` (an item's resource: inspect kind=resources with type uti) on creature "
+        "`id` and puts it on, in its own slot or `slot`; `equip` false leaves it in the backpack. Answers the "
+        "`item` (inspect kind=item gives it in full) and whether it is `equipped`",
+        StageEquip);
 }
 
 } // namespace eluvian::game

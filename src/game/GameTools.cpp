@@ -50,6 +50,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddCamera(bench, watch);
     AddInput(bench, watch);
     AddScreen(bench, watch);
+    AddResources(bench);
 }
 
 namespace

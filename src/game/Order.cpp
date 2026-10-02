@@ -46,8 +46,32 @@ bool OrderByCommand(const Args &args, const std::string &action, ObjectId who, J
         const auto ability = AbilityArg(args);
         const ObjectId target = args.OptionalId("target", kCreatureHint).value_or(kInvalidObject);
         const auto point = args.Has("point") ? VectorOf(args.Raw().at("point"), "order: `point`") : dao::Vector{};
-        const ObjectId item = args.OptionalId("item", "an item").value_or(kInvalidObject);
+        ObjectId item = args.OptionalId("item", "an item").value_or(kInvalidObject);
+        // An item named by its tag, found on the creature: a potion's id
+        // changes each launch, its tag does not (turn-based-agent, 2026-10-02).
+        if (item == kInvalidObject && args.Has("itemTag"))
+        {
+            const std::wstring tag = Wide(args.String("itemTag"));
+            const auto items = api::GetItemsInInventory(who, k::GET_ITEMS_OPTION_ALL);
+            for (std::size_t i = 0; i < items.Size() && item == kInvalidObject; ++i)
+            {
+                if (api::GetTag(items.Object(i)) == tag)
+                {
+                    item = items.Object(i);
+                }
+            }
+            if (item == kInvalidObject)
+            {
+                throw ToolError(std::format("order: {} carries no item tagged \"{}\"; inspect kind=inventory lists "
+                                            "what it has",
+                                            FormatId(who), args.String("itemTag")));
+            }
+        }
         answer["ability"] = AbilityJson(ability);
+        if (item != kInvalidObject)
+        {
+            answer["item"] = Brief(item);
+        }
         answer["target"] = Brief(target);
         return dao::orders::UseAbility(who, ability, target, item, point);
     }
@@ -160,6 +184,10 @@ void AddOrder(Bench &bench, const Watch &watch)
                         {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
                         {"ability", {{"type", "integer"}}},
                         {"item", {{"description", "For an ability from an item: the item's id"}}},
+                        {"itemTag",
+                         {{"type", "string"},
+                          {"description", "For an ability from an item: the item's tag, found on the creature "
+                                          "(gen_im_qck_health_101, a lesser health poultice)"}}},
                         {"via",
                          {{"type", "string"},
                           {"enum", {"command", "click"}},

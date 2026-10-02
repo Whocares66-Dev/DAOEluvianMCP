@@ -129,6 +129,7 @@ add_library(
     src/core/Args.cpp
     src/core/Base64.cpp
     src/core/Bench.cpp
+    src/core/Erf.cpp
     src/core/EventBus.cpp
     src/core/FrameQueue.cpp
     src/core/Http.cpp
@@ -228,6 +229,7 @@ add_daolib_plugin(
         src/game/Input.cpp
         src/game/Inspect.cpp
         src/game/Order.cpp
+        src/game/Resources.cpp
         src/game/Screen.cpp
         src/game/Screenshot.cpp
         src/game/Script.cpp

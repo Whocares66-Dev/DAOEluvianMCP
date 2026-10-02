@@ -174,6 +174,7 @@ void AddInput(Bench &bench, const Watch &watch);
 void AddCamera(Bench &bench, const Watch &watch);
 void AddDialogue(Bench &bench, const Watch &watch);
 void AddScreen(Bench &bench, const Watch &watch);
+void AddResources(Bench &bench);
 void AddCharacter(Bench &bench, const Watch &watch); // inspect's character, equipment, inventory and item
 
 } // namespace eluvian::game

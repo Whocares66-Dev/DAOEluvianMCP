@@ -49,6 +49,15 @@ inspect {"kind": "tactics", "id": "0x82"}        its tactics slots: target, cond
 inspect {"kind": "inventory", "id": "0x1fd"}     what a chest, a body or a pile of bones holds, without opening it
 inspect {"kind": "journal"}                      the quests under way and the one marked: plot, name, objective, text
 inspect {"kind": "exits"}                        the ways out of the area: door or trigger, where each leads, distance
+inspect {"kind": "resources", "type": "utc", "match": "ogre"}
+                                                 the game's templates by a word: creatures (utc) for stage spawn,
+                                                 items (uti) for stage equip, plots (plo), cutscenes (cut)
+stage {"action": "reset"}                        the party back to full, raised, cooldowns cleared, the dead taken
+                                                 away: another fight in the same launch
+stage {"action": "equip", "id": "0x82", "template": "..."}
+                                                 an item made from its template and put on
+order {"action": "ability", "ability": 200010, "itemTag": "gen_im_qck_health_101", "target": "0x82"}
+                                                 an item's ability, the item found on the creature by its tag
 inspect {"kind": "plot", "plot": "bed000pt_main"}
                                                  a quest's or story's flags by name, which are set, and the journal's
                                                  text for those; "flag": "NAME" asks for one. A plot is named by its
