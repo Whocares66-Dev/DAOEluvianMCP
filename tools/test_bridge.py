@@ -527,6 +527,26 @@ class BridgeTest(unittest.TestCase):
         self.assertIn("EXCEPTION_ACCESS_VIOLATION", text)
         self.assertIn("renderer as it starts", text)
 
+    def test_an_install_that_lost_its_data_is_not_launched_and_says_so(self) -> None:
+        self.processes.pids.clear()
+        game = self.folder / "Dragon Age Origins"
+        (game / "bin_ship").mkdir(parents=True)
+        (game / "packages" / "core" / "data").mkdir(parents=True)
+        (game / "modules" / "single player" / "data").mkdir(parents=True)
+        exe = game / "bin_ship" / "DAOrigins.exe"
+        exe.write_bytes(b"")
+        self.processes.exe = exe
+        refused = self.call("game_launch", {"waitSeconds": 0})
+        self.assertTrue(refused["isError"])
+        self.assertIn("lost its game data", refused["content"][0]["text"])
+        self.assertEqual(self.processes.started, 0)
+        self.assertIn(
+            "missing", self.call("game_status")["structuredContent"]["install"]
+        )
+        for name in ("packages/core/data/2da.erf", "modules/single player/data/a.erf"):
+            (game / name).write_bytes(b"")
+        self.assertNotIn("install", self.call("game_status")["structuredContent"])
+
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})
         self.assertTrue(result["structuredContent"]["quit"])

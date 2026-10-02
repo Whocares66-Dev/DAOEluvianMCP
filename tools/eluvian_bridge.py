@@ -735,7 +735,28 @@ class Bridge:
         claim = self.claim()
         if claim:
             status["claim"] = claim
+        missing = self.install_missing()
+        if missing:
+            status["install"] = (
+                f"its game data is missing: {missing}; repair the install"
+            )
         return status
+
+    def install_missing(self) -> str | None:
+        """What of the game's data an install laid out as the game's (DAOrigins.exe in bin_ship)
+        has lost, or None. On 2026-10-02 a delete that followed directory junctions emptied the
+        GOG install's packages, modules and the rest, and every start then died in the renderer,
+        which was taken for the display for an hour; an empty folder says it at once."""
+        exe = self.processes.exe
+        if exe.parent.name.lower() != "bin_ship":
+            return None
+        game = exe.parent.parent
+        lost = [
+            name
+            for name in ("packages/core/data", "modules/single player/data")
+            if not any((game / name).glob("*.erf"))
+        ]
+        return ", ".join(f"{game / name} holds no archive" for name in lost) or None
 
     # ---- the claim -------------------------------------------------------
     #
@@ -890,6 +911,14 @@ class Bridge:
             if not self.processes.exe.exists():
                 return text_result(
                     f"game_launch: no {self.processes.exe}", is_error=True
+                )
+            missing = self.install_missing()
+            if missing:
+                return text_result(
+                    f"game_launch: NOT launched. The install has lost its game data: {missing}. "
+                    "Repair it (GOG Galaxy: the game's settings, Manage installation, Verify / "
+                    "Repair); a game started like this crashes in its renderer's start-up.",
+                    is_error=True,
                 )
             started = time.time() - 2  # the logs of this start are no older
             pid = self.processes.start(environment)
