@@ -17,7 +17,8 @@
 
     The address library's files (build\<preset>\daolib\addresses\*.bin, one per build of the
     game; DAOLib 8b027c6 on) go under bin_ship\daolib\addresses, where the loader and every
-    plugin read the running game's. Without them the loader loads nothing.
+    plugin read the running game's. Without them the loader loads nothing. They belong with
+    the loader: only a file the game has not is put in, and with -Loader all of them.
 
     -Remove deletes eluvian.dll and its .pdb; the loader and other plugins stay.
 
@@ -115,16 +116,27 @@ Copy-Item -Force $builtPlugin $plugin
 $builtPdb = [IO.Path]::ChangeExtension($builtPlugin, '.pdb')
 if (Test-Path $builtPdb) { Copy-Item -Force $builtPdb $pluginPdb }
 Show-Ok "plugin  -> $plugin"
-# The address files are the same for every plugin built on one DAOLib, so the last deploy's
-# stand, as DAOLib's own deploy.ps1 and the turn-based mod's leave them. A game folder that
-# had none had a loader from before them (plugin API 1), which this plugin refuses.
+# The address files: one per build of the game, read by the loader and every plugin. They
+# belong with the loader: the library only adds IDs (103,293 for GOG's build on 2026-10-01,
+# 103,528 the next day, in files of one size), and the turn-based mod, which deploys the
+# loader, is on a later DAOLib than this as a rule, so a copy of this build's over the
+# game's could take IDs from under its plugin. So this deploy puts in only a file the game
+# has not, and with -Loader, which puts this build's loader in, all of this build's.
+# A game folder that had none had a loader from before them (plugin API 1), which this
+# plugin refuses.
 $addresses = Join-Path $Game 'daolib\addresses'
 $hadAddresses = Test-Path (Join-Path $addresses '*.bin')
 New-Item -ItemType Directory -Force $addresses | Out-Null
+$kept = 0
 foreach ($file in Get-ChildItem -Path $builtAddresses -Filter '*.bin') {
-    Copy-Item -Force $file.FullName (Join-Path $addresses $file.Name)
+    $there = Join-Path $addresses $file.Name
+    if ((Test-Path $there) -and -not $Loader) {
+        $kept++
+        continue
+    }
+    Copy-Item -Force $file.FullName $there
 }
-Show-Ok "addresses -> $addresses"
+Show-Ok "addresses -> $addresses$(if ($kept) { " ($kept the game had already kept: the loader's; -Loader replaces them with this build's)" })"
 if ($keptLoader -and -not $hadAddresses) {
     Show-Info 'the game had no address files, so the loader kept there is likely of an older plugin API:'
     Show-Info 'Eluvian will refuse it (eluvian.log says so once the game starts). -Loader replaces it.'
