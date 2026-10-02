@@ -179,10 +179,13 @@ ObjectId StageReset(const Args &args, Json &answer)
         entry["manaOrStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
         reset.push_back(std::move(entry));
     }
+    // The fight's dead only: those seen to die since the last reset, not
+    // the bodies the area held before (twelve of the player's earlier
+    // fights' went with a reset that took every dead creature, 2026-10-02).
     Json removed = Json::array();
     if (args.Bool("clearDead", true))
     {
-        for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(hero))))
+        for (const ObjectId id : Deaths().TakeFallen())
         {
             if (api::GetObjectType(id) == k::OBJECT_TYPE_CREATURE && !party.contains(id) && api::IsDead(id) != 0)
             {
@@ -514,7 +517,8 @@ void AddStage(Bench &bench, const Watch &watch)
     add("reset",
         "puts things back as before a fight, for another in the same launch: the party (or `ids`) raised if "
         "fallen, health and mana or stamina full, every cooldown cleared, with `effects` every effect taken off "
-        "too; and unless `clearDead` is false, the dead that are not the party's taken away. Answers each "
+        "too; and unless `clearDead` is false, the dead that died since the last reset (not the area's older "
+        "bodies) taken away, if they are not the party's. Answers each "
         "creature as it is after (`reset`) and what was taken away (`removed`)",
         StageReset);
     add("equip",

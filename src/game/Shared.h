@@ -145,6 +145,7 @@ class DeathWatch
                 bench.Events().Emit(
                     "eluvian.creature.died",
                     Json{{"id", IdJson(id)}, {"name", Narrow(api::GetName(id))}, {"killer", Brief(it->second.killer)}});
+                fallen_.insert(id);
                 it = watched_.erase(it);
                 continue;
             }
@@ -152,7 +153,17 @@ class DeathWatch
         }
     }
 
+    // The creatures seen to die since the last call: a fight's dead, which
+    // stage reset takes away, and not the bodies an area held before (a
+    // reset that took every dead creature took twelve of the player's
+    // earlier fights' with them, 2026-10-02).
+    std::set<ObjectId> TakeFallen()
+    {
+        return std::exchange(fallen_, {});
+    }
+
   private:
+    std::set<ObjectId> fallen_;
     struct Entry
     {
         ObjectId killer = kInvalidObject;
