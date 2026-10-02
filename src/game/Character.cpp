@@ -1,0 +1,347 @@
+// `inspect`'s kinds for who a creature is and what it carries: `character`
+// (the sheet: race, class, level, attributes, what it wears), `equipment`
+// (each slot's item in full), `inventory` (the backpack) and `item` (one
+// item in full). Read through the scripts' own commands and the game's rule
+// tables, whose labels name a race, a class, a base item, a material and an
+// item's properties (seen in play, 2026-10-01).
+#include "game/Shared.h"
+
+namespace eluvian::game
+{
+
+namespace
+{
+
+// A row of one of the game's rule tables: its id, the designers' label, and
+// its name in the player's language where the table has one.
+Json Rule(std::int32_t table, std::int32_t row)
+{
+    Json rule = {{"id", row}, {"label", Narrow(api::GetM2DAString(table, L"Label", row))}};
+    // The tables do not agree on the column: classes and base items keep
+    // the name's string reference in NameStrRef, races in Name.
+    auto name = api::GetM2DAInt(table, L"NameStrRef", row);
+    if (name <= 0)
+    {
+        name = api::GetM2DAInt(table, L"Name", row);
+    }
+    if (name > 0)
+    {
+        if (const auto text = Narrow(dao::tlk::String(static_cast<std::uint32_t>(name))); !text.empty())
+        {
+            rule["name"] = text;
+        }
+    }
+    return rule;
+}
+
+struct Named
+{
+    std::int32_t id;
+    std::string_view name;
+};
+
+// The equipment slots (INVENTORY_SLOT_*), by the names a tester writes.
+constexpr std::array<Named, 19> kSlots = {{{0, "main"},
+                                           {1, "offhand"},
+                                           {2, "ammo"},
+                                           {4, "chest"},
+                                           {5, "head"},
+                                           {6, "boots"},
+                                           {7, "gloves"},
+                                           {8, "cloak"},
+                                           {9, "ring1"},
+                                           {10, "ring2"},
+                                           {11, "neck"},
+                                           {12, "belt"},
+                                           {13, "bite"},
+                                           {14, "shale_shoulders"},
+                                           {15, "shale_chest"},
+                                           {16, "shale_right_arm"},
+                                           {17, "shale_left_arm"},
+                                           {18, "dog_warpaint"},
+                                           {19, "dog_collar"}}};
+
+// An item's stats by their place (GetItemStat). script.ldf names none; these
+// are the ones play made plain on a bow, a chest piece and boots: the armour
+// a piece gives, a weapon's damage, and the fatigue a piece adds. The rest
+// are given by number until their names are read.
+std::string StatName(std::int32_t index)
+{
+    switch (index)
+    {
+    case 1:
+        return "armor";
+    case 2:
+        return "damage";
+    case 7:
+        return "fatigue";
+    default:
+        return std::format("stat{}", index);
+    }
+}
+
+std::string_view SlotName(std::int32_t slot)
+{
+    for (const auto &named : kSlots)
+    {
+        if (named.id == slot)
+        {
+            return named.name;
+        }
+    }
+    return {};
+}
+
+// An item: in brief for a list, in full for itself.
+Json ItemJson(ObjectId item, bool full)
+{
+    if (item == kInvalidObject)
+    {
+        return nullptr;
+    }
+    Json json = Brief(item);
+    json["template"] = Narrow(api::GetResRef(item));
+    json["baseType"] = Rule(k::TABLE_ITEMS, api::GetBaseItemType(item));
+    json["stack"] = api::GetItemStackSize(item);
+    json["value"] = api::GetItemValue(item);
+    json["plot"] = api::IsPlot(item) != 0;
+    if (!full)
+    {
+        return json;
+    }
+    json["maxStack"] = api::GetMaxItemStackSize(item);
+    json["material"] = Rule(k::TABLE_MATERIAL_TYPES, api::GetItemMaterialType(item));
+    const auto slot = api::GetItemEquipSlot(item);
+    json["equippedIn"] = SlotName(slot).empty() ? Json(nullptr) : Json(std::string(SlotName(slot)));
+    json["droppable"] = api::IsItemDroppable(item) != 0;
+    json["indestructible"] = api::IsItemIndestructible(item) != 0;
+    Json stats = Json::object();
+    for (std::int32_t index = 0; index < 16; ++index)
+    {
+        if (const float value = api::GetItemStat(item, index); value != 0)
+        {
+            stats[StatName(index)] = value;
+        }
+    }
+    json["stats"] = std::move(stats);
+    Json properties = Json::array();
+    const auto list = api::GetItemProperties(item, 1);
+    for (std::size_t i = 0; i < list.Size(); ++i)
+    {
+        const std::int32_t id = list.Int(i);
+        properties.push_back(Json{{"id", id},
+                                  {"label", Narrow(api::GetM2DAString(k::TABLE_ITEMPRPS, L"Label", id))},
+                                  {"power", api::GetItemPropertyPower(item, id, 1)}});
+    }
+    json["properties"] = std::move(properties);
+    // 200000 is the game's "no ability" for an item; anything else is what
+    // using the item does (a poultice's heal).
+    if (const auto ability = api::GetItemAbilityId(item); ability != 0 && ability != 200000)
+    {
+        json["ability"] = AbilityJson(ability);
+    }
+    return json;
+}
+
+ObjectId ItemInSlot(ObjectId creature, std::int32_t slot, std::int32_t set)
+{
+    return api::GetItemInEquipSlot(slot, creature, set);
+}
+
+// What a creature wears: each slot that holds something. The first three
+// slots (main, offhand, ammo) are the active weapon set's; `otherWeapons`
+// is the set not in hand.
+Json EquipmentJson(ObjectId creature, bool full)
+{
+    const auto set = api::GetActiveWeaponSet(creature);
+    Json slots = Json::object();
+    for (const auto &named : kSlots)
+    {
+        if (const ObjectId item = ItemInSlot(creature, named.id, named.id <= 2 ? set : -1); item != kInvalidObject)
+        {
+            slots[std::string(named.name)] = ItemJson(item, full);
+        }
+    }
+    Json other = Json::object();
+    for (std::int32_t slot = 0; slot <= 2; ++slot)
+    {
+        if (const ObjectId item = ItemInSlot(creature, slot, set == 0 ? 1 : 0); item != kInvalidObject)
+        {
+            other[std::string(SlotName(slot))] = ItemJson(item, full);
+        }
+    }
+    return Json{{"weaponSet", set}, {"slots", std::move(slots)}, {"otherWeapons", std::move(other)}};
+}
+
+Json Stat(ObjectId creature, std::int32_t property)
+{
+    return Json{{"total", api::GetCreatureProperty(creature, property, k::PROPERTY_VALUE_TOTAL)},
+                {"base", api::GetCreatureProperty(creature, property, k::PROPERTY_VALUE_BASE)}};
+}
+
+ObjectId CreatureOrControlled(const Args &args)
+{
+    const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
+    if (id == kInvalidObject)
+    {
+        throw ToolError("inspect: no creature is controlled and no `id` was given; is a game loaded?");
+    }
+    if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
+    {
+        throw ToolError(std::format("inspect: {} is not a creature; inspect kind=creatures lists them", FormatId(id)));
+    }
+    return id;
+}
+
+// The properties script.ldf names, beyond the six attributes and the two
+// bars; the class is property 27 (the hero read 3, the rogue's row; a
+// warrior companion 1), which the scripts' own headers name and script.ldf
+// does not.
+constexpr std::int32_t kPropertyClass = 27;
+constexpr std::array<Named, 12> kCombat = {{{k::PROPERTY_ATTRIBUTE_ATTACK, "attack"},
+                                            {k::PROPERTY_ATTRIBUTE_DEFENSE, "defense"},
+                                            {k::PROPERTY_ATTRIBUTE_ARMOR, "armor"},
+                                            {k::PROPERTY_ATTRIBUTE_AP, "armorPenetration"},
+                                            {k::PROPERTY_ATTRIBUTE_SPELLPOWER, "spellpower"},
+                                            {k::PROPERTY_ATTRIBUTE_REGENERATION_HEALTH, "healthRegeneration"},
+                                            {k::PROPERTY_ATTRIBUTE_DISPLACEMENT, "displacement"},
+                                            {k::PROPERTY_ATTRIBUTE_MOVEMENT_SPEED_MODIFIER, "movementSpeedModifier"},
+                                            {k::PROPERTY_ATTRIBUTE_MELEE_CRIT_MODIFIER, "meleeCritModifier"},
+                                            {k::PROPERTY_ATTRIBUTE_MAGIC_CRIT_MODIFIER, "magicCritModifier"},
+                                            {k::PROPERTY_ATTRIBUTE_RANGED_CRIT_MODIFIER, "rangedCritModifier"},
+                                            {k::PROPERTY_ATTRIBUTE_RANGED_AIM_SPEED, "rangedAimSpeed"}}};
+
+} // namespace
+
+void AddCharacter(Bench &bench, const Watch &watch)
+{
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"character",
+                 "A creature's sheet (`id`, default the one controlled): race, gender, class, level, experience "
+                 "and whether it can level up, rank, the six attributes (total and base), its combat numbers "
+                 "(attack, defense, armor, armor penetration, spellpower and the rest), health and mana or "
+                 "stamina, weapon style and set, whether it is plot or immortal, a follower's state and "
+                 "approval, and what it wears, slot by slot in brief. inspect kind=equipment gives the items "
+                 "in full, kind=inventory the backpack, kind=creature its effects and abilities."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId id = CreatureOrControlled(args);
+            Json sheet = Brief(id);
+            sheet["template"] = Narrow(api::GetResRef(id));
+            sheet["race"] = Rule(k::TABLE_RULES_RACES, api::GetCreatureRacialType(id));
+            const auto gender = api::GetCreatureGender(id);
+            sheet["gender"] = gender == k::GENDER_MALE     ? Json("male")
+                              : gender == k::GENDER_FEMALE ? Json("female")
+                                                           : Json(gender);
+            sheet["class"] =
+                Rule(k::TABLE_RULES_CLASSES,
+                     static_cast<std::int32_t>(api::GetCreatureProperty(id, kPropertyClass, k::PROPERTY_VALUE_TOTAL)));
+            sheet["level"] = static_cast<std::int32_t>(
+                api::GetCreatureProperty(id, k::PROPERTY_SIMPLE_LEVEL, k::PROPERTY_VALUE_TOTAL));
+            sheet["experience"] = static_cast<std::int32_t>(
+                api::GetCreatureProperty(id, k::PROPERTY_SIMPLE_EXPERIENCE, k::PROPERTY_VALUE_TOTAL));
+            sheet["canLevelUp"] = api::GetCanLevelUp(id) != 0;
+            sheet["rank"] = Rule(k::TABLE_CREATURERANKS, api::GetCreatureRank(id));
+            sheet["attributes"] = Json{{"strength", Stat(id, k::PROPERTY_ATTRIBUTE_STRENGTH)},
+                                       {"dexterity", Stat(id, k::PROPERTY_ATTRIBUTE_DEXTERITY)},
+                                       {"willpower", Stat(id, k::PROPERTY_ATTRIBUTE_WILLPOWER)},
+                                       {"magic", Stat(id, k::PROPERTY_ATTRIBUTE_MAGIC)},
+                                       {"cunning", Stat(id, k::PROPERTY_ATTRIBUTE_INTELLIGENCE)},
+                                       {"constitution", Stat(id, k::PROPERTY_ATTRIBUTE_CONSTITUTION)}};
+            Json combat = Json::object();
+            for (const auto &named : kCombat)
+            {
+                combat[std::string(named.name)] = api::GetCreatureProperty(id, named.id, k::PROPERTY_VALUE_TOTAL);
+            }
+            sheet["combat"] = std::move(combat);
+            sheet["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
+            sheet["manaStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
+            const auto style = api::GetWeaponStyle(id);
+            sheet["weaponStyle"] = style == k::WEAPONSTYLE_SINGLE      ? Json("single")
+                                   : style == k::WEAPONSTYLE_DUAL      ? Json("dual")
+                                   : style == k::WEAPONSTYLE_TWOHANDED ? Json("two-handed")
+                                                                       : Json("none");
+            sheet["plot"] = api::IsPlot(id) != 0;
+            sheet["immortal"] = api::IsImmortal(id) != 0;
+            sheet["abilityCount"] = api::GetAbilityCount(id);
+            const ObjectId hero = api::GetHero();
+            sheet["side"] = Side(id, hero, PartyOf(hero));
+            if (id != hero && PartyOf(hero).contains(id))
+            {
+                sheet["follower"] =
+                    Json{{"state", api::GetFollowerState(id)}, {"approval", api::GetFollowerApproval(id)}};
+            }
+            sheet["equipment"] = EquipmentJson(id, false);
+            return sheet;
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"equipment",
+                 "What a creature wears (`id`, default the one controlled), each slot's item in full: name, tag, "
+                 "template, base type and material (by the game's own labels), value, its stats (armor, damage, "
+                 "fatigue; others by number), its properties with their power, and what using it does. `slots` "
+                 "are the active weapon set's main, offhand and ammo, then chest, head, boots, gloves, cloak, "
+                 "the rings, neck and belt; `otherWeapons` is the set not in hand."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId id = CreatureOrControlled(args);
+            Json answer = EquipmentJson(id, true);
+            answer["of"] = Brief(id);
+            return answer;
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"inventory",
+                 "The backpack of a creature (`id`, default the hero, whose backpack is the party's): each item "
+                 "in brief (name, tag, template, base type, stack, value, plot), with `count` and the most it "
+                 "holds. `full: true` gives each item as inspect kind=item does. Not what is worn: that is "
+                 "inspect kind=equipment."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetHero());
+            if (id == kInvalidObject)
+            {
+                throw ToolError("inspect: no hero and no `id` was given; is a game loaded?");
+            }
+            const bool full = args.Bool("full", false);
+            Json items = Json::array();
+            const auto list = api::GetItemsInInventory(id, k::GET_ITEMS_OPTION_BACKPACK);
+            for (std::size_t i = 0; i < list.Size(); ++i)
+            {
+                items.push_back(ItemJson(list.Object(i), full));
+            }
+            return Json{{"of", Brief(id)},
+                        {"count", items.size()},
+                        {"holds", api::GetMaxInventorySize(id)},
+                        {"money", api::GetCreatureMoney(id)},
+                        {"items", std::move(items)}};
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"item",
+                 "One item in full, by its `id` (as inspect kind=inventory and kind=equipment give them): name, "
+                 "tag, template, base type, material, stack and the most a stack holds, value, where it is "
+                 "worn, its stats, its properties with their power, what using it does, and whether it is "
+                 "plot, droppable or indestructible."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId id = args.Id("id", "an item, as inspect kind=inventory lists them");
+            if (api::GetObjectType(id) != k::OBJECT_TYPE_ITEM)
+            {
+                throw ToolError(std::format("inspect: {} is not an item; inspect kind=inventory and "
+                                            "kind=equipment list items",
+                                            FormatId(id)));
+            }
+            return ItemJson(id, true);
+        });
+}
+
+} // namespace eluvian::game

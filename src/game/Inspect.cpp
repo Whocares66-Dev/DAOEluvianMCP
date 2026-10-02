@@ -25,6 +25,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                {"point", {{"description", "kind=geometry: the point to measure to, {x, y, z} or [x, y, z]"}}},
                {"path", {{"type", "string"}, {"description", "kind=data: a dotted path in the data tree"}}},
                {"paths", {{"type", "array"}, {"description", "kind=data: several paths, answered together"}}},
+               {"full", {{"type", "boolean"}, {"description", "kind=inventory: each item in full"}}},
                {"waypoints", {{"type", "boolean"}, {"description", "kind=geometry: list the paths' points"}}},
                {"walk",
                 {{"type", "boolean"},

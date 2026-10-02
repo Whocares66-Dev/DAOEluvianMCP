@@ -219,6 +219,7 @@ add_daolib_plugin(
     SOURCES
         src/game/Camera.cpp
         src/game/Capture.cpp
+        src/game/Character.cpp
         src/game/Convert.cpp
         src/game/Dialogue.cpp
         src/game/Game.cpp

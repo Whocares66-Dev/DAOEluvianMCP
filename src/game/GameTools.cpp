@@ -40,6 +40,7 @@ constexpr ScriptEventTopic kScriptEvents[] = {
 void AddGameTools(Bench &bench, const Watch &watch)
 {
     AddInspect(bench, watch);
+    AddCharacter(bench, watch);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);
