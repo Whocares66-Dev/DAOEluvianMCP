@@ -502,6 +502,31 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["isError"])
         self.assertIn("eluvian.events.jsonl", result["content"][0]["text"])
 
+    def test_a_game_that_crashed_starting_is_answered_with_its_crash_log(self) -> None:
+        self.down()
+        self.processes.pids.clear()
+        start = self.processes.start
+
+        def start_and_crash(environment: dict[str, str]) -> int:
+            pid = start(environment)
+            (self.folder / "crash-2026-10-02-08-03-24.log").write_text(
+                "Dragon Age: Origins, DAOrigins.exe link stamp 0x4eb19d53\n"
+                'Unhandled exception "EXCEPTION_ACCESS_VIOLATION" (0xc0000005) at 0x00a53690\n'
+                "PROBABLE CALL STACK:\n"
+                "\t[ 0] 0x00a53690 DAOrigins.exe Graphics::MaterialTechniqueTemp::vfunction6+0x0\n"
+                "\t[ 1] 0x00468ddb DAOrigins.exe Renderer::MoviePlayerInternal::MoviePlayerInternal+0xdb\n",
+                encoding="utf-8",
+            )
+            self.processes.pids.clear()  # and it is gone
+            return pid
+
+        self.processes.start = start_and_crash
+        result = self.call("game_launch", {"waitSeconds": 5})
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("EXCEPTION_ACCESS_VIOLATION", text)
+        self.assertIn("wake the display", text)
+
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})
         self.assertTrue(result["structuredContent"]["quit"])

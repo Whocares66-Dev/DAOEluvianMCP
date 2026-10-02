@@ -333,3 +333,5 @@ For many fights in one launch, 2026-10-02, 02:30 to 02:44 (in turn-based-agent's
 - The smoke test: 61 of 61.
 
 The run's events on disk, 2026-10-02, 03:01: the game kept every event of its run in `eluvian.events.jsonl` beside the logs; after it closed, the bridge's `game_events` read 41 from it, among them the save's load and a staged wolf's death, and with `topic` only those. The next game started the file again. The smoke test: 61 of 61.
+
+2026-10-02, 08:03: the GOG game crashed about 4 s after starting, three times, before any save: EXCEPTION_ACCESS_VIOLATION reading 0x34 in the game's renderer start-up (Graphics::MaterialTechniqueTemp under Renderer::MoviePlayerInternal's constructor), both plugins loaded first. Windows had the monitor off line: the display was asleep, as when screenshots came out black (2026-10-01). Launches through the night with the display on had worked. `game_launch` now answers a game that died starting with its crash log's exception and first frames, and for a crash in the renderer's start-up says to wake the display; seen on the third.

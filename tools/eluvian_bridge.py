@@ -681,6 +681,40 @@ class Bridge:
             }
         )
 
+    def crash_since(self, since: float) -> dict | None:
+        """The crash log DAOLib's loader wrote for a game that died after `since`: its file,
+        the exception's line and the first frames, and what is known to cause one like it."""
+        logs = [
+            log
+            for log in self.game.folder.glob("crash-*.log")
+            if log.stat().st_mtime >= since
+        ]
+        if not logs:
+            return None
+        log = max(logs, key=lambda log: log.stat().st_mtime)
+        try:
+            lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return {"file": str(log), "what": "a crash log that could not be read"}
+        what = next(
+            (line.strip() for line in lines if line.startswith("Unhandled exception")),
+            "an unhandled exception",
+        )
+        frames = [
+            line.strip()
+            for line in lines
+            if line.strip().startswith("[") and "] 0x" in line
+        ][:4]
+        crash = {"file": str(log), "what": what, "frames": frames}
+        # The renderer failing as it starts, before any save: twice on 2026-10-02 with the
+        # display asleep (Windows had the monitor off line), and never with it on.
+        if any("Renderer::" in frame or "D3D" in frame for frame in frames):
+            crash["hint"] = (
+                "a crash in the renderer's start-up; it came when the display was asleep, so "
+                "wake the display and launch again"
+            )
+        return crash
+
     def game_status(self) -> dict:
         pids = self.processes.running()
         health = self.health()
@@ -871,15 +905,21 @@ class Bridge:
             ):
                 break
             if not self.processes.running():
-                return text_result(
-                    {
-                        "launched": True,
-                        "pid": pid,
-                        "error": "the game exited while starting; crash-*.log in "
-                        f"{self.game.folder} may say why",
-                    },
-                    is_error=True,
-                )
+                answer = {
+                    "launched": True,
+                    "pid": pid,
+                    "error": "the game exited while starting; crash-*.log in "
+                    f"{self.game.folder} may say why",
+                }
+                crash = self.crash_since(started)
+                if crash:
+                    answer["crash"] = crash
+                    answer["error"] = (
+                        f"the game crashed while starting: {crash['what']}"
+                    )
+                    if crash.get("hint"):
+                        answer["error"] += f" ({crash['hint']})"
+                return text_result(answer, is_error=True)
             self.sleep(1)
         self.game_tools()  # lists the game's tools now it serves, and says so if they changed
         self.send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
