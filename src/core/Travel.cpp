@@ -26,17 +26,28 @@ class Journey
         : bench_(bench), deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 600000))),
           maxDoors_(static_cast<std::size_t>(args.Integer("maxDoors", 4, 0, 20))), within_(args.Number("within", 1.5))
     {
-        if (args.Has("target") == args.Has("point"))
+        const int given = (args.Has("target") ? 1 : 0) + (args.Has("point") ? 1 : 0) + (args.Has("exit") ? 1 : 0) +
+                          (args.Has("area") ? 1 : 0);
+        if (given != 1)
         {
-            throw ToolError("travel: give one of `target` (a creature or object id) or `point`");
+            throw ToolError("travel: give one of `target` (a creature or object id), `point`, `exit` (an id "
+                            "from inspect kind=exits) or `area` (an area's tag)");
         }
         if (args.Has("target"))
         {
             where_["target"] = args.Raw().at("target");
         }
-        else
+        else if (args.Has("point"))
         {
             where_["point"] = args.Raw().at("point");
+        }
+        else if (args.Has("exit"))
+        {
+            exit_ = args.String("exit");
+        }
+        else
+        {
+            area_ = args.String("area");
         }
         if (args.Has("id"))
         {
@@ -59,7 +70,114 @@ class Journey
         // A use by the controlled creature goes by click, which chooses what
         // the object takes; another's goes by command and must name it.
         byClick_ = who_ == controlled;
+        const bool leaving = !exit_.empty() || !area_.empty();
+        if (leaving)
+        {
+            if (!byClick_)
+            {
+                throw ToolError("travel: only the creature controlled takes the party to another area; leave out "
+                                "`id`, or control that creature first");
+            }
+            ChooseExit();
+            fromArea_ = game.value(Json::json_pointer("/area/tag"), std::string());
+        }
+        Json walked = Walk();
+        if (!leaving || !walked.value("arrived", false))
+        {
+            return walked;
+        }
+        return Cross();
+    }
 
+  private:
+    // The exit to go by: the one named, or the nearest active one that
+    // leads to the area named, from inspect kind=exits.
+    void ChooseExit()
+    {
+        const Json listed = bench_.Invoke("inspect", Json{{"kind", "exits"}, {"near", who_}}).data;
+        const Json exits = listed.value("exits", Json::array());
+        std::string places;
+        for (const auto &exit : exits)
+        {
+            const std::string id = exit.value("id", std::string());
+            const std::string area = exit.value(Json::json_pointer("/leadsTo/area"), std::string());
+            if ((!exit_.empty() && id == exit_) || (exit_.empty() && area == area_ && exit.value("active", true)))
+            {
+                exitAt_ = exit;
+                where_["target"] = id;
+                answer_["exit"] = exit;
+                return;
+            }
+            places += (places.empty() ? "" : ", ") + area;
+        }
+        if (!exit_.empty())
+        {
+            throw ToolError("travel: " + exit_ + " is not one of this area's exits; inspect kind=exits lists them");
+        }
+        throw ToolError("travel: no active exit here leads to " + area_ + "; this area's lead to " +
+                        (places.empty() ? std::string("nowhere") : places));
+    }
+
+    // Through the exit: used, then waited on until the other area is in
+    // place (the scripts' area-loaded event, or the game's area changed).
+    // Not the command's end, which a party leaving its area need not send.
+    Json Cross()
+    {
+        const std::string exit = where_.at("target").get<std::string>();
+        const std::string to = exitAt_.value(Json::json_pointer("/leadsTo/area"), std::string());
+        auto since = bench_.Events().Next();
+        bench_.Invoke("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}});
+        steps_.push_back(Json{{"did", "use " + exit}, {"result", "asked"}});
+        const auto loaded = EventFilter::FromArgs(Json{{"topic", "eluvian.script.area_loaded"}});
+        while (Left().count() > 0)
+        {
+            const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(2000)));
+            if (event)
+            {
+                since = event->seq + 1;
+            }
+            const Json health = bench_.Invoke("health", Json::object()).data;
+            const std::string mode = health.value("mode", std::string());
+            answer_["mode"] = mode;
+            if (mode == "loading")
+            {
+                continue;
+            }
+            const Json game = bench_.Invoke("inspect", Json{{"kind", "game"}}).data;
+            const std::string area = game.value(Json::json_pointer("/area/tag"), std::string());
+            if (!area.empty() && area != fromArea_)
+            {
+                answer_["area"] = game.at("area");
+                steps_.push_back(Json{{"did", "wait for " + area}, {"result", "loaded"}});
+                return End(true, "through to " + game.value(Json::json_pointer("/area/name"), area) +
+                                     (area == to || to.empty() ? "" : " (the exit named " + to + ")"));
+            }
+            if (game.contains("popup") && !game.at("popup").is_null())
+            {
+                return End(false, "the game asks before leaving: " + game.at("popup").dump() +
+                                      "; inspect kind=popup reads it and game action=press answers it");
+            }
+            if (mode == "combat")
+            {
+                return End(false, "a fight began before the party left");
+            }
+            if (mode == "dialog" || mode == "cutscene")
+            {
+                return End(false, "a " + std::string(mode == "dialog" ? "conversation" : "cutscene") +
+                                      " took the screen before the party left");
+            }
+            if (mode != "explore" && !mode.empty())
+            {
+                return End(false, "the game is in mode " + mode +
+                                      " and the party has not left (an exit to the "
+                                      "world map opens it)");
+            }
+        }
+        return End(false, "the party did not leave in the time given; the exit was used");
+    }
+
+    Json Walk()
+    {
         std::string lastBlocker;
         for (int step = 0; step < 4 * (static_cast<int>(maxDoors_) + 2); ++step)
         {
@@ -150,7 +268,6 @@ class Journey
         return End(false, "too many steps without arriving");
     }
 
-  private:
     [[nodiscard]] milliseconds Left() const
     {
         return std::max(milliseconds(0), std::chrono::duration_cast<milliseconds>(deadline_ - Clock::now()));
@@ -237,6 +354,10 @@ class Journey
     std::size_t maxDoors_;
     double within_;
     Json where_ = Json::object();
+    std::string exit_;     // `exit`: the exit's id
+    std::string area_;     // `area`: the area to reach, by an exit that leads there
+    Json exitAt_;          // the exit chosen, as inspect kind=exits gave it
+    std::string fromArea_; // the area's tag before the crossing
     std::string who_;
     bool byClick_ = false;
     bool wentToReached_ = false;
@@ -259,12 +380,21 @@ void AddTravelTool(Bench &bench)
                  "thing that fills its own place, a door or a chest), `reason`, the `distance` left, what it "
                  "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
                  "its to make: a fight began, a conversation or cutscene took the screen, the game is paused. "
-                 "Opening a door may start a fight or a plot's step; the events from `cursor` say what followed.",
+                 "Opening a door may start a fight or a plot's step; the events from `cursor` say what followed. "
+                 "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
+                 "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
+                 "comes once the other `area` is in place; it stops and says so if the game asks first (a "
+                 "message box), opens the world map, or starts a fight or a conversation. The game may "
+                 "autosave on the way.",
                  Json{{"type", "object"},
                       {"properties",
                        {{"id", {{"description", "Who walks: a creature id; default the one controlled"}}},
                         {"target", {{"description", "A creature or object id to walk to"}}},
                         {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
+                        {"exit", {{"type", "string"}, {"description", "An exit's id, from inspect kind=exits"}}},
+                        {"area",
+                         {{"type", "string"},
+                          {"description", "An area's tag, to go to by the nearest exit that leads there"}}},
                         {"within", {{"type", "number"}, {"description", "Metres that count as there; default 1.5"}}},
                         {"maxDoors", {{"type", "integer"}, {"minimum", 0}, {"maximum", 20}}},
                         {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}}}}},

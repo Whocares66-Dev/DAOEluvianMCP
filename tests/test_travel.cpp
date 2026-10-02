@@ -28,6 +28,10 @@ struct World
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
     std::vector<Json> orders;
+    std::string area = "ruins"; // the area's tag
+    bool crosses = true;        // whether using the exit takes the party out
+    bool asks = false;          // whether the game asks first, with a message box
+    Json popup = nullptr;
 
     World()
     {
@@ -37,7 +41,15 @@ struct World
         bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             if (args.value("kind", "") == "game")
             {
-                return Json{{"controlled", {{"id", "0x82"}}}};
+                return Json{{"controlled", {{"id", "0x82"}}},
+                            {"area", {{"tag", area}, {"name", area == "forest" ? "Forest Clearing" : "Ruins"}}},
+                            {"popup", popup}};
+            }
+            if (args.value("kind", "") == "exits")
+            {
+                return Json{{"exits", Json::array({Json{{"id", "0x1f5"},
+                                                        {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
+                                                        {"active", true}}})}};
             }
             Json walk;
             if (!shut || at <= door)
@@ -74,6 +86,18 @@ struct World
                 else
                 {
                     at = to;
+                }
+            }
+            else if (action == "use" && args.value("target", "") == "0x1f5")
+            {
+                if (asks)
+                {
+                    popup = Json{{"text", "Leave the area?"}};
+                }
+                else if (crosses)
+                {
+                    area = "forest";
+                    bench.Events().Emit("eluvian.script.area_loaded", Json::object());
                 }
             }
             else if (action == "use" && opens)
@@ -216,4 +240,70 @@ TEST_CASE("a target and a point both, or neither, is refused", "[travel]")
     World world;
     CHECK_THROWS_AS(world.bench.Invoke("travel", Json::object()), ToolError);
     CHECK_THROWS_AS(world.bench.Invoke("travel", Json{{"target", "0x1"}, {"point", {0, 0, 0}}}), ToolError);
+}
+
+TEST_CASE("an area is reached by the exit that leads there", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 5;
+    const auto answer = world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["area"]["tag"] == "forest");
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("through to Forest Clearing"));
+    CHECK(answer["exit"]["id"] == "0x1f5");
+    REQUIRE(world.orders.size() == 2);
+    CHECK(world.orders[0]["action"] == "move");
+    CHECK(world.orders[1]["action"] == "use");
+    CHECK(world.orders[1]["target"] == "0x1f5");
+}
+
+TEST_CASE("an exit is named by its id too", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1; // already there: no walk, only the use
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    REQUIRE(world.orders.size() == 1);
+    CHECK(world.orders[0]["action"] == "use");
+}
+
+TEST_CASE("an exit or an area this area has not is refused, saying where its exits lead", "[travel]")
+{
+    World world;
+    CHECK_THROWS_WITH(world.bench.Invoke("travel", Json{{"exit", "0x999"}}),
+                      ContainsSubstring("0x999 is not one of this area's exits"));
+    CHECK_THROWS_WITH(world.bench.Invoke("travel", Json{{"area", "denerim"}}), ContainsSubstring("lead to forest"));
+    CHECK(world.orders.empty());
+}
+
+TEST_CASE("only the creature controlled takes the party to another area", "[travel]")
+{
+    World world;
+    CHECK_THROWS_WITH(world.bench.Invoke("travel", Json{{"area", "forest"}, {"id", "0x10d"}}),
+                      ContainsSubstring("only the creature controlled"));
+}
+
+TEST_CASE("a message box before leaving stops the crossing and says what it asks", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.asks = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Leave the area?"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("game action=press"));
+}
+
+TEST_CASE("an exit that does not take the party out ends when the time does", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.crosses = false;
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 1000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not leave"));
 }
