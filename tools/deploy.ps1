@@ -117,7 +117,7 @@ $builtPdb = [IO.Path]::ChangeExtension($builtPlugin, '.pdb')
 if (Test-Path $builtPdb) { Copy-Item -Force $builtPdb $pluginPdb }
 Show-Ok "plugin  -> $plugin"
 # The address files: one per build of the game, read by the loader and every plugin. The
-# library only adds IDs (103,293 known for GOG's build on 2026-10-01, 103,528 the next day),
+# library only adds IDs (known on 2026-10-02: 103,293 for GOG's build, 103,528 Steam's, 103,567 EA's),
 # and the plugins in one folder may be on different DAOLibs: so of this build's file and the
 # game's, the one that knows more IDs stays, or a deploy would take IDs from under another
 # plugin. A file is a 36-byte header, then a 32-bit word per ID, 0xFFFFFFFF for one the
