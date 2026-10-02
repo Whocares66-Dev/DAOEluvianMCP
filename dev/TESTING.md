@@ -297,3 +297,5 @@ On DAOLib's address-library line, plugin API 2, 2026-10-01, 19:35 (Eluvian `3654
 - The smoke test at once: 55 of 55. The mod's registrations came through the C ABI as before (one inspect kind, three tools), and its kind answered. `inspect kind=character` and `kind=abilities` as on the build before (attack 62, 12 abilities of 12).
 - No warning or error in `eluvian.log` or the mod's log.
 - Learned from these logs: a line's second bracket is a thread's id, not the game's (the loader's lines and a plugin's first share one; the frame thread's differ). The bridge's `why` had taken it for the pid and would have found nothing; it now goes by the logs' time.
+
+A tester's two games on the same build that evening (computer-use-agent, 19:37 to 19:48, the folder under its claim): launch into a save, `health`, `inspect` (cursor, creatures, geometry, a plugin's kind), `screen` (point and target), `screenshot source=game`, `order` (move, ability by the command path), `stage kill`, a plugin's tool and `game_quit` all did what was asked, and a real fight driven with the real mouse went as the morning's had.
