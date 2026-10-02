@@ -184,7 +184,16 @@ class BridgeTest(unittest.TestCase):
         reply = self.bridge.handle(request(1, "tools/list"))
         names = [tool["name"] for tool in reply["result"]["tools"]]
         self.assertEqual(
-            names, ["game_saves", "game_status", "game_launch", "game_quit", "health"]
+            names,
+            [
+                "game_saves",
+                "game_claim",
+                "game_release",
+                "game_status",
+                "game_launch",
+                "game_quit",
+                "health",
+            ],
         )
 
     def test_the_games_tools_are_kept_for_while_it_is_down(self) -> None:
@@ -340,6 +349,39 @@ class BridgeTest(unittest.TestCase):
             bridge_module.call_budget("travel", {"budgetMs": 120000}), 120
         )
         self.assertGreater(bridge_module.call_budget("travel", {}), 60)
+
+    def test_a_claim_keeps_another_from_launching_until_it_is_released(self) -> None:
+        self.processes.pids.clear()
+        claimed = self.call(
+            "game_claim", {"owner": "tester-a", "note": "a parity test"}
+        )
+        self.assertTrue(claimed["structuredContent"]["claimed"])
+        self.assertEqual(
+            self.call("game_status")["structuredContent"]["claim"]["owner"], "tester-a"
+        )
+        refused = self.call("game_launch", {"owner": "tester-b"})
+        self.assertTrue(refused["isError"])
+        self.assertIn("claimed by tester-a", refused["content"][0]["text"])
+        self.assertIn("a parity test", refused["content"][0]["text"])
+        self.assertEqual(self.processes.started, 0)
+        self.assertTrue(self.call("game_claim", {"owner": "tester-b"})["isError"])
+        self.assertTrue(self.call("game_release", {"owner": "tester-b"})["isError"])
+        # Its owner launches, and releases.
+        self.assertFalse(self.call("game_launch", {"owner": "tester-a"})["isError"])
+        self.assertEqual(self.processes.started, 1)
+        released = self.call("game_release", {"owner": "tester-a"})
+        self.assertTrue(released["structuredContent"]["released"])
+        self.assertNotIn("claim", self.call("game_status")["structuredContent"])
+
+    def test_a_claim_past_its_time_no_longer_stands(self) -> None:
+        self.processes.pids.clear()
+        path = self.folder / "eluvian.claim.json"
+        path.write_text(
+            json.dumps({"owner": "gone", "note": "", "until": time.time() - 5}),
+            encoding="utf-8",
+        )
+        self.assertNotIn("claim", self.call("game_status")["structuredContent"])
+        self.assertFalse(self.call("game_launch", {"owner": "tester-b"})["isError"])
 
     def test_quit_closes_each_game(self) -> None:
         result = self.call("game_quit", {"force": True})

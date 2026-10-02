@@ -347,6 +347,36 @@ BRIDGE_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "game_claim",
+        "description": (
+            "Say the game and its folder are in use: by `owner` (the name you go by), for `note` "
+            "(what you are doing), for `minutes` (default 30, at most 240). While another's claim "
+            "stands game_launch refuses, and so does Eluvian's own deploy, with the claim's words; "
+            "game_status shows it. A game being closed does not mean its folder is free: a test "
+            "may have its own loader and plugins in place between two runs. Claim before setting "
+            "the folder up, and game_release when it is back as it was. A claim renewed by its "
+            "owner runs from now."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "owner": {"type": "string"},
+                "note": {"type": "string"},
+                "minutes": {"type": "integer", "minimum": 1, "maximum": 240},
+            },
+            "required": ["owner"],
+        },
+    },
+    {
+        "name": "game_release",
+        "description": "End your claim on the game and its folder (`owner`, as you claimed it).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"owner": {"type": "string"}},
+            "required": ["owner"],
+        },
+    },
+    {
         "name": "game_status",
         "description": (
             "Whether Dragon Age: Origins is running (its process ids) and what Eluvian's health says "
@@ -533,7 +563,84 @@ class Bridge:
         others = self.processes.others()
         if others:
             status["otherInstalls"] = others
+        claim = self.claim()
+        if claim:
+            status["claim"] = claim
         return status
+
+    # ---- the claim -------------------------------------------------------
+    #
+    # A running game says whose it is (health's owner). Between a test's two runs nothing did:
+    # a watcher waiting for "no game running" deployed and launched six seconds after a
+    # tester's game closed, into a folder set up with another loader, and its start wiped the
+    # run's logs (2026-10-01). The claim is a small file beside the logs, read by every bridge
+    # and by Eluvian's deploy.
+
+    def claim_path(self) -> Path:
+        return self.game.folder / "eluvian.claim.json"
+
+    def claim(self) -> dict | None:
+        """The claim that stands now, or None: no file, not readable, or past its time."""
+        try:
+            claim = json.loads(self.claim_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(claim, dict) or not isinstance(
+            claim.get("until"), (int, float)
+        ):
+            return None
+        left = claim["until"] - time.time()
+        if left <= 0:
+            return None
+        return {
+            "owner": claim.get("owner"),
+            "note": claim.get("note", ""),
+            "minutesLeft": round(left / 60, 1),
+        }
+
+    def held_by_another(self, owner: object) -> dict | None:
+        claim = self.claim()
+        return claim if claim and claim.get("owner") != owner else None
+
+    def game_claim(self, arguments: dict) -> dict:
+        owner = arguments.get("owner")
+        if not isinstance(owner, str) or not owner:
+            return text_result(
+                "game_claim: `owner` is the name you go by", is_error=True
+            )
+        theirs = self.held_by_another(owner)
+        if theirs:
+            return text_result(
+                f"game_claim: the game is claimed by {theirs['owner']} for another "
+                f"{theirs['minutesLeft']} minutes ({theirs['note']}); ask them, or wait",
+                is_error=True,
+            )
+        minutes = arguments.get("minutes", 30)
+        minutes = min(max(minutes if isinstance(minutes, (int, float)) else 30, 1), 240)
+        note = arguments.get("note")
+        record = {
+            "owner": owner,
+            "note": note if isinstance(note, str) else "",
+            "since": time.time(),
+            "until": time.time() + minutes * 60,
+        }
+        self.claim_path().write_text(json.dumps(record), encoding="utf-8")
+        return text_result({"claimed": True, **(self.claim() or {})})
+
+    def game_release(self, arguments: dict) -> dict:
+        owner = arguments.get("owner")
+        theirs = self.held_by_another(owner)
+        if theirs:
+            return text_result(
+                f"game_release: the claim is {theirs['owner']}'s, not yours to end",
+                is_error=True,
+            )
+        had = self.claim() is not None
+        try:
+            self.claim_path().unlink()
+        except OSError:
+            pass
+        return text_result({"released": had})
 
     def game_launch(self, arguments: dict) -> dict:
         environment = {}
@@ -543,6 +650,15 @@ class Bridge:
         # is was asked again and again, and once got wrong (2026-10-01).
         owner = arguments.get("owner")
         environment["ELUVIAN_OWNER"] = owner if isinstance(owner, str) else ""
+        theirs = self.held_by_another(owner)
+        if theirs:
+            return text_result(
+                f"game_launch: NOT launched. The game and its folder are claimed by "
+                f"{theirs['owner']} for another {theirs['minutesLeft']} minutes "
+                f"({theirs['note']}). No game running does not make the folder free: wait for "
+                "their game_release, or ask them.",
+                is_error=True,
+            )
         # Looking for a game and starting one are a single step, under a lock: requests run
         # on threads of their own, and two launches at once each saw no game and each started
         # one (a review's finding). The lock is the machine's, so two bridges agree too.
@@ -794,6 +910,10 @@ class Bridge:
                 return reply(text_result({"count": len(saves), "saves": saves}))
             if name == "game_status":
                 return reply(text_result(self.game_status()))
+            if name == "game_claim":
+                return reply(self.game_claim(arguments))
+            if name == "game_release":
+                return reply(self.game_release(arguments))
             if name == "game_launch":
                 return reply(self.game_launch(arguments))
             if name == "game_quit":
