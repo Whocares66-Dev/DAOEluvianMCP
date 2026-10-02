@@ -40,6 +40,19 @@ git submodule update --init --recursive         # extern\DAOLib, and its address
 
 The deploy puts in `eluvian.dll` and the address library's files (`daolib\addresses\*.bin`, one per build of the game, which the loader needs), and DAOLib's loader (`version.dll`) only where the game has none; `-Loader` replaces it. The loader and every plugin under it must be built on one plugin API of DAOLib's: where they are not, Eluvian stays off, `eluvian.log` says which API the loader has, and `game_launch` and `game_status` answer with that line as `why`.
 
+## The claim
+
+Several agents share one game and its folder, and a test may leave a loader and plugins of its own in place between two runs. So whoever needs the game or the folder for more than one launch claims it first, and every agent's deploy and launch scripts honour the claim (the user's decision, 2026-10-02). It is one file beside the logs, `Documents\BioWare\Dragon Age\daolib\game.claim.json`:
+
+```json
+{"owner": "computer-use-agent", "note": "play test 23: the attack walk preview", "since": 1790000000.0, "until": 1790001800.0}
+```
+
+- A claim stands while `until` (Unix seconds) is later than now. While another's stands: launch no game, deploy nothing, change nothing in the game folder; tell the owner, or wait.
+- To claim: write the file whole (a temporary file put in place), at most 240 minutes ahead; to renew, write it again. To release: delete it. Only the owner releases or renews; one past its time is nobody's.
+- A file that cannot be read is no claim. The player at the keyboard is not held by it: a game started by hand has no owner in `health`, and is the player's.
+- Through Eluvian's bridge: `game_claim {"owner", "note", "minutes"}`, `game_release {"owner"}`, and `game_status` shows the claim; `game_launch` and `tools\deploy.ps1` refuse while another's stands. From a shell: `python tools\eluvian_bridge.py --call game_claim '{"owner": "me", "note": "what for", "minutes": 30}'`.
+
 ## Connecting
 
 Through the bridge, for an agent: `tools\eluvian_bridge.py` is a stdio MCP server the agent's client keeps across game restarts. It forwards to the game while it runs, lists the game's tools while it does not, and adds `game_status`, `game_launch` (never a second game) and `game_quit`. This repository's `.mcp.json` starts it; from another:

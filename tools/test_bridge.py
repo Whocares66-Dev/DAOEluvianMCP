@@ -374,11 +374,12 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(status["otherInstalls"][0]["pid"], 7)
         self.assertFalse(self.call("game_quit")["structuredContent"]["quit"])
         self.assertEqual(self.processes.closed, [])
-        # It does not stop this install's game from starting, and the answer names it.
-        result = self.call("game_launch")
-        self.assertFalse(result["isError"])
-        self.assertEqual(self.processes.started, 1)
-        self.assertEqual(result["structuredContent"]["otherInstalls"][0]["pid"], 7)
+        # Nor is a game of this install started beside it: one game runs at a time.
+        result = self.call("game_launch")["structuredContent"]
+        self.assertFalse(result["launched"])
+        self.assertIn("one game runs at a time", result["note"])
+        self.assertEqual(result["otherInstalls"][0]["pid"], 7)
+        self.assertEqual(self.processes.started, 0)
 
     def test_a_process_is_this_installs_by_its_file_not_its_name(self) -> None:
         exe = Path(r"C:\Games\GOG\bin_ship\DAOrigins.exe")
@@ -436,9 +437,35 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(released["structuredContent"]["released"])
         self.assertNotIn("claim", self.call("game_status")["structuredContent"])
 
+    def test_a_claim_under_the_old_name_stands_too(self) -> None:
+        self.processes.pids.clear()
+        (self.folder / "eluvian.claim.json").write_text(
+            json.dumps(
+                {
+                    "owner": "tester-a",
+                    "note": "an older bridge's",
+                    "until": time.time() + 600,
+                }
+            ),
+            encoding="utf-8",
+        )
+        refused = self.call("game_launch", {"owner": "tester-b"})
+        self.assertIn("tester-a", refused["content"][0]["text"])
+        self.assertEqual(self.processes.started, 0)
+        self.assertTrue(self.call("game_claim", {"owner": "tester-b"})["isError"])
+        self.assertEqual(
+            self.call("game_status")["structuredContent"]["claim"]["owner"], "tester-a"
+        )
+        self.assertTrue(
+            self.call("game_release", {"owner": "tester-a"})["structuredContent"][
+                "released"
+            ]
+        )
+        self.assertFalse((self.folder / "eluvian.claim.json").exists())
+
     def test_a_claim_past_its_time_no_longer_stands(self) -> None:
         self.processes.pids.clear()
-        path = self.folder / "eluvian.claim.json"
+        path = self.folder / "game.claim.json"
         path.write_text(
             json.dumps({"owner": "gone", "note": "", "until": time.time() - 5}),
             encoding="utf-8",

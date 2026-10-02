@@ -95,6 +95,11 @@ def checks(run: Run, owner: str) -> None:
         ),
     )
     check(
+        "game save refuses the player's quicksave",
+        tool("game", {"action": "save", "kind": "quick"}),
+        lambda a: "quicksave is the player's" in a.get("error", ""),
+    )
+    check(
         "inspect journal, the quests under way",
         tool("inspect", {"kind": "journal"}),
         lambda a: (

@@ -45,9 +45,10 @@ void AddGame(Bench &bench, const Watch &watch)
             "each one's area, name, time played and level, as the load screen shows them; load, a save by "
             "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
             "manual) and `number`, from the main menu or in the world, as the load screen loads; save, a new "
-            "manual save in the next free slot, with `name` (the default: it writes over nothing), a manual "
-            "save to slot `number` (which writes over what is there), or `kind` quick, which writes over "
-            "the player's quicksave. A load or save answers that the game was asked, and `cursor`: wait_for "
+            "manual save in the next free slot, with `name` (the default, and what a test does: it writes "
+            "over nothing). A slot `number` that holds a save, and `kind` quick (the player's quicksave), are "
+            "refused unless `overwrite` is true, for a test's own save. A load or save answers that the game "
+            "was asked, and `cursor`: wait_for "
             "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
             "cutscene. press, a `button` of the game's message box by its label or place (inspect "
             "kind=popup reads the box): the game is sent what a click on it sends. (Not the game's speed: each "
@@ -60,7 +61,10 @@ void AddGame(Bench &bench, const Watch &watch)
                    {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
                    {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
                    {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
-                   {"name", {{"type", "string"}, {"description", "action=save: a manual save's name"}}}}},
+                   {"name", {{"type", "string"}, {"description", "action=save: a manual save's name"}}},
+                   {"overwrite",
+                    {{"type", "boolean"},
+                     {"description", "action=save: write over the save in slot `number`, or the quicksave"}}}}},
                  {"required", {"action"}}},
             Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {
@@ -176,6 +180,29 @@ void AddGame(Bench &bench, const Watch &watch)
             // not call this for that reason, 2026-09-30).
             const auto kind = KindArg(args, "manual");
             const auto number = static_cast<std::int32_t>(args.Integer("number", -1, -1, 500));
+            // Tests may make saves of their own (the user, 2026-10-02): new
+            // ones. A save already there is written over only when asked.
+            if (!args.Bool("overwrite", false))
+            {
+                if (kind == dao::saves::Kind::Quick)
+                {
+                    throw ToolError("game: the quicksave is the player's; a test makes a new manual save (leave out "
+                                    "`kind` and `number`), or passes overwrite: true for a quicksave of its own");
+                }
+                if (number >= 0)
+                {
+                    for (const auto &slot : dao::saves::List(dao::saves::Character()))
+                    {
+                        if (slot.kind == kind && slot.number == number)
+                        {
+                            throw ToolError(std::format(
+                                "game: {} save {} of {} holds a save; a test makes a new one (leave out `number`), "
+                                "or passes overwrite: true for a save of its own",
+                                dao::saves::Name(kind), number, Narrow(slot.character)));
+                        }
+                    }
+                }
+            }
             if (!dao::saves::Save(kind, number, Wide(args.String("name", ""))))
             {
                 throw ToolError("game: the game began no save: it allows none now (in combat, in a cutscene), or "

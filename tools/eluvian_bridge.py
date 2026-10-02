@@ -77,6 +77,15 @@ def documents_folder() -> Path:
     return Path.home() / "Documents"
 
 
+# Who holds the game and its folder: one file beside the logs that every agent's scripts read
+# (README.md, "The claim").
+CLAIM_FILE = "game.claim.json"
+# Its name until 2026-10-02. A bridge started before then writes this one, and a claim there
+# went unseen by one started after, which launched over a tester's run (2026-10-02): both
+# are read until no bridge with the old name runs.
+OLD_CLAIM_FILE = "eluvian.claim.json"
+
+
 def log_folder() -> Path:
     return documents_folder() / "BioWare" / "Dragon Age" / "daolib"
 
@@ -351,7 +360,7 @@ BRIDGE_TOOLS = [
         "description": (
             "Say the game and its folder are in use: by `owner` (the name you go by), for `note` "
             "(what you are doing), for `minutes` (default 30, at most 240). While another's claim "
-            "stands game_launch refuses, and so does Eluvian's own deploy, with the claim's words; "
+            "stands game_launch refuses, and so does every agent's deploy, with the claim's words; "
             "game_status shows it. A game being closed does not mean its folder is free: a test "
             "may have its own loader and plugins in place between two runs. Claim before setting "
             "the folder up, and game_release when it is back as it was. A claim renewed by its "
@@ -613,16 +622,27 @@ class Bridge:
     # A running game says whose it is (health's owner). Between a test's two runs nothing did:
     # a watcher waiting for "no game running" deployed and launched six seconds after a
     # tester's game closed, into a folder set up with another loader, and its start wiped the
-    # run's logs (2026-10-01). The claim is a small file beside the logs, read by every bridge
-    # and by Eluvian's deploy.
+    # run's logs (2026-10-01). The claim is a small file beside the logs, game.claim.json:
+    # {"owner", "note", "since", "until"}, the times in Unix seconds. The user made it the one
+    # every agent's deploy and launch scripts honour (2026-10-02), so it is named for the game,
+    # not for Eluvian; what it means is in README.md, "The claim".
 
     def claim_path(self) -> Path:
-        return self.game.folder / "eluvian.claim.json"
+        return self.game.folder / CLAIM_FILE
 
     def claim(self) -> dict | None:
-        """The claim that stands now, or None: no file, not readable, or past its time."""
+        """The claim that stands now, or None: no file, not readable, or past its time. The file
+        of the old name is read too."""
+        for path in (self.claim_path(), self.game.folder / OLD_CLAIM_FILE):
+            claim = self.read_claim(path)
+            if claim:
+                return claim
+        return None
+
+    @staticmethod
+    def read_claim(path: Path) -> dict | None:
         try:
-            claim = json.loads(self.claim_path().read_text(encoding="utf-8"))
+            claim = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
         if not isinstance(claim, dict) or not isinstance(
@@ -664,7 +684,19 @@ class Bridge:
             "since": time.time(),
             "until": time.time() + minutes * 60,
         }
-        self.claim_path().write_text(json.dumps(record), encoding="utf-8")
+        # Written whole and then put in place, so a reader never sees half of it; read back,
+        # so that of two claiming at once the one whose claim did not stand is told.
+        path = self.claim_path()
+        partial = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        partial.write_text(json.dumps(record), encoding="utf-8")
+        os.replace(partial, path)
+        theirs = self.held_by_another(owner)
+        if theirs:
+            return text_result(
+                f"game_claim: {theirs['owner']} claimed the game at the same moment "
+                f"({theirs['note']}); ask them, or wait",
+                is_error=True,
+            )
         return text_result({"claimed": True, **(self.claim() or {})})
 
     def game_release(self, arguments: dict) -> dict:
@@ -676,10 +708,11 @@ class Bridge:
                 is_error=True,
             )
         had = self.claim() is not None
-        try:
-            self.claim_path().unlink()
-        except OSError:
-            pass
+        for path in (self.claim_path(), self.game.folder / OLD_CLAIM_FILE):
+            try:
+                path.unlink()
+            except OSError:
+                pass
         return text_result({"released": had})
 
     def game_launch(self, arguments: dict) -> dict:
@@ -719,11 +752,21 @@ class Bridge:
                         "drive or close; read it if you must, and wait for it to end."
                     )
                 return text_result({"launched": False, "already": pids, **status})
-            # Another install's game may run beside this one's (DAOLib's work on EA's
-            # executable does, with plugins of its own): it holds none of this install's
-            # files and has no Eluvian, so it does not stop a launch. The answer names it,
-            # since the two share Documents\\BioWare\\Dragon Age (saves, settings).
+            # Another install's game is someone's test (DAOLib's work on EA's and Steam's
+            # executables), and the two share Documents\\BioWare\\Dragon Age: saves, settings
+            # and the logs. Two GOG games started beside a Steam one each exited at once
+            # (2026-10-02), and the user wants no second game opened: so none is.
             others = self.processes.others()
+            if others:
+                return text_result(
+                    {
+                        "launched": False,
+                        "otherInstalls": others,
+                        "note": "game_launch: NOT launched. Another install's game is running "
+                        f"({others[0].get('exe', 'another path')}); one game runs at a time. "
+                        "game_status says whose claim it is under, if any; wait for it to close.",
+                    }
+                )
             if not self.processes.exe.exists():
                 return text_result(
                     f"game_launch: no {self.processes.exe}", is_error=True
