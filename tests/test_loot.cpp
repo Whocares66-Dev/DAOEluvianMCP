@@ -291,7 +291,8 @@ TEST_CASE("a use that starts nothing on a container that holds items says so", "
     REQUIRE(answer.contains("empty")); // the use was seen to start nothing
     CHECK(answer["empty"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("holds 1 item."));
-    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the use started nothing")); // not the companion's
+    CHECK_THAT(answer["reason"].get<std::string>(),
+               ContainsSubstring("the use started nothing")); // not the companion's
 }
 
 TEST_CASE("a use the game refuses ends the looting with the refusal, not an error", "[loot]")

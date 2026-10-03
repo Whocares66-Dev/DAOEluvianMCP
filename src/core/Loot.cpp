@@ -173,8 +173,9 @@ class Looting
         answer_["empty"] = count == 0;
         if (count == 0)
         {
-            return End(false, "nothing there: " + use + ", no loot panel came, and it holds no items (empty "
-                              "remains open none)");
+            return End(false, "nothing there: " + use +
+                                  ", no loot panel came, and it holds no items (empty "
+                                  "remains open none)");
         }
         return End(false, "it did not open: " + use + " and no loot panel came, though it holds " +
                               std::to_string(count) + (count == 1 ? " item" : " items") +

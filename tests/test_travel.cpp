@@ -18,28 +18,28 @@ namespace
 struct World
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
-    double at = 30;        // metres from the goal
-    double door = 10;      // where the door stands, from the goal
-    bool shut = true;      // the door
-    bool opens = true;     // whether a use opens it
-    bool named = true;     // whether the search names the door from afar
-    bool stuck = false;    // whether a move ends where it began: the walk's end is where none can stand
-    double shortBy = 0;    // how far from the goal a walk ends: the goal fills its own place
-    double partway = 0;    // where a move stops, if not where it was sent
-    bool hidden = false;   // whether the search walks through the shut door until a move is stopped at it
-    double reach = 1;      // how far short of the door a search that cannot name it gets
-    std::string moveFails; // the result every move ends with instead of success, if any
-    double failsAt = -1;   // where a failing move leaves the walker, from the goal; -1 where it stood
-    bool silent = false;   // whether a move's end never comes: a fight takes the command with it
-    bool chatter = false;  // whether others' commands end around each order, and the walker's last is cleared
-    bool doorLoads = false; // whether the door's use starts a load, refusing the orders after it
-    int clears = 0;         // how many moves the game clears before they go, giving no other
+    double at = 30;            // metres from the goal
+    double door = 10;          // where the door stands, from the goal
+    bool shut = true;          // the door
+    bool opens = true;         // whether a use opens it
+    bool named = true;         // whether the search names the door from afar
+    bool stuck = false;        // whether a move ends where it began: the walk's end is where none can stand
+    double shortBy = 0;        // how far from the goal a walk ends: the goal fills its own place
+    double partway = 0;        // where a move stops, if not where it was sent
+    bool hidden = false;       // whether the search walks through the shut door until a move is stopped at it
+    double reach = 1;          // how far short of the door a search that cannot name it gets
+    std::string moveFails;     // the result every move ends with instead of success, if any
+    double failsAt = -1;       // where a failing move leaves the walker, from the goal; -1 where it stood
+    bool silent = false;       // whether a move's end never comes: a fight takes the command with it
+    bool chatter = false;      // whether others' commands end around each order, and the walker's last is cleared
+    bool doorLoads = false;    // whether the door's use starts a load, refusing the orders after it
+    int clears = 0;            // how many moves the game clears before they go, giving no other
     bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
     std::string mode = "explore";
     bool paused = false;
-    std::string fightOn; // an order after which the mode turns to combat
-    std::string loadOn;  // an order after which an area loads, and the frame tools have no frame
-    int loadFor = 100;   // health calls the load lasts: an autosave's is short, and the area stays
+    std::string fightOn;  // an order after which the mode turns to combat
+    std::string loadOn;   // an order after which an area loads, and the frame tools have no frame
+    int loadFor = 100;    // health calls the load lasts: an autosave's is short, and the area stays
     std::string loadInto; // the area a load ends in, if another
     std::vector<Json> orders;
     std::string area = "ruins"; // the area's tag

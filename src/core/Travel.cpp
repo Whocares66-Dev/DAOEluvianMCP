@@ -566,10 +566,10 @@ class Journey
     std::size_t maxDoors_;
     double within_;
     Json where_ = Json::object();
-    std::string exit_;     // `exit`: the exit's id
-    std::string area_;     // `area`: the area to reach, by an exit that leads there
-    Json exitAt_;          // the exit chosen, as inspect kind=exits gave it
-    std::string fromArea_; // the area's tag before the crossing
+    std::string exit_;      // `exit`: the exit's id
+    std::string area_;      // `area`: the area to reach, by an exit that leads there
+    Json exitAt_;           // the exit chosen, as inspect kind=exits gave it
+    std::string fromArea_;  // the area's tag before the crossing
     std::string startArea_; // the area's tag as the journey began
     std::string who_;
     bool byClick_ = false;
@@ -595,7 +595,8 @@ void AddTravelTool(Bench &bench)
                  "there), `reason`, the `distance` left, what it "
                  "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
                  "its to make: a fight began, a conversation or cutscene took the screen, the game is paused. "
-                 "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say what came of the journey. "
+                 "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say "
+                 "what came of the journey. "
                  "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
                  "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
                  "comes once the other `area` is in place; it stops and says so if the game asks first (a "
