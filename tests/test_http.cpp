@@ -56,6 +56,29 @@ TEST_CASE("the query and path are decoded", "[http]")
     CHECK(request.path == "/api/events");
     CHECK(request.query == Query{{"since", "12"}, {"topic", "turnbased.*"}, {"flag", ""}, {"x", "a b"}});
     CHECK(UrlDecode("a+b%20c%zz%4", false) == "a+b c%zz%4");
+    CHECK(UrlDecode("%4z", false) == "%4z"); // half an escape is kept as written
+}
+
+TEST_CASE("a + in a path is a plus; only a query's is a space", "[http]")
+{
+    HttpParser parser;
+    REQUIRE(parser.Feed("POST /api/tool/a+b?c=d+e HTTP/1.1\r\n\r\n") == Status::Complete);
+    const auto request = parser.Take();
+    CHECK(request.path == "/api/tool/a+b");
+    CHECK(request.query == Query{{"c", "d e"}});
+}
+
+TEST_CASE("a body is taken whole, and the request after it is the next", "[http]")
+{
+    HttpParser parser;
+    REQUIRE(
+        parser.Feed("POST /a HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}POST /b HTTP/1.1\r\nContent-Length: 0\r\n\r\n") ==
+        Status::Complete);
+    CHECK(parser.Take().body == "{}");
+    REQUIRE(parser.Parse() == Status::Complete);
+    const auto next = parser.Take();
+    CHECK(next.method == "POST"); // not "{}POST": the body before it is gone
+    CHECK(next.path == "/b");
 }
 
 TEST_CASE("a chunked body is put together", "[http]")
@@ -95,7 +118,9 @@ TEST_CASE("malformed requests are errors with a status", "[http]")
     CHECK(statusOf("GET /x HTTP/2\r\n\r\n") == 400);
     CHECK(statusOf("GET x HTTP/1.1\r\n\r\n") == 400);
     CHECK(statusOf("GET /x HTTP/1.1\r\nno colon\r\n\r\n") == 400);
+    CHECK(statusOf("GET /x HTTP/1.1\r\n: no name\r\n\r\n") == 400);
     CHECK(statusOf("POST /x HTTP/1.1\r\nContent-Length: ten\r\n\r\n") == 400);
+    CHECK(statusOf("POST /x HTTP/1.1\r\nContent-Length: 4x\r\n\r\n") == 400);
     CHECK(statusOf("POST /x HTTP/1.1\r\nContent-Length: 99999999999\r\n\r\n") == 413);
     CHECK(statusOf("POST /x HTTP/1.1\r\nContent-Length: 999999999999999999999999\r\n\r\n") == 413);
     CHECK(statusOf("POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n") == 400);

@@ -52,6 +52,12 @@ TEST_CASE("an ERF V2.2 index, the DLC's, has a longer header and entries", "[erf
     CHECK(ErfNames(bytes) == std::vector<std::string>{"a.uti", "b.plo", "c.utc"});
 }
 
+TEST_CASE("a name's letter beyond ASCII is kept as a question mark", "[erf]")
+{
+    const auto bytes = Archive("ERF V2.0", 32, 72, {"caf\xE9.utc"});
+    CHECK(ErfNames(bytes) == std::vector<std::string>{"caf?.utc"});
+}
+
 TEST_CASE("what is no ERF gives nothing, and an index cut short what it has", "[erf]")
 {
     auto bytes = Archive("ERF V3.0", 32, 72, {"x.utc"});

@@ -90,6 +90,28 @@ TEST_CASE("GET /api/events reads the bus from the query", "[rest]")
     CHECK(response.body["events"][0]["seq"] == 3);
     CHECK(response.body["next"] == 4);
 
+    response = f.rest.Handle("GET", "/api/events", Query{{"limit", "1"}}, "");
+    REQUIRE(response.body["events"].size() == 1);
+    CHECK(response.body["truncated"] == true);
+
     response = f.rest.Handle("GET", "/api/events", Query{{"since", "two"}}, "");
     CHECK(response.status == 400);
+    response = f.rest.Handle("GET", "/api/events", Query{{"since", "2x"}}, "");
+    CHECK(response.status == 400);
+}
+
+TEST_CASE("a tool's other content comes beside its data", "[rest]")
+{
+    Fixture f;
+    f.bench.Tools().Add(ToolSpec{"picture", "An image.", {}, Thread::Listener}, [](const Json &) {
+        ToolResult result(Json{{"width", 2}});
+        result.content.push_back(Json{{"type", "image"}, {"data", "AAAA"}, {"mimeType", "image/png"}});
+        return result;
+    });
+    const auto response = f.rest.Handle("POST", "/api/tool/picture", {}, "");
+    CHECK(response.status == 200);
+    REQUIRE(response.body.contains("content"));
+    CHECK(response.body["data"] == Json{{"width", 2}});
+    REQUIRE(response.body["content"].size() == 1);
+    CHECK(response.body["content"][0]["type"] == "image");
 }

@@ -18,19 +18,30 @@ namespace
 struct Chest
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
-    std::string panel;    // the container whose loot panel is up
-    bool arrives = true;  // whether the walk there arrives
-    bool opens = true;    // whether a use opens it
-    bool starts = true;   // whether a use starts at all: on empty remains it does not
-    bool full = false;    // whether the backpack is full
-    Json popup = nullptr; // a message box the use brings instead
+    std::string panel;        // the container whose loot panel is up
+    bool arrives = true;      // whether the walk there arrives
+    bool opens = true;        // whether a use opens it
+    bool starts = true;       // whether a use starts at all: on empty remains it does not
+    bool full = false;        // whether the backpack is full
+    Json popup = nullptr;     // a message box the use brings instead
+    std::string opensInstead; // another container, whose panel the use opens
+    std::string brings;       // the mode the use brings: a fight, a conversation
+    bool chatter = false;     // whether a companion's use ends as the looter's is ordered
+    int startsLate = 0;       // gui reads after the order before the use starts: the looter still on its way
+    int panelLate = 0;        // gui reads after the use before its panel comes
     Json items = Json::array({Json{{"id", "0x500"}, {"name", "Greenstone"}}});
     std::vector<std::string> calls; // the tools called, in order
+    Json walkArgs;                  // what the walk there was given
+    std::string used;               // the container the use was ordered on
+    std::string mode;               // the mode the use brought, if any
+    int startIn = 0;                // gui reads until the use starts; 0: started, or none ordered
+    int panelIn = 0;                // gui reads until its panel comes; 0: come, or none coming
 
     Chest()
     {
-        bench.Tools().Add(ToolSpec{"travel", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
+        bench.Tools().Add(ToolSpec{"travel", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             calls.emplace_back("travel");
+            walkArgs = args;
             return Json{{"arrived", arrives},
                         {"reason", arrives ? "there" : "a fight began"},
                         {"distance", 1.0},
@@ -39,14 +50,19 @@ struct Chest
         bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             calls.emplace_back("order " + args.value("action", ""));
             const auto cursor = bench.Events().Next();
-            if (opens)
-            {
-                panel = args.value("target", "");
-            }
-            if (starts)
+            used = args.value("target", "");
+            if (chatter)
             {
                 bench.Events().Emit("eluvian.command.ended",
-                                    Json{{"id", "0x82"}, {"type", "UseObject"}, {"result", "success"}});
+                                    Json{{"id", "0x10d"}, {"type", "UseObject"}, {"result", "success"}});
+            }
+            if (startsLate > 0)
+            {
+                startIn = startsLate;
+            }
+            else
+            {
+                Start();
             }
             return Json{{"given", true}, {"creature", {{"id", "0x82"}}}, {"cursor", cursor}};
         });
@@ -55,7 +71,18 @@ struct Chest
             {
                 return Json{{"count", items.size()}, {"items", items}};
             }
-            return Json{{"mode", panel.empty() ? "explore" : "gui"},
+            // Time passes between reads: a late use starts, a late panel comes.
+            if (startIn > 0 && --startIn == 0)
+            {
+                Start();
+            }
+            else if (panelIn > 0 && --panelIn == 0)
+            {
+                panel = Opened();
+            }
+            return Json{{"mode", !mode.empty()   ? mode
+                                 : panel.empty() ? "explore"
+                                                 : "gui"},
                         {"popup", calls.empty() || calls.back() != "order use" ? Json(nullptr) : popup},
                         {"loot", panel.empty() ? Json(nullptr) : Panel()}};
         });
@@ -77,6 +104,31 @@ struct Chest
             return answer;
         });
         AddLootTool(bench);
+    }
+
+    // The use, as the game's: it ends on the bus (on empty remains it never
+    // starts), and opens the panel, now or some reads later.
+    void Start()
+    {
+        if (starts)
+        {
+            bench.Events().Emit("eluvian.command.ended",
+                                Json{{"id", "0x82"}, {"type", "UseObject"}, {"result", "success"}});
+        }
+        if (opens && panelLate > 0)
+        {
+            panelIn = panelLate;
+        }
+        else if (opens)
+        {
+            panel = Opened();
+        }
+        mode = brings;
+    }
+
+    [[nodiscard]] std::string Opened() const
+    {
+        return opensInstead.empty() ? used : opensInstead;
     }
 
     [[nodiscard]] Json Panel() const
@@ -116,6 +168,24 @@ TEST_CASE("a panel up already is taken from, with no walk and no use", "[loot]")
     CHECK(answer["looted"] == true);
     CHECK(answer["taken"].size() == 1);
     CHECK(chest.calls == std::vector<std::string>{"game press Take All"});
+}
+
+TEST_CASE("the target's own panel up is taken from, with no walk and no use", "[loot]")
+{
+    Chest chest;
+    chest.panel = "0x3ec";
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    CHECK(answer["looted"] == true);
+    CHECK(chest.calls == std::vector<std::string>{"game press Take All"});
+}
+
+TEST_CASE("the walk there has what is left of the loot's budget", "[loot]")
+{
+    Chest chest;
+    chest.Loot(Json{{"target", "0x3ec"}});
+    const auto given = chest.walkArgs.value("budgetMs", 0);
+    CHECK(given > 0);
+    CHECK(given <= 5000);
 }
 
 TEST_CASE("another container's panel up is in the way, and it says whose", "[loot]")
@@ -169,8 +239,10 @@ TEST_CASE("a use that starts nothing on a container that holds items says so", "
     Chest chest;
     chest.opens = false;
     chest.starts = false;
+    chest.chatter = true; // a companion's use, which is not the looter's, ends meanwhile
     const auto answer = chest.Loot(Json{{"target", "0x430"}});
     CHECK(answer["looted"] == false);
+    REQUIRE(answer.contains("empty")); // the use was seen to start nothing
     CHECK(answer["empty"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("holds 1 item "));
 }
@@ -184,6 +256,46 @@ TEST_CASE("a message box instead of the panel is said, with how to answer it", "
     CHECK(answer["looted"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("It is locked."));
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("game action=press"));
+}
+
+TEST_CASE("another container's panel opening instead is said, and whose", "[loot]")
+{
+    Chest chest;
+    chest.opensInstead = "0x3ed";
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    CHECK(answer["looted"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the loot panel of 0x3ed opened, not 0x3ec's"));
+}
+
+TEST_CASE("a fight or a conversation the use brings is said", "[loot]")
+{
+    for (const char *brings : {"combat", "dialog"})
+    {
+        Chest chest;
+        chest.opens = false;
+        chest.brings = brings;
+        const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+        CHECK(answer["looted"] == false);
+        CHECK(answer["reason"] == (chest.brings == "combat" ? "a fight began" : "a conversation took the screen"));
+    }
+}
+
+TEST_CASE("a use that starts late, the looter still on its way, is waited for", "[loot]")
+{
+    Chest chest;
+    chest.startsLate = 2; // reads, a quarter of a second apart
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    REQUIRE(answer["looted"] == true);
+    CHECK(answer["taken"].size() == 1);
+}
+
+TEST_CASE("a panel that comes a moment after the use has ended is waited for", "[loot]")
+{
+    Chest chest;
+    chest.panelLate = 2;
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    REQUIRE(answer["looted"] == true);
+    CHECK(answer["closed"] == true);
 }
 
 TEST_CASE("a full backpack leaves the rest in the container and its panel up", "[loot]")

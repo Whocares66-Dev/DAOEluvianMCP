@@ -22,6 +22,7 @@ struct Rogue
     int strength = 10;       // base
     bool opens = true;       // whether the screen opens: not in a fight
     bool onePerAuto = false; // whether an Auto Level Up spends one level's points, not all
+    bool spends = true;      // whether an Auto Level Up spends anything at all
     bool up = false;         // the screen
     std::vector<int> abilities = {603, 100011};
     std::vector<std::string> sent; // input's messages, in order
@@ -63,7 +64,7 @@ struct Rogue
             }
             else if (text.starts_with("GUILevelUp.AutoLevelUp"))
             {
-                const int spend = onePerAuto ? 1 : levels;
+                const int spend = !spends ? 0 : (onePerAuto ? 1 : levels);
                 for (int i = 0; i < spend; ++i)
                 {
                     strength += 3;
@@ -123,6 +124,16 @@ TEST_CASE("without auto, or with no points to spend, it is refused and nothing i
     CHECK_THROWS_WITH(rogue.LevelUp(Json{{"auto", true}}), ContainsSubstring("no level-up points"));
     CHECK_THROWS_WITH(rogue.LevelUp(Json{{"id", "Lyna"}, {"auto", true}}), ContainsSubstring("like \"0x82\""));
     CHECK(rogue.sent.empty());
+}
+
+TEST_CASE("an Auto Level Up that spends nothing is said, and not asked again", "[levelup]")
+{
+    Rogue rogue;
+    rogue.spends = false;
+    const auto answer = rogue.LevelUp(Json{{"auto", true}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("spent nothing"));
+    CHECK(answer["rounds"] == 1);
 }
 
 TEST_CASE("a screen that does not open ends the levelling, saying so", "[levelup]")

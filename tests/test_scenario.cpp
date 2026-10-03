@@ -58,6 +58,28 @@ TEST_CASE("a wait after a tool sees the event the tool set off before it answere
     CHECK(answer["steps"][1]["event"]["topic"] == "turnbased.turn.ended");
 }
 
+TEST_CASE("a wait after a tool step sees only what came after that step", "[scenario]")
+{
+    Fixture f;
+    // The attack's turn ended before the health was read: a wait after the
+    // read is for what the read set off, which is nothing.
+    const auto answer = f.Run(Json{
+        {"steps",
+         {{{"tool", "attack"}}, {{"tool", "health"}}, {{"waitFor", {{"topic", "turnbased.*"}}}, {"timeoutMs", 20}}}}});
+    REQUIRE(answer["ok"] == false);
+    CHECK_THAT(answer["steps"][2]["error"].get<std::string>(), ContainsSubstring("no such event within 20 ms"));
+}
+
+TEST_CASE("a wait's `since` reads from an earlier cursor", "[scenario]")
+{
+    Fixture f;
+    const auto before = f.bench.Events().Emit("turnbased.turn.ended", Json{{"id", "0x82"}});
+    const auto answer =
+        f.Run(Json{{"steps", {{{"waitFor", {{"topic", "turnbased.*"}}}, {"since", before}, {"timeoutMs", 0}}}}});
+    REQUIRE(answer["ok"] == true);
+    CHECK(answer["steps"][0]["event"]["seq"] == before);
+}
+
 TEST_CASE("a second wait looks past the first one's event", "[scenario]")
 {
     Fixture f;
@@ -96,6 +118,8 @@ TEST_CASE("each expectation compares as it says", "[scenario]")
     CHECK(check(Json{{"from", "h"}, {"pointer", "/max"}, {"equals", 146}}));
     CHECK_FALSE(check(Json{{"from", "h"}, {"pointer", "/max"}, {"equals", 145}}));
     CHECK(check(Json{{"from", "h"}, {"pointer", "/max"}, {"notEquals", 0}}));
+    CHECK(check(Json{{"from", "h"}, {"pointer", "/current"}, {"atLeast", 40}}));
+    CHECK_FALSE(check(Json{{"from", "h"}, {"pointer", "/current"}, {"atLeast", 41}}));
     CHECK(check(Json{{"from", "h"}, {"pointer", "/current"}, {"atMost", 40}}));
     CHECK_FALSE(check(Json{{"from", "h"}, {"pointer", "/current"}, {"atMost", 39}}));
     CHECK(check(Json{{"from", "h"}, {"pointer", "/missing"}, {"exists", false}}));
@@ -118,6 +142,19 @@ TEST_CASE("mistakes in the steps are failed steps that say what is wrong", "[sce
     CHECK_THROWS_AS(f.Run(Json::object()), ToolError);
 }
 
+TEST_CASE("a run is at most 100 steps", "[scenario]")
+{
+    Fixture f;
+    Json steps = Json::array();
+    for (int i = 0; i < 100; ++i)
+    {
+        steps.push_back(Json{{"sleepMs", 0}});
+    }
+    CHECK(f.Run(Json{{"steps", steps}})["stepsRun"] == 100);
+    steps.push_back(Json{{"sleepMs", 0}});
+    CHECK_THROWS_WITH(f.Run(Json{{"steps", steps}}), ContainsSubstring("1 to 100 steps"));
+}
+
 TEST_CASE("a step's label holds only an answer that came", "[scenario]")
 {
     Fixture f;
@@ -131,9 +168,12 @@ TEST_CASE("a step's label holds only an answer that came", "[scenario]")
 TEST_CASE("waits and sleeps are cut to the scenario's budget, and the run says it timed out", "[scenario]")
 {
     Fixture f;
+    // Budgets of tenths of a second, not hundredths: with every core busy,
+    // as the mutants keep them, a run's first step began past 30 ms
+    // (tools/mutants.py, 2026-10-03).
     const auto start = std::chrono::steady_clock::now();
     auto answer =
-        f.Run(Json{{"budgetMs", 80},
+        f.Run(Json{{"budgetMs", 300},
                    {"steps", {{{"waitFor", {{"topic", "never"}}}, {"timeoutMs", 60000}}, {{"tool", "attack"}}}},
                    {"continueOnError", true}});
     CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
@@ -143,7 +183,7 @@ TEST_CASE("waits and sleeps are cut to the scenario's budget, and the run says i
     CHECK_THAT(answer["steps"][0]["error"].get<std::string>(), ContainsSubstring("time ran out"));
     CHECK(f.attacks == 0);
 
-    answer = f.Run(Json{{"budgetMs", 50}, {"steps", {{{"sleepMs", 60000}}}}});
+    answer = f.Run(Json{{"budgetMs", 300}, {"steps", {{{"sleepMs", 60000}}}}});
     CHECK(answer["timedOut"] == true);
     CHECK_THAT(answer["steps"][0]["error"].get<std::string>(), ContainsSubstring("into a sleep of 60000 ms"));
 }
@@ -195,23 +235,24 @@ TEST_CASE("a step with no time left does not start, and one that ran past it say
 {
     Fixture f;
     f.bench.Tools().Add(ToolSpec{"slow", "Takes a while.", {}, Thread::Listener}, [](const Json &) -> ToolResult {
-        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
         return Json{{"done", true}};
     });
     // The slow tool is waited for, since it cannot be taken back; the step
-    // after it has no time and does not start.
-    const auto answer = f.Run(Json{{"budgetMs", 20}, {"steps", {{{"tool", "slow"}}, {{"tool", "attack"}}}}});
+    // after it has no time and does not start. Budgets as in the test above.
+    const auto answer = f.Run(Json{{"budgetMs", 200}, {"steps", {{{"tool", "slow"}}, {{"tool", "attack"}}}}});
     CHECK(answer["timedOut"] == true);
+    CHECK(answer["ok"] == false); // the run did not finish, though the step it ran did
     CHECK(answer["stepsRun"] == 1);
     CHECK(answer["steps"][0]["ok"] == true);
     CHECK_THAT(answer["steps"][0]["note"].get<std::string>(), ContainsSubstring("ran past the scenario's time"));
     CHECK(f.attacks == 0);
 
     // A sleep longer than what is left is cut short, fails, and ends the run: the step after it does not start.
-    const auto second = f.Run(Json{{"budgetMs", 30}, {"steps", {{{"sleepMs", 500}}, {{"tool", "attack"}}}}});
+    const auto second = f.Run(Json{{"budgetMs", 300}, {"steps", {{{"sleepMs", 5000}}, {{"tool", "attack"}}}}});
     CHECK(second["timedOut"] == true);
     CHECK(second["stepsRun"] == 1);
-    CHECK_THAT(second["steps"].back()["error"].get<std::string>(), ContainsSubstring("into a sleep of 500 ms"));
+    CHECK_THAT(second["steps"].back()["error"].get<std::string>(), ContainsSubstring("into a sleep of 5000 ms"));
     CHECK(f.attacks == 0);
 }
 

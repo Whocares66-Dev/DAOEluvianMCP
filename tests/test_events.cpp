@@ -86,6 +86,8 @@ TEST_CASE("topics match by name, by prefix and by star", "[events]")
     CHECK_FALSE(filter.Accepts(turn));
     filter.topics = {"turnbasedx.*"};
     CHECK_FALSE(filter.Accepts(turn));
+    filter.topics = {"turnbased.*"}; // a prefix ends at its dot: another mod's name that begins the same is not it
+    CHECK_FALSE(filter.Accepts(Event{2, 0, 0, "turnbasedx.turn.ended", Json::object()}));
     filter.topics = {"eluvian.*", "*"};
     CHECK(filter.Accepts(turn));
 }
@@ -105,6 +107,8 @@ TEST_CASE("match compares payload fields, objects as subsets", "[events]")
     CHECK_FALSE(filter.Accepts(died));
     filter.match = Json{{"missing", 1}};
     CHECK_FALSE(filter.Accepts(died));
+    filter.match = Json{{"creature", {{"id", "0x7d9"}}}}; // an object does not match a field that is no object
+    CHECK_FALSE(filter.Accepts(Event{2, 0, 0, "eluvian.creature.died", Json{{"creature", "0x7d9"}}}));
 }
 
 TEST_CASE("filters read from a tool's arguments, and say what is wrong", "[events]")
@@ -164,6 +168,8 @@ TEST_CASE("WaitFor gives up at its timeout, on Close, and when told to stop", "[
         std::this_thread::sleep_for(20ms);
         bus.Close();
     });
-    CHECK_FALSE(bus.WaitFor(bus.Next(), never, 5s));
+    const auto closing = std::chrono::steady_clock::now();
+    CHECK_FALSE(bus.WaitFor(bus.Next(), never, 30s));
+    CHECK(std::chrono::steady_clock::now() - closing < 10s); // woken by the Close, not the timeout
     closer.join();
 }

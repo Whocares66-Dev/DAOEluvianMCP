@@ -45,6 +45,16 @@ TEST_CASE("adding a tool of the same name replaces it and says so", "[registry]"
     CHECK(registry.Describe().size() == 1);
 }
 
+TEST_CASE("a base tool added again starts with no kinds", "[registry]")
+{
+    ToolRegistry registry;
+    registry.Add(Inspect());
+    registry.AddKind("inspect", KindSpec{"game", "The game's state."}, Answer("game"));
+    registry.Add(Inspect()); // a plugin that registers its tools anew, after a reload
+    CHECK_THROWS_WITH(registry.Resolve("inspect", Json{{"kind", "game"}}), ContainsSubstring("no kind \"game\""));
+    CHECK(registry.Describe()[0]["inputSchema"]["properties"]["kind"]["enum"].empty());
+}
+
 TEST_CASE("a base tool dispatches on `kind`, each kind on its own thread", "[registry]")
 {
     ToolRegistry registry;
@@ -99,6 +109,14 @@ TEST_CASE("the description writes each kind into the schema's enum and the text"
     CHECK(inspect["inputSchema"]["required"] == Json::array({"kind"}));
     CHECK_THAT(inspect["description"].get<std::string>(),
                ContainsSubstring("- turnbased.state: The fight: whose turn, what is left."));
+}
+
+TEST_CASE("a kind's argument its base schema requires already is required once", "[registry]")
+{
+    ToolRegistry registry;
+    registry.Add(ToolSpec{"inspect", "Read the game.", Json{{"type", "object"}, {"required", Json::array({"kind"})}}});
+    registry.AddKind("inspect", KindSpec{"game", "The game's state."}, Answer(0));
+    CHECK(registry.Describe()[0]["inputSchema"]["required"] == Json::array({"kind"}));
 }
 
 TEST_CASE("every change bumps the revision", "[registry]")

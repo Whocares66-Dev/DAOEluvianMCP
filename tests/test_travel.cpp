@@ -18,29 +18,47 @@ namespace
 struct World
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
-    double at = 30;     // metres from the goal
-    double door = 10;   // where the door stands, from the goal
-    bool shut = true;   // the door
-    bool opens = true;  // whether a use opens it
-    bool named = true;  // whether the search names the door from afar
-    bool stuck = false; // whether a move ends where it began: the walk's end is where none can stand
-    double shortBy = 0; // how far from the goal a walk ends: the goal fills its own place
-    double partway = 0; // where a move stops, if not where it was sent
+    double at = 30;        // metres from the goal
+    double door = 10;      // where the door stands, from the goal
+    bool shut = true;      // the door
+    bool opens = true;     // whether a use opens it
+    bool named = true;     // whether the search names the door from afar
+    bool stuck = false;    // whether a move ends where it began: the walk's end is where none can stand
+    double shortBy = 0;    // how far from the goal a walk ends: the goal fills its own place
+    double partway = 0;    // where a move stops, if not where it was sent
+    bool hidden = false;   // whether the search walks through the shut door until a move is stopped at it
+    double reach = 1;      // how far short of the door a search that cannot name it gets
+    std::string moveFails; // the result every move ends with instead of success, if any
+    bool silent = false;   // whether a move's end never comes: a fight takes the command with it
+    bool chatter = false;  // whether others' commands end around each order, and the walker's last is cleared
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
+    std::string loadOn;  // an order after which an area loads, and the frame tools have no frame
     std::vector<Json> orders;
     std::string area = "ruins"; // the area's tag
     bool crosses = true;        // whether using the exit takes the party out
+    bool exitActive = true;     // whether the exit is active
+    bool loads = false;         // whether the crossing loads the other area over a health call
+    int loadingFor = 0;         // health calls an area's loading is still said for
     bool asks = false;          // whether the game asks first, with a message box
     Json popup = nullptr;
 
     World()
     {
         // Every tool here answers on the caller's thread: no frame is pumped.
-        bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener},
-                          [this](const Json &) -> ToolResult { return Json{{"mode", mode}, {"paused", paused}}; });
+        bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
+            if (mode == "loading" && loadingFor-- <= 0)
+            {
+                mode = "explore";
+            }
+            return Json{{"mode", mode}, {"paused", paused}};
+        });
         bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
+            if (mode == "loading")
+            {
+                throw FrameTimeout("no frame took the call within 2000 ms"); // as a frame tool's, while frames stop
+            }
             if (args.value("kind", "") == "game")
             {
                 return Json{{"controlled", {{"id", "0x82"}}},
@@ -51,10 +69,10 @@ struct World
             {
                 return Json{{"exits", Json::array({Json{{"id", "0x1f5"},
                                                         {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
-                                                        {"active", true}}})}};
+                                                        {"active", exitActive}}})}};
             }
             Json walk;
-            if (!shut || at <= door)
+            if (!shut || at <= door || hidden)
             {
                 walk = Json{{"found", true}, {"length", at - shortBy}};
                 if (shortBy > 0)
@@ -68,7 +86,7 @@ struct World
             }
             else
             {
-                walk = Json{{"found", false}, {"result", "gave up part way"}, {"reached", {door + 1, 0, 0}}};
+                walk = Json{{"found", false}, {"result", "gave up part way"}, {"reached", {door + reach, 0, 0}}};
             }
             return Json{{"from", {{"id", args.value("id", "")}}}, {"to", {0, 0, 0}}, {"distance", at}, {"walk", walk}};
         });
@@ -80,9 +98,14 @@ struct World
             if (action == "move")
             {
                 const double to = args.at("point").at(0).get<double>();
-                if (shut && to < door && at > door)
+                if (!moveFails.empty())
+                {
+                    result = moveFails; // and the walker stays where it is
+                }
+                else if (shut && to < door && at > door)
                 {
                     at = door + 0.5; // stops at the door
+                    hidden = false;  // which the search names from now on
                     result = "COMMAND_FAILED_PATH_ACTION_REQUIRED";
                 }
                 else if (!stuck)
@@ -95,6 +118,17 @@ struct World
                 if (asks)
                 {
                     popup = Json{{"text", "Leave the area?"}};
+                }
+                else if (loads)
+                {
+                    // The other area loads: its scripts are told it is in
+                    // place, the area's and the module's, while the game
+                    // still says loading for one more health call.
+                    area = "forest";
+                    mode = "loading";
+                    loadingFor = 1;
+                    bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "area"}});
+                    bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "module"}});
                 }
                 else if (crosses)
                 {
@@ -110,10 +144,27 @@ struct World
             {
                 mode = "combat";
             }
-            bench.Events().Emit("eluvian.command.ended",
-                                Json{{"id", args.value("id", "")},
-                                     {"type", action == "move" ? "MoveToLocation" : "UseObject"},
-                                     {"result", result}});
+            if (action == loadOn)
+            {
+                mode = "loading";
+                loadingFor = 100;
+            }
+            const std::string type = action == "move" ? "MoveToLocation" : "UseObject";
+            if (chatter)
+            {
+                // A companion's command of the same kind ends, and the
+                // walker's last, which this order cleared.
+                bench.Events().Emit("eluvian.command.ended",
+                                    Json{{"id", "0x10d"}, {"type", type}, {"result", "COMMAND_FAILED_INVALID_PATH"}});
+                bench.Events().Emit(
+                    "eluvian.command.ended",
+                    Json{{"id", args.value("id", "")}, {"type", type}, {"result", "COMMAND_FAILED_COMMAND_CLEARED"}});
+            }
+            if (!silent || action != "move")
+            {
+                bench.Events().Emit("eluvian.command.ended",
+                                    Json{{"id", args.value("id", "")}, {"type", type}, {"result", result}});
+            }
             return Json{{"given", true}, {"cursor", cursor}};
         });
         AddTravelTool(bench);
@@ -138,6 +189,17 @@ TEST_CASE("an open way is one move", "[travel]")
     REQUIRE(world.orders.size() == 1);
     CHECK(world.orders[0]["action"] == "move");
     CHECK(world.orders[0]["id"] == "0x82"); // the creature controlled, none being named
+}
+
+TEST_CASE("a walker inside the `within` given is there already", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 4;
+    const auto answer = world.Travel(Json{{"within", 5}});
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "there");
+    CHECK(world.orders.empty());
 }
 
 TEST_CASE("a shut door named from afar is used, then the walk made", "[travel]")
@@ -185,6 +247,43 @@ TEST_CASE("a door that does not open ends the journey, and it says which", "[tra
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not open: 0x1f1"));
 }
 
+TEST_CASE("a door a move is stopped at is opened, and the walk through it is a new one", "[travel]")
+{
+    World world;
+    world.hidden = true; // the search goes through the door until a move finds it shut
+    world.at = 10.6;     // and the move stops at once, hardly nearer
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "there"); // not "no nearer", measured against the walk from before the door
+    CHECK(answer["opened"].size() == 1);
+    REQUIRE(world.orders.size() == 3);
+    CHECK(world.orders[0]["action"] == "move");
+    CHECK(world.orders[1]["action"] == "use");
+    CHECK(world.orders[2]["action"] == "move");
+}
+
+TEST_CASE("a move the game refuses ends the journey with the game's word for it", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
+    CHECK(world.orders.size() == 1);
+}
+
+TEST_CASE("a search that gets no nearer from as far as it got says there is no walk", "[travel]")
+{
+    World world;
+    world.named = false;
+    world.reach = 3; // too far from the door for the search to name it
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no walk there: gave up part way"));
+    CHECK(world.orders.size() == 1); // as far as the search got, once
+}
+
 TEST_CASE("no doors allowed, and one in the way", "[travel]")
 {
     World world;
@@ -225,6 +324,56 @@ TEST_CASE("a paused game is said, not waited out", "[travel]")
     CHECK(answer["arrived"] == false);
     CHECK(answer["reason"] == "the game is paused");
     CHECK(world.orders.empty());
+}
+
+TEST_CASE("a conversation or a cutscene that has the screen is said, not walked through", "[travel]")
+{
+    for (const char *mode : {"dialog", "cutscene"})
+    {
+        World world;
+        world.mode = mode;
+        const auto answer = world.Travel();
+        CHECK(answer["arrived"] == false);
+        CHECK(answer["reason"] ==
+              std::string("a ") + (world.mode == "dialog" ? "conversation" : "cutscene") + " took the screen");
+        CHECK(world.orders.empty());
+    }
+}
+
+TEST_CASE("an area that begins to load ends the journey, with no distance rather than a stale one", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.loadOn = "move";
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["reason"] == "an area is loading");
+    CHECK_FALSE(answer.contains("distance")); // no frame to measure it in; the 30 m from before the move is stale
+}
+
+TEST_CASE("a fight that takes a move's end with it is said, though the end never comes", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.silent = true;
+    world.fightOn = "move";
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["reason"] == "a fight began");
+    REQUIRE(answer["steps"].size() == 1);
+    CHECK(answer["steps"][0]["result"] == "a fight began");
+}
+
+TEST_CASE("others' commands ending, and the walker's own cleared one, are not the end waited for", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.chatter = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "there");
+    REQUIRE(answer["steps"].size() == 1);
+    CHECK(answer["steps"][0]["result"] == "success");
 }
 
 TEST_CASE("already there is no order at all", "[travel]")
@@ -343,4 +492,48 @@ TEST_CASE("an exit that does not take the party out ends when the time does", "[
     const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 1000}}).data;
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not leave"));
+}
+
+TEST_CASE("an exit that is not active is not taken to the area it leads to", "[travel]")
+{
+    World world;
+    world.exitActive = false;
+    CHECK_THROWS_WITH(world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 5000}}),
+                      ContainsSubstring("no active exit here leads to forest"));
+    CHECK(world.orders.empty());
+}
+
+TEST_CASE("an exit not reached is not used", "[travel]")
+{
+    World world;
+    world.paused = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["reason"] == "the game is paused");
+    CHECK(world.orders.empty());
+    CHECK(world.area == "ruins");
+}
+
+TEST_CASE("a crossing waits while the other area loads, and answers once it is in place", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.loads = true; // the game reads nothing while it loads: frame tools fail
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 5000}}).data;
+    REQUIRE(answer["arrived"] == true);
+    CHECK(answer["area"]["tag"] == "forest");
+    CHECK(answer["mode"] == "explore");
+}
+
+TEST_CASE("a fight before the party leaves stops the crossing, and says so", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.crosses = false;
+    world.fightOn = "use";
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 1500}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["reason"] == "a fight began before the party left");
 }

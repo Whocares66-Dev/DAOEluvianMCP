@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -12,9 +13,12 @@ using namespace eluvian;
 namespace
 {
 
+// A name of this run's own: the mutants run many copies of the tests at
+// once, and with one name for all they opened each other's files
+// (tools/mutants.py, 2026-10-03).
 std::filesystem::path TempFile(const char *name)
 {
-    return std::filesystem::temp_directory_path() / name;
+    return std::filesystem::temp_directory_path() / (std::to_string(std::random_device{}()) + "-" + name);
 }
 
 std::vector<Json> Lines(const std::filesystem::path &path)
@@ -49,6 +53,22 @@ TEST_CASE("every event the bus emits is a line in the file, in the bus's order",
     CHECK(lines[0]["topic"] == "eluvian.creature.died");
     CHECK(lines[0]["payload"]["id"] == "0x3bf");
     CHECK(lines[2]["topic"] == "eluvian.mode.changed");
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("an event is in the file as it is written, before the file closes", "[event-log]")
+{
+    const auto path = TempFile("eluvian-test-events-through.jsonl");
+    {
+        EventLog log(path);
+        EventBus bus;
+        bus.SetRecorder([&log](const Event &event) { log.Write(event); });
+        bus.Emit("eluvian.creature.died", Json{{"id", "0x3bf"}});
+        // Read while the game would still be running: a crash now keeps it.
+        const auto lines = Lines(path);
+        REQUIRE(lines.size() == 1);
+        CHECK(lines[0]["topic"] == "eluvian.creature.died");
+    }
     std::filesystem::remove(path);
 }
 

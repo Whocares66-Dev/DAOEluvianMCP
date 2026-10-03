@@ -49,7 +49,9 @@ TEST_CASE("each reader has a fallback and a legible failure", "[args]")
     CHECK(args.Integer("limit", 10, 1, 100) == 3);
     CHECK(args.Integer("missing", 10, 1, 100) == 10);
     CHECK_THROWS_WITH(args.Integer("limit", 10, 5, 100), ContainsSubstring("a whole number from 5 to 100"));
+    CHECK_THROWS_WITH(args.Integer("limit", 10, 1, 2), ContainsSubstring("a whole number from 1 to 2"));
     CHECK_THROWS_AS(args.Integer("radius", 10, 1, 100), ToolError);
+    CHECK_THROWS_AS(args.Integer("name", 10, 1, 100), ToolError);
     CHECK(args.Bool("all", false));
     CHECK_FALSE(args.Bool("missing", false));
     CHECK_THROWS_AS(args.Bool("name", false), ToolError);
