@@ -40,9 +40,12 @@ git submodule update --init --recursive         # extern\DAOLib, and its address
 .\tools\build.ps1 -Preset debug -Test           # the plugin, DAOLib's loader, the tests
 .\tools\deploy.ps1                              # into the game's bin_ship (game closed)
 .\tools\deploy.ps1 -Remove                      # the plugin out again
+.\tools\build.ps1 -Preset core; python tools\mutants.py   # src/core broken on purpose: each mutant must be caught
 ```
 
 The deploy puts in `eluvian.dll` and the address library's files (`daolib\addresses\*.bin`, one per build of the game, which the loader needs), and DAOLib's loader (`version.dll`) only where the game has none; `-Loader` replaces it. The loader and every plugin under it must be built on one plugin API of DAOLib's: where they are not, Eluvian stays off, `eluvian.log` says which API the loader has, and `game_launch` and `game_status` answer with that line as `why`.
+
+`tools\mutants.py` checks the tests, not the code: each of its mutants breaks one promise of `src/core` with a small edit (a comparison flipped, a check dropped), builds the core in a copy of its own under `build\mutants`, and runs the tests, which must fail. A mutant that survives is a promise no test holds. It runs one mutant a core, below normal priority; `-j N` runs fewer, and names choose some (`python tools\mutants.py travel loot`).
 
 ## The claim
 

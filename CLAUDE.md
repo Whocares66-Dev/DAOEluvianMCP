@@ -34,7 +34,8 @@ tools/        build.ps1, deploy.ps1, console.ps1, check-powershell.ps1 (DAOTurnB
               eluvian_bridge.py, the stdio MCP server an agent keeps across game restarts (.mcp.json;
               `--call TOOL [JSON]` for one call from a shell),
               test_bridge.py, run by ctest, and smoke.py, every tool once in the game (not
-              in ctest: it needs the game and a save)
+              in ctest: it needs the game and a save); mutants.py (DAOTurnBased's), which
+              breaks src/core on purpose, one promise at a time, and wants each caught
 dev/          the design
 extern/DAOLib the submodule
 ```
@@ -67,6 +68,8 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-asan -Test
 .\tools\build.ps1 -Preset debug-analyze
 ```
+
+A change to `src/core`'s logic also runs `python tools\mutants.py` (from the shell `tools\build.ps1 -Preset core` ran in: `.\tools\build.ps1 -Preset core; python tools\mutants.py`), and every mutant must be caught; a new promise gets a mutant, and a survivor the test that catches it. Each mutant breaks one promise with a small edit; the workers each break their own copy of the core under `build\mutants\wN`, at below normal priority, so the working tree is only read (`-j N` sets how many at a time; names filter). The tests run there with every core busy and twenty copies at once, so a test that needs millisecond scheduling, or shares a temporary file's name with its copies, fails there with nothing broken and counts a mutant caught that is not (three such, 2026-10-03): a mutant caught that should not be is run alone (`-j 1` and its name). `-Preset core-cov -Coverage` shows what the tests never run; the mutants, what they run without checking.
 
 Last green 2026-10-03, against DAOLib `10e0bcc` (plugin API 2): 140 tests and the bridge's 45, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` showed 95% of `src/core`'s regions and 96% of its lines run by the tests (2026-10-02). Seen in the game through then (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, a whole test driven with no computer use, and since 2026-10-02 a playthrough driven by MCP alone (turn-based-agent's, DAOTurnBased#3), whose needs are this repository's issues. A test on the player's own playthrough loads only, or writes a test save of its own by name; the game's own autosaves are allowed. Work on an issue goes on a branch `gh-<N>-<description>`, in a worktree under `.claude/worktrees` (DAOTurnBased's tools run `tools/eluvian_bridge.py` from this tree, so it stays on main), is seen in play, and is squashed into main.
 
