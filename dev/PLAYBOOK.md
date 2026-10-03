@@ -51,6 +51,7 @@ inspect {"kind": "character", "id": "0x82"}      the sheet: race, class, level, 
 inspect {"kind": "abilities", "id": "0x82"}      every talent, spell and skill it knows, not only the quickbar's
 inspect {"kind": "tactics", "id": "0x82"}        its tactics slots: target, condition, command and ability of each
 inspect {"kind": "inventory", "id": "0x1fd"}     what a chest, a body or a pile of bones holds, without opening it
+                                                 (a body's treasure may be chosen only as it opens)
 inspect {"kind": "journal"}                      the quests under way and the one marked: plot, name, objective, text
 inspect {"kind": "exits"}                        the ways out of the area: door or trigger, where each leads, distance
 inspect {"kind": "resources", "type": "utc", "match": "ogre"}
@@ -70,6 +71,10 @@ inspect {"kind": "equipment", "id": "0x82"}      each slot's item in full: type,
 inspect {"kind": "inventory"}                    the party's backpack; {"kind": "item", "id": ...} is one item in full
 inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock
 order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
+loot {"target": "0x1fd"}                        walk there, open it, take all; answers what was taken and what is
+                                                 left, or why it did not open (`empty`: empty remains open nothing)
+inspect {"kind": "gui"}                          what is up beyond the HUD: the message box, the loot panel, its items
+game {"action": "press", "button": "Take All"}   the loot panel's buttons, Take All and Close, as a click sends them
 inspect {"kind": "geometry", "id": "0x82", "target": "0x2ec", "walk": true}
                                                  the walk there: its length, or the door in the way (`blocker`)
 pointer {"target": "0x2ec"}                      the game's cursor held over it, no click: hover previews show; then

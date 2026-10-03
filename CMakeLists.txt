@@ -135,6 +135,7 @@ add_library(
     src/core/FrameQueue.cpp
     src/core/Http.cpp
     src/core/LogTail.cpp
+    src/core/Loot.cpp
     src/core/Mcp.cpp
     src/core/Origin.cpp
     src/core/Rest.cpp

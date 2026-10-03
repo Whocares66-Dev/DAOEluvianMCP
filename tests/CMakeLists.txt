@@ -29,6 +29,7 @@ add_executable(
     test_frame_queue.cpp
     test_http.cpp
     test_log_tail.cpp
+    test_loot.cpp
     test_mcp.cpp
     test_origin.cpp
     test_registry.cpp

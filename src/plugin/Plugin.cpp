@@ -12,6 +12,7 @@
 #include "core/Bench.h"
 #include "core/EventLog.h"
 #include "core/Http.h"
+#include "core/Loot.h"
 #include "core/Mcp.h"
 #include "core/Rest.h"
 #include "core/Scenario.h"
@@ -218,6 +219,7 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     AddLogTool(g->bench, dao::LogDirectory());
     AddScenarioTool(g->bench, whyNothing);
     AddTravelTool(g->bench);
+    AddLootTool(g->bench);
     game::AddHealthTool(g->bench, g->watch, [] {
         static const std::string owner = OwnerSetting();
         return Json{{"port", g->port},
