@@ -114,6 +114,8 @@ template <class E> Json Named(E value)
 }
 
 Json DurationJson(dao::script::EffectDurationType type);
+// `ready`, `why` and `cost` of an ability for a creature, into its entry.
+void UseInto(Json &entry, ObjectId id, std::int32_t ability, bool fallback);
 Json AbilityJson(std::int32_t ability);
 Json Abilities(ObjectId id);
 Json Effects(ObjectId id);

@@ -350,7 +350,11 @@ void AddCharacter(Bench &bench, const Watch &watch)
         KindSpec{"abilities",
                  "Everything a creature knows (`id`, default the one controlled), not only what is on its "
                  "quickbar: its `talents`, `spells`, `skills` and `items`' abilities, each by id and name, with "
-                 "whether it is `ready` and its cooldown. A skill with ranks is an entry per rank it has. "
+                 "whether it is `ready` (the engine's own check, the one the quickbar greys a button by: the "
+                 "cost against its mana or stamina, the cooldown, what holds it; `why` says why not, as "
+                 "\"Insufficient stamina\"), its `cost` in mana or stamina with its fatigue, and its cooldown. A "
+                 "sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank "
+                 "it has. "
                  "`count` is the game's own count of them."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
@@ -363,7 +367,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                     Json entry = AbilityJson(ability);
                     const bool available = api::IsAbilityAvailable(id, ability) != 0;
                     const auto cooldown = dao::abilities::GetCooldown(id, ability);
-                    entry["ready"] = available && (!cooldown || cooldown->remaining <= 0);
+                    UseInto(entry, id, ability, available && (!cooldown || cooldown->remaining <= 0));
                     if (cooldown && cooldown->remaining > 0)
                     {
                         entry["cooldown"] = Json{{"remaining", cooldown->remaining}, {"total", cooldown->total}};

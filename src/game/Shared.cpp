@@ -315,18 +315,41 @@ Json Abilities(ObjectId id)
     for (const auto ability : found)
     {
         Json entry = AbilityJson(ability);
-        // `available` is the scripts' IsAbilityAvailable, which a cooldown
-        // does not change: Dual Striking read available with 29.99 of 30 s
-        // left (2026-10-01). `ready` is what a tester means: available and
-        // not cooling down.
+        // `available` is the scripts' IsAbilityAvailable, which says only
+        // that the ability can be learned (DAOLib 7bab46e): kept as it was.
         const bool available = api::IsAbilityAvailable(id, ability) != 0;
         const auto cooldown = dao::abilities::GetCooldown(id, ability);
         entry["available"] = available;
-        entry["ready"] = available && (!cooldown || cooldown->remaining <= 0);
         entry["cooldown"] = cooldown ? Json{{"remaining", cooldown->remaining}, {"total", cooldown->total}} : Json();
+        UseInto(entry, id, ability, available && (!cooldown || cooldown->remaining <= 0));
         abilities.push_back(std::move(entry));
     }
     return abilities;
+}
+
+// Whether a creature can use an ability now, by the engine's own check:
+// the one the quickbar greys a button by and a player's order runs first,
+// which weighs the cost, the cooldown, the conditions and what holds it
+// (DAOLib 7bab46e, CanUse). The scripts' IsAbilityAvailable says only that
+// it can be learned: it read ready for a 40-stamina Mighty Blow at 12
+// stamina, and the order did nothing (turn-based-agent, 2026-10-03, #11).
+// `ready` the engine's answer (`fallback` when it gives none), `why` its
+// reason when not, and `cost` in mana or stamina, fatigue included.
+void UseInto(Json &entry, ObjectId id, std::int32_t ability, bool fallback)
+{
+    const auto use = dao::abilities::CanUse(id, ability);
+    entry["ready"] = use ? use->usable : fallback;
+    if (use && !use->usable)
+    {
+        if (auto why = Narrow(use->Reason()); !why.empty())
+        {
+            entry["why"] = std::move(why);
+        }
+    }
+    if (const auto cost = dao::abilities::Cost(id, ability); cost && *cost > 0)
+    {
+        entry["cost"] = *cost;
+    }
 }
 
 Json Effects(ObjectId id)
