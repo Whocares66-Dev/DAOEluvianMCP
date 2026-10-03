@@ -1092,19 +1092,20 @@ class Bridge:
         return status == 200 and isinstance(body, dict) and body.get("forced") is True
 
     def popup(self) -> dict | None:
-        """The game's message box, if one is up and this build of Eluvian can read it."""
-        try:
-            status, body = self.game.request(
-                "POST", "/api/tool/inspect", {"kind": "popup"}, timeout=10
-            )
-        except (Unreachable, StillWaiting):
-            return None
-        if (
-            status == 200
-            and isinstance(body, dict)
-            and isinstance(body.get("popup"), dict)
-        ):
-            return body["popup"]
+        """The game's message box, if one is up and this build of Eluvian can read it.
+
+        inspect kind=gui has it since #2; an Eluvian from before that answers
+        kind=popup, which this asks when kind=gui is refused."""
+        for kind in ("gui", "popup"):
+            try:
+                status, body = self.game.request(
+                    "POST", "/api/tool/inspect", {"kind": kind}, timeout=10
+                )
+            except (Unreachable, StillWaiting):
+                return None
+            if status == 200 and isinstance(body, dict):
+                popup = body.get("popup")
+                return popup if isinstance(popup, dict) else None
         return None
 
     def mode(self) -> str | None:

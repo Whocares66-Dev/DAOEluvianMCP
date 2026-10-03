@@ -159,7 +159,7 @@ class Journey
             if (game.contains("popup") && !game.at("popup").is_null())
             {
                 return End(false, "the game asks before leaving: " + game.at("popup").dump() +
-                                      "; inspect kind=popup reads it and game action=press answers it");
+                                      "; inspect kind=gui reads it and game action=press answers it");
             }
             if (mode == "combat")
             {

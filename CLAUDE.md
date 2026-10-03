@@ -68,7 +68,7 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset debug-analyze
 ```
 
-Last green 2026-10-02, against DAOLib `c14374c` (plugin API 2): 129 tests and the bridge's 41, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` shows 95% of `src/core`'s regions and 96% of its lines run by the tests. Seen in the game through that day (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, and a whole test driven with no computer use. A test on the player's own playthrough loads only, and stops before a step that autosaves (some doors and plot steps do, not only area transitions): one such save was written by a test that day.
+Last green 2026-10-03, against DAOLib `10e0bcc` (plugin API 2): 140 tests and the bridge's 45, clang-tidy, ruff, PSScriptAnalyzer, ASan and /analyze clean; `-Preset core-cov -Coverage` showed 95% of `src/core`'s regions and 96% of its lines run by the tests (2026-10-02). Seen in the game through then (`dev/TESTING.md`): reads, orders, staged fights, loading a save from the menu, a whole test driven with no computer use, and since 2026-10-02 a playthrough driven by MCP alone (turn-based-agent's, DAOTurnBased#3), whose needs are this repository's issues. A test on the player's own playthrough loads only, or writes a test save of its own by name; the game's own autosaves are allowed. Work on an issue goes on a branch `gh-<N>-<description>`, in a worktree under `.claude/worktrees` (DAOTurnBased's tools run `tools/eluvian_bridge.py` from this tree, so it stays on main), is seen in play, and is squashed into main.
 
 ## Writing files from the shell
 

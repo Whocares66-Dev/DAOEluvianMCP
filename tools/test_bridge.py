@@ -20,6 +20,7 @@ class FakeGame(BaseHTTPRequestHandler):
 
     revision = 1
     popup = False  # whether the game's message box is up
+    old = False  # an Eluvian from before inspect kind=gui (#2)
     forced = False  # whether the game was told Force Load
 
     def log_message(self, *args) -> None:  # quiet
@@ -72,6 +73,12 @@ class FakeGame(BaseHTTPRequestHandler):
                 self.answer(200, {"asked": True, "save": args, "cursor": 8})
             else:
                 self.answer(200, {"asked": True, "save": args, "cursor": 7})
+        elif (
+            self.path == "/api/tool/inspect"
+            and FakeGame.old
+            and args.get("kind") == "gui"
+        ):
+            self.answer(400, {"error": "inspect: no kind gui"})
         elif self.path == "/api/tool/inspect":
             box = {
                 "text": "This saved game cannot be loaded.",
@@ -363,6 +370,20 @@ class BridgeTest(unittest.TestCase):
         text = result["content"][0]["text"]
         self.assertIn("This saved game cannot be loaded.", text)
         self.assertIn("Force Load, Cancel", text)
+
+    def test_an_eluvian_from_before_kind_gui_has_its_box_read_by_kind_popup(
+        self,
+    ) -> None:
+        self.processes.pids.clear()
+        FakeGame.popup = True
+        FakeGame.old = True
+        self.addCleanup(setattr, FakeGame, "popup", False)
+        self.addCleanup(setattr, FakeGame, "old", False)
+        result = self.call(
+            "game_launch", {"load": {"character": "Modded"}, "waitSeconds": 300}
+        )
+        self.assertTrue(result["isError"])
+        self.assertIn("This saved game cannot be loaded.", result["content"][0]["text"])
 
     def test_force_load_is_pressed_only_when_asked_and_the_game_is_marked(self) -> None:
         self.processes.pids.clear()

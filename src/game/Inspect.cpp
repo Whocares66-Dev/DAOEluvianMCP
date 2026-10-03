@@ -402,15 +402,6 @@ void AddInspect(Bench &bench, const Watch &watch)
 
     bench.Tools().AddKind(
         "inspect",
-        KindSpec{"popup",
-                 "The game's own message box, if one is up: `popup` with its text and each button's label and "
-                 "what pressing it sends; null with none. Answers in any mode, the main menu too. A box holds "
-                 "the game until it is answered, and nothing else says it is there: ask when a load or another "
-                 "order was taken and nothing followed. game action=press presses a button."},
-        [](const Json &) -> ToolResult { return Json{{"popup", PopupJson()}}; });
-
-    bench.Tools().AddKind(
-        "inspect",
         KindSpec{
             "dialogue",
             "The conversation on the screen (health's mode is dialog while one is): the `line` spoken last, "

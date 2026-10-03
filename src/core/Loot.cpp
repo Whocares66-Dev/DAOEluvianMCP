@@ -113,7 +113,7 @@ class Looting
             if (gui.contains("popup") && !gui.at("popup").is_null())
             {
                 return End(false, "the game asks: " + gui.at("popup").value("text", std::string()) +
-                                      "; inspect kind=popup reads it and game action=press answers it");
+                                      "; inspect kind=gui reads it and game action=press answers it");
             }
             const std::string mode = gui.value("mode", std::string());
             if (mode == "combat")

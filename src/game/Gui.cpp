@@ -1,9 +1,7 @@
-// `inspect kind=gui`: what the interface has up beyond the HUD, for an
-// agent that cannot see it: the game's message box and its loot panel. And
-// the loot panel's two buttons, pressed as the panel's own script presses
-// them, for game action=press and the loot tool. Which other screen is up
-// (the inventory, the map, a store) is not read yet: DAOLib does not say
-// which of the game's scenes are shown (#2).
+// `inspect kind=gui`: what the interface has up, for an agent that cannot
+// see it: the game's screens shown (#2), its message box and its loot panel
+// (#1). And the loot panel's two buttons, pressed as the panel's own script
+// presses them, for game action=press and the loot tool.
 #include "game/Shared.h"
 
 #include "dao/Data.h"
@@ -204,16 +202,37 @@ void AddGui(Bench &bench, const Watch &watch)
 {
     bench.Tools().AddKind(
         "inspect",
-        KindSpec{"gui", "What the interface has up beyond the HUD, for when health's mode is gui or the game waits on "
-                        "something: `popup`, the game's message box (as kind=popup), and `loot`, the loot panel a "
-                        "container opens (a chest, a body's remains, a pile of bones): its `container`, the `items` "
-                        "in it, the `backpack`'s items and most, and its `buttons`, Take All and Close, with what "
-                        "each sends. Each is null when not up. game action=press presses a button of either; the "
-                        "loot tool walks to a container, opens it and takes all in one call. Which other screen is "
-                        "up (the inventory, the map, a store) is not read yet: a screenshot shows it. Answers in any "
-                        "mode."},
+        KindSpec{"gui", "What the interface has up, for when health's mode is gui or the game waits on something: "
+                        "`screens`, the game's screens on the screen now, the top first, each by `name` (Inventory, "
+                        "Store, WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options, Main the HUD), "
+                        "its `movie` and `layer`; `fullScreen`, the name of the full-screen one up (the inventory, "
+                        "the map, the journal...), null with none; `popup`, the game's message box with "
+                        "its text and each button's label and what pressing it sends (a box holds the game until "
+                        "it is answered, and nothing else says it is there: ask when a load or an order was taken "
+                        "and nothing followed); and `loot`, the loot panel a container opens (a chest, a body's "
+                        "remains, a pile of bones), "
+                        "which is the Inventory screen: its `container`, the `items` in it, the `backpack`'s items "
+                        "and most, and its `buttons`, Take All and Close, with what each sends. game action=press "
+                        "presses a button of the message box or the loot panel; the loot tool walks to a "
+                        "container, opens it and takes all in one call. Answers in any mode."},
         [&watch](const Json &) -> ToolResult {
-            Json answer = {{"mode", ModeName(watch.Mode())}, {"popup", PopupJson()}};
+            // DAOLib's ShownScreens and CurrentFullScreen (0dd22bb, #2): a
+            // screen is shown while its movie is drawn, and the full-screen
+            // one is the last the GUI system pushed. The loot panel is the
+            // Inventory screen; GUIInventory.ShowContainer tells them apart.
+            Json screens = Json::array();
+            for (const auto &screen : dao::gui::ShownScreens())
+            {
+                screens.push_back(Json{{"name", Narrow(screen.name)},
+                                       {"movie", Narrow(screen.movie)},
+                                       {"layer", screen.layer},
+                                       {"id", screen.id}});
+            }
+            const auto full = dao::gui::CurrentFullScreen();
+            Json answer = {{"mode", ModeName(watch.Mode())},
+                           {"screens", std::move(screens)},
+                           {"fullScreen", full ? Json(Narrow(full->name)) : Json(nullptr)},
+                           {"popup", PopupJson()}};
             const auto mode = watch.Mode();
             answer["loot"] =
                 mode < 0 || mode == static_cast<std::int32_t>(dao::GameMode::Loading) ? Json(nullptr) : LootPanelJson();

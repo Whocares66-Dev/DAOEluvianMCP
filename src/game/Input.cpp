@@ -33,7 +33,7 @@ void AddInput(Bench &bench, const Watch &watch)
         ToolSpec{
             "input",
             "Send the game one of its own messages by its text. `message`: \"Receiver.Message arguments\", what "
-            "the interface's buttons send (\"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; inspect kind=popup shows "
+            "the interface's buttons send (\"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; inspect kind=gui shows "
             "what each button of a box sends). `binding`: \"Message arguments\", what a key's binding names, "
             "sent as pressing the key sends it (\"UserTogglePauseMessage\", \"SelectPartyMemberIndexMessage 0 "
             "1\"). The general way in when no tool fits, as `script` is for script commands; the game does "

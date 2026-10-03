@@ -76,15 +76,15 @@ void AddGame(Bench &bench, const Watch &watch)
                  "`character` (default the one played, or the menu's), `kind` (manual, auto, quick; default "
                  "manual) and `number`, from the main menu or in the world, as the load screen loads; forceLoad, "
                  "the game's Force Load for a load it answered with \"requires the following content\" (inspect "
-                 "kind=popup), which loads without that content: such a game is never saved; save, a new "
+                 "kind=gui), which loads without that content: such a game is never saved; save, a new "
                  "manual save in the next free slot, with `name` (the default, and what a test does: it writes "
                  "over nothing). A slot `number` that holds a save, and `kind` quick (the player's quicksave), are "
                  "refused unless `overwrite` is true, for a test's own save. A load or save answers that the game "
                  "was asked, and `cursor`: wait_for "
                  "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
-                 "cutscene. press, a `button` by its label or place: of the game's message box (inspect "
-                 "kind=popup reads the box), or with none up, of the loot panel a container opens, Take All or "
-                 "Close (inspect kind=gui reads it): the game is sent what a click on it sends. Take All answers "
+                 "cutscene. press, a `button` by its label or place: of the game's message box, or with "
+                 "none up, of the loot panel a container opens, Take All or Close (inspect kind=gui reads "
+                 "both): the game is sent what a click on it sends. Take All answers "
                  "what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel "
                  "unless it was. (Not the game's speed: each "
                  "plugin's copy of DAOLib scales the clock by its own, so "
@@ -225,7 +225,7 @@ void AddGame(Bench &bench, const Watch &watch)
                             {"note",
                              "wait_for eluvian.game.loaded from `cursor`. If none comes and health's mode does not "
                              "move, the game is showing a message box of its own (a save that needs add-ins "
-                             "not registered asks Force Load or Cancel): inspect kind=popup reads it"}};
+                             "not registered asks Force Load or Cancel): inspect kind=gui reads it"}};
             }
             // The game's own Force Load, for a test on a save made with content
             // this install has not (the user's vanilla tests, 2026-10-02):

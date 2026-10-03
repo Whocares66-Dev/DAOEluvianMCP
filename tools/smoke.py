@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every Eluvian tool once, in the game: the check after a change that moves code.
 
-    python tools/smoke.py --character Lyna --kind auto --number 2
+    python tools/smoke.py --character Lyna --kind manual --number 4
 
 src/game is verified by playing, so nothing in ctest calls it. This starts the game
 into a save through the bridge under its own name, calls each tool once with an answer it
@@ -170,9 +170,11 @@ def checks(run: Run, owner: str) -> None:
         lambda a: a["active"] is False,
     )
     check(
-        "inspect popup",
-        tool("inspect", {"kind": "popup"}),
-        lambda a: a["popup"] is None,
+        "inspect gui",
+        tool("inspect", {"kind": "gui"}),
+        lambda a: (
+            a["popup"] is None and a["loot"] is None and isinstance(a["screens"], list)
+        ),
     )
     aim = tool("screen", {"target": hero})
     check(
@@ -350,8 +352,8 @@ def checks(run: Run, owner: str) -> None:
     tool("script", {"action": "call", "command": "ShowPopup", "args": [379897, 1]})
     time.sleep(1.0)
     check(
-        "inspect popup with a box up",
-        tool("inspect", {"kind": "popup"}),
+        "inspect gui with a box up",
+        tool("inspect", {"kind": "gui"}),
         lambda a: len(a["popup"]["buttons"]) == 2,
     )
     check(
