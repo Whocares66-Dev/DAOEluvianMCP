@@ -103,7 +103,10 @@ std::string_view SlotName(std::int32_t slot)
     return {};
 }
 
-// An item: in brief for a list, in full for itself.
+} // namespace
+
+// An item: in brief for a list, in full for itself. Shared: the loot panel
+// lists its container's items as kind=inventory does.
 Json ItemJson(ObjectId item, bool full)
 {
     if (item == kInvalidObject)
@@ -153,6 +156,9 @@ Json ItemJson(ObjectId item, bool full)
     }
     return json;
 }
+
+namespace
+{
 
 ObjectId ItemInSlot(ObjectId creature, std::int32_t slot, std::int32_t set)
 {
@@ -474,7 +480,9 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "kind=placeables): each item in brief (name, tag, template, base type, stack, value, plot), "
                  "with `count`; for a creature also the most it `holds` and `money`, the party's purse. `full: "
                  "true` gives each item as inspect kind=item does. Not what is worn: that is inspect "
-                 "kind=equipment."},
+                 "kind=equipment. A container's treasure may be chosen only as it is opened (a body's remains "
+                 "read empty, then held a gem once open), so an empty list before is not the last word: the "
+                 "loot tool opens and empties one."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");

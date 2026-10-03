@@ -41,6 +41,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
 {
     AddInspect(bench, watch);
     AddCharacter(bench, watch);
+    AddGui(bench, watch);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);

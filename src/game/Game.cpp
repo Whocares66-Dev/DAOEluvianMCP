@@ -1,5 +1,5 @@
 // `game`: the game itself: pause, the saves and loading one, saving, and
-// pressing a button of its message box.
+// pressing a button of its message box or its loot panel.
 #include "game/Shared.h"
 
 #include <algorithm>
@@ -23,6 +23,27 @@ dao::saves::Kind KindArg(const Args &args, std::string_view fallback)
     const auto kind = args.Choice("kind", {"manual", "auto", "quick"}, fallback);
     return kind == "auto" ? dao::saves::Kind::Auto
                           : (kind == "quick" ? dao::saves::Kind::Quick : dao::saves::Kind::Manual);
+}
+
+bool SameWords(std::string_view a, std::string_view b)
+{
+    return std::ranges::equal(a, b,
+                              [](unsigned char x, unsigned char y) { return std::tolower(x) == std::tolower(y); });
+}
+
+// A button of the loot panel, by its label or its place.
+std::size_t LootButton(const Args &args)
+{
+    const auto &wanted = args.Raw().value("button", Json());
+    for (std::size_t i = 0; i < kLootButtons.size(); ++i)
+    {
+        if ((wanted.is_number_integer() && wanted.get<std::int64_t>() == static_cast<std::int64_t>(i)) ||
+            (wanted.is_string() && SameWords(wanted.get<std::string>(), kLootButtons[i])))
+        {
+            return i;
+        }
+    }
+    throw ToolError("game: press needs `button`, its label or its place from 0; the loot panel has: Take All, Close");
 }
 
 Json SlotJson(const dao::saves::Slot &slot)
@@ -61,8 +82,11 @@ void AddGame(Bench &bench, const Watch &watch)
                  "refused unless `overwrite` is true, for a test's own save. A load or save answers that the game "
                  "was asked, and `cursor`: wait_for "
                  "eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a "
-                 "cutscene. press, a `button` of the game's message box by its label or place (inspect "
-                 "kind=popup reads the box): the game is sent what a click on it sends. (Not the game's speed: each "
+                 "cutscene. press, a `button` by its label or place: of the game's message box (inspect "
+                 "kind=popup reads the box), or with none up, of the loot panel a container opens, Take All or "
+                 "Close (inspect kind=gui reads it): the game is sent what a click on it sends. Take All answers "
+                 "what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel "
+                 "unless it was. (Not the game's speed: each "
                  "plugin's copy of DAOLib scales the clock by its own, so "
                  "two setting it multiply; a mod that sets speed owns it.)",
                  Json{{"type", "object"},
@@ -70,7 +94,7 @@ void AddGame(Bench &bench, const Watch &watch)
                        {{"action",
                          {{"type", "string"},
                           {"enum", {"pause", "unpause", "saves", "load", "forceLoad", "save", "press"}}}},
-                        {"button", {{"description", "action=press: the button's label (\"Cancel\") or place from 0"}}},
+                        {"button", {{"description", "action=press: a button's label (\"Take All\") or place from 0"}}},
                         {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
                         {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
                         {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
@@ -97,7 +121,14 @@ void AddGame(Bench &bench, const Watch &watch)
                 const auto popup = dao::gui::CurrentPopup();
                 if (!popup)
                 {
-                    throw ToolError("game: no message box is up to press a button of; inspect kind=popup reads one");
+                    // The loot panel's, when no box is over it (#1). A box is
+                    // the popup layer's, above every other screen.
+                    if (LootPanelContainer())
+                    {
+                        return PressLootButton(bench, LootButton(args));
+                    }
+                    throw ToolError("game: no message box and no loot panel is up to press a button of; inspect "
+                                    "kind=gui reads what is up");
                 }
                 std::size_t index = popup->buttons.size();
                 const auto &wanted = args.Raw().value("button", Json());
@@ -110,10 +141,7 @@ void AddGame(Bench &bench, const Watch &watch)
                     const auto label = wanted.get<std::string>();
                     for (std::size_t i = 0; i < popup->buttons.size(); ++i)
                     {
-                        const auto has = Narrow(popup->buttons[i].label);
-                        if (std::ranges::equal(has, label, [](unsigned char a, unsigned char b) {
-                                return std::tolower(a) == std::tolower(b);
-                            }))
+                        if (SameWords(Narrow(popup->buttons[i].label), label))
                         {
                             index = i;
                         }

@@ -3,7 +3,8 @@
 // the checks before any of them touches the game, the watch on deaths, and
 // each tool's own registration, which GameTools.cpp calls. One file per
 // tool: Inspect, Script, Order, Stage, Screenshot, Game, Input, Camera, Dialogue
-// and Screen. Everything here is on the game's thread.
+// and Screen; Character and Gui hold inspect kinds of their own. Everything
+// here is on the game's thread.
 #pragma once
 
 #include "core/Args.h"
@@ -83,6 +84,19 @@ bool IsMove(dao::core::CommandType type);
 Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints);
 
 Json PopupJson();
+// An item in brief (name, tag, template, base type, stack, value, plot), or
+// in full as inspect kind=item gives it (Character.cpp).
+Json ItemJson(ObjectId item, bool full);
+
+// The game's loot panel (Gui.cpp): the container whose panel is up, if one
+// is; the panel as inspect kind=gui gives it, null with none; and a press
+// of one of its buttons by its place in kLootButtons, answering what came
+// of it. Throws ToolError when no panel is up.
+inline constexpr std::array<std::string_view, 2> kLootButtons = {"Take All", "Close"};
+std::optional<ObjectId> LootPanelContainer();
+Json LootPanelJson();
+Json PressLootButton(Bench &bench, std::size_t index);
+
 Json LineJson(const dao::dialogue::Line &line, bool female);
 bool HeroIsFemale();
 Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female);
@@ -187,5 +201,6 @@ void AddDialogue(Bench &bench, const Watch &watch);
 void AddScreen(Bench &bench, const Watch &watch);
 void AddResources(Bench &bench);
 void AddCharacter(Bench &bench, const Watch &watch); // inspect's character, equipment, inventory and item
+void AddGui(Bench &bench, const Watch &watch);       // inspect's gui
 
 } // namespace eluvian::game
