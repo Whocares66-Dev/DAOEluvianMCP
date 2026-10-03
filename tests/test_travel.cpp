@@ -32,6 +32,7 @@ struct World
     bool silent = false;    // whether a move's end never comes: a fight takes the command with it
     bool chatter = false;   // whether others' commands end around each order, and the walker's last is cleared
     bool doorLoads = false; // whether the door's use starts a load, refusing the orders after it
+    int clears = 0;         // how many moves the game clears before they go, giving no other
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
@@ -101,6 +102,14 @@ struct World
             orders.push_back(args);
             const auto cursor = bench.Events().Next();
             const std::string action = args.value("action", "");
+            if (action == "move" && clears > 0)
+            {
+                --clears; // the settling after a load: the move cleared, nothing in its place
+                bench.Events().Emit("eluvian.command.ended", Json{{"id", args.value("id", "")},
+                                                                  {"type", "MoveToLocation"},
+                                                                  {"result", "COMMAND_FAILED_COMMAND_CLEARED"}});
+                return Json{{"given", true}, {"cursor", cursor}};
+            }
             std::string result = "success";
             if (action == "move")
             {
@@ -333,6 +342,18 @@ TEST_CASE("a door whose plot starts a load stops the journey with the refusal, t
     REQUIRE(answer["opened"].size() == 1);
     CHECK(answer["opened"][0]["id"] == "0x1f1");
     CHECK(world.orders.size() == 1); // the use; the move after it was refused
+}
+
+TEST_CASE("a move the game clears and gives no other is given again, not waited out", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.clears = 1;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "there"); // not "as near as the walk goes": the cleared move was no move
+    REQUIRE(world.orders.size() == 2);
+    CHECK(answer["steps"][0]["result"] == "COMMAND_FAILED_COMMAND_CLEARED");
 }
 
 TEST_CASE("a paused game is said, not waited out", "[travel]")

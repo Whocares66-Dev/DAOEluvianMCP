@@ -23,6 +23,9 @@ using std::chrono::milliseconds;
 // nearer, in metres.
 constexpr double kNoNearer = 0.25;
 
+// A command's end when another cleared it from the walker's queue.
+constexpr const char *kCleared = "COMMAND_FAILED_COMMAND_CLEARED";
+
 // One journey: its arguments, its clock, and the transcript it answers with.
 class Journey
 {
@@ -256,6 +259,11 @@ class Journey
                 {
                     continue; // measured again above: there, or stopped short of it
                 }
+                if (*result == kCleared)
+                {
+                    lastWalk.reset(); // not a move made: it does not say the walk goes no nearer
+                    continue;
+                }
                 if (*result != "COMMAND_FAILED_PATH_ACTION_REQUIRED")
                 {
                     return End(false, "the walk ended " + *result);
@@ -286,6 +294,11 @@ class Journey
                 {
                     return End(false, stopped_.value_or("the time ran out at " + blocker));
                 }
+                if (*result == kCleared)
+                {
+                    lastBlocker.clear(); // not a use made: it may be asked again
+                    continue;
+                }
                 doors_.push_back(walk.at("blocker"));
                 continue;
             }
@@ -302,6 +315,7 @@ class Journey
                 {
                     return End(false, stopped_.value_or("the time ran out while walking"));
                 }
+                wentToReached_ = *result != kCleared;
                 continue;
             }
             return End(false, "no walk there: " + walk.value("result", std::string("the search found none")));
@@ -343,9 +357,13 @@ class Journey
         return std::nullopt;
     }
 
-    // Gives an order and waits for that command's end; a command another
-    // cleared is not the end waited for. Nothing if the time ran out, or if
-    // the journey was taken from it meanwhile, which `stopped_` then says.
+    // Gives an order and waits for that command's end. A command cleared is
+    // not that end if another of the walker's follows, as the click's use is
+    // cleared and given again as a container opens; one that nothing follows
+    // for two seconds is, and is answered kCleared: the game's settling after
+    // a load cleared a move and gave it no other, and the wait ran out the
+    // whole budget (#8, 2026-10-02). Nothing if the time ran out, or if the
+    // journey was taken from it meanwhile, which `stopped_` then says.
     std::optional<std::string> Order(const Json &order, const char *type, std::string what)
     {
         measured_ = false;
@@ -359,6 +377,7 @@ class Journey
         auto since = given.value("cursor", bench_.Events().Next());
         const auto filter =
             EventFilter::FromArgs(Json{{"topic", "eluvian.command.ended"}, {"match", {{"id", who_}, {"type", type}}}});
+        bool cleared = false;
         while (Left().count() > 0)
         {
             const auto event = bench_.Events().WaitFor(since, filter, std::min(Left(), milliseconds(2000)));
@@ -372,12 +391,18 @@ class Journey
                     stopped_ = std::move(reason);
                     return std::nullopt;
                 }
+                if (cleared)
+                {
+                    steps_.push_back(Json{{"did", std::move(what)}, {"result", kCleared}});
+                    return std::string(kCleared);
+                }
                 continue;
             }
             since = event->seq + 1;
             std::string result = event->payload.value("result", std::string());
-            if (result == "COMMAND_FAILED_COMMAND_CLEARED")
+            if (result == kCleared)
             {
+                cleared = true;
                 continue;
             }
             steps_.push_back(Json{{"did", std::move(what)}, {"result", result}});

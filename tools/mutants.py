@@ -1206,6 +1206,19 @@ MUTANTS = [
         "refused_ = e.what();",
         "throw ToolError(e.what());",
     ),
+    # #8: a move cleared with nothing after it is given again, not waited out.
+    Mutant(
+        "travel waits out a cleared move that nothing follows",
+        TRAVEL,
+        "if (cleared)",
+        "if (false)",
+    ),
+    Mutant(
+        "travel gives no cleared move again",
+        TRAVEL,
+        "lastWalk.reset(); // not a move made: it does not say the walk goes no nearer\n                    continue;",
+        'return End(false, "the walk ended " + *result);',
+    ),
 ]
 
 
