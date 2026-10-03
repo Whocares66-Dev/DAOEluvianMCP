@@ -18,6 +18,10 @@ namespace
 using Clock = std::chrono::steady_clock;
 using std::chrono::milliseconds;
 
+// How much shorter a move must leave the walk to have brought its walker
+// nearer, in metres.
+constexpr double kNoNearer = 0.25;
+
 // One journey: its arguments, its clock, and the transcript it answers with.
 class Journey
 {
@@ -179,6 +183,7 @@ class Journey
     Json Walk()
     {
         std::string lastBlocker;
+        std::optional<double> lastWalk; // the walk's length when the last move along it was given
         for (int step = 0; step < 4 * (static_cast<int>(maxDoors_) + 2); ++step)
         {
             if (const auto reason = NotMine())
@@ -201,10 +206,27 @@ class Journey
                 // mirror stands where nothing can, the search ends as near
                 // as a creature fits, and a move to the thing itself ended
                 // COMMAND_FAILED_INVALID_PATH 6 m and 20 m short (2026-10-01).
-                if (walk.value("length", distance) < 0.5)
+                const double length = walk.value("length", distance);
+                if (length < 0.5)
                 {
                     return End(true, "as near as the walk goes");
                 }
+                // A walk whose end the creature cannot stand on, under a
+                // thing that fills its place or hangs overhead: each move
+                // there ends where it began, and the walk asked again is as
+                // long. The Elven Ruins' cocoon, 4 m up, took 22 such moves
+                // until the steps ran out, where a use from below worked at
+                // once (#4, 2026-10-02). A thing is used from as near as it
+                // goes; a point is not reached.
+                if (lastWalk && length > *lastWalk - kNoNearer)
+                {
+                    if (where_.contains("target"))
+                    {
+                        return End(true, "as near as the walk goes: the last move brought it no nearer");
+                    }
+                    return End(false, "the walk goes no nearer: the last move brought it no nearer");
+                }
+                lastWalk = length;
                 const Json waypoints = walk.value("waypoints", Json::array());
                 const Json &to = waypoints.is_array() && !waypoints.empty() ? waypoints.back() : geometry.at("to");
                 const auto result =
@@ -235,6 +257,7 @@ class Journey
                     return End(false, "what is in the way did not open: " + blocker);
                 }
                 lastBlocker = blocker;
+                lastWalk.reset(); // the way is another once it is open
                 Json use = {{"action", "use"}, {"id", who_}, {"target", blocker}};
                 if (!byClick_)
                 {
@@ -255,6 +278,7 @@ class Journey
             if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)
             {
                 wentToReached_ = true;
+                lastWalk.reset();
                 const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", walk.at("reached")}},
                                           "MoveToLocation", "move as far as the search got");
                 if (!result)
@@ -377,7 +401,8 @@ void AddTravelTool(Bench &bench)
                  "way: it asks for the walk, uses the door in the way, waits, and goes on, up to `maxDoors` "
                  "(default 4) and `budgetMs` (default 60000). `id` is who walks, default the creature controlled. "
                  "Answers `arrived` (within `within` metres, default 1.5, or as near as a creature can stand to a "
-                 "thing that fills its own place, a door or a chest), `reason`, the `distance` left, what it "
+                 "thing that fills its own place or hangs overhead: a door, a chest, a cocoon; then use it from "
+                 "there), `reason`, the `distance` left, what it "
                  "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
                  "its to make: a fight began, a conversation or cutscene took the screen, the game is paused. "
                  "Opening a door may start a fight or a plot's step; the events from `cursor` say what followed. "

@@ -23,6 +23,7 @@ struct World
     bool shut = true;   // the door
     bool opens = true;  // whether a use opens it
     bool named = true;  // whether the search names the door from afar
+    bool stuck = false; // whether a move ends where it began: the walk's end is where none can stand
     double shortBy = 0; // how far from the goal a walk ends: the goal fills its own place
     std::string mode = "explore";
     bool paused = false;
@@ -83,7 +84,7 @@ struct World
                     at = door + 0.5; // stops at the door
                     result = "COMMAND_FAILED_PATH_ACTION_REQUIRED";
                 }
-                else
+                else if (!stuck)
                 {
                     at = to;
                 }
@@ -233,6 +234,29 @@ TEST_CASE("a thing that fills its own place is reached as near as the walk goes"
     CHECK(answer["distance"] == 2.5);
     REQUIRE(world.orders.size() == 1);
     CHECK(world.orders[0]["point"][0] == 2.5); // the walk's end, not the door's own place
+}
+
+TEST_CASE("a thing whose walk's end none can stand on is reached when a move brings it no nearer", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.stuck = true; // a cocoon overhead: each move ends where it began
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("as near as the walk goes"));
+    CHECK(world.orders.size() == 1); // not one move after another until the steps run out
+}
+
+TEST_CASE("a point a move brings no nearer is not reached", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.stuck = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"point", {0, 0, 0}}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no nearer"));
+    CHECK(answer["distance"] == 30);
+    CHECK(world.orders.size() == 1);
 }
 
 TEST_CASE("a target and a point both, or neither, is refused", "[travel]")
