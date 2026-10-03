@@ -1241,6 +1241,12 @@ MUTANTS = [
         answer_["cursor"] = bench_.Events().Next();""",
         "(noticed writing the mutants, 2026-10-03, #13).",
     ),
+    Mutant(
+        "travel gives up beside its target when the move fails there",
+        TRAVEL,
+        'if (after->value("distance", within_ + 1) <= within_)',
+        "if (false)",
+    ),
 ]
 
 

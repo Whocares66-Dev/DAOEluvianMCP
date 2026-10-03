@@ -18,19 +18,20 @@ namespace
 struct World
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
-    double at = 30;         // metres from the goal
-    double door = 10;       // where the door stands, from the goal
-    bool shut = true;       // the door
-    bool opens = true;      // whether a use opens it
-    bool named = true;      // whether the search names the door from afar
-    bool stuck = false;     // whether a move ends where it began: the walk's end is where none can stand
-    double shortBy = 0;     // how far from the goal a walk ends: the goal fills its own place
-    double partway = 0;     // where a move stops, if not where it was sent
-    bool hidden = false;    // whether the search walks through the shut door until a move is stopped at it
-    double reach = 1;       // how far short of the door a search that cannot name it gets
-    std::string moveFails;  // the result every move ends with instead of success, if any
-    bool silent = false;    // whether a move's end never comes: a fight takes the command with it
-    bool chatter = false;   // whether others' commands end around each order, and the walker's last is cleared
+    double at = 30;        // metres from the goal
+    double door = 10;      // where the door stands, from the goal
+    bool shut = true;      // the door
+    bool opens = true;     // whether a use opens it
+    bool named = true;     // whether the search names the door from afar
+    bool stuck = false;    // whether a move ends where it began: the walk's end is where none can stand
+    double shortBy = 0;    // how far from the goal a walk ends: the goal fills its own place
+    double partway = 0;    // where a move stops, if not where it was sent
+    bool hidden = false;   // whether the search walks through the shut door until a move is stopped at it
+    double reach = 1;      // how far short of the door a search that cannot name it gets
+    std::string moveFails; // the result every move ends with instead of success, if any
+    double failsAt = -1;   // where a failing move leaves the walker, from the goal; -1 where it stood
+    bool silent = false;   // whether a move's end never comes: a fight takes the command with it
+    bool chatter = false;  // whether others' commands end around each order, and the walker's last is cleared
     bool doorLoads = false; // whether the door's use starts a load, refusing the orders after it
     int clears = 0;         // how many moves the game clears before they go, giving no other
     bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
@@ -119,7 +120,11 @@ struct World
                 const double to = args.at("point").at(0).get<double>();
                 if (!moveFails.empty())
                 {
-                    result = moveFails; // and the walker stays where it is
+                    result = moveFails; // and the walker stays where it is, or where it got
+                    if (failsAt >= 0)
+                    {
+                        at = failsAt;
+                    }
                 }
                 else if (shut && to < door && at > door)
                 {
@@ -290,6 +295,18 @@ TEST_CASE("a move the game refuses ends the journey with the game's word for it"
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
     CHECK(world.orders.size() == 1);
+}
+
+TEST_CASE("a move that fails beside its target, where the target stands, is there", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    world.failsAt = 0.45; // beside a creature: its own place is taken
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "there");
+    CHECK(answer["distance"] == 0.45);
 }
 
 TEST_CASE("a search that gets no nearer from as far as it got says there is no walk", "[travel]")

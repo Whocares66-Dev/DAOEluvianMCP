@@ -271,6 +271,20 @@ class Journey
                 }
                 if (*result != "COMMAND_FAILED_PATH_ACTION_REQUIRED")
                 {
+                    // A move to a creature ends COMMAND_FAILED_INVALID_PATH
+                    // beside it, where the creature stands: there, then. A
+                    // walk to Master Ilen ended so 0.45 m from him (#12).
+                    Json again = where_;
+                    again.update(Json{{"kind", "geometry"}, {"id", who_}});
+                    if (const auto after = Ask("inspect", again))
+                    {
+                        answer_["distance"] = after->value("distance", 0.0);
+                        measured_ = true;
+                        if (after->value("distance", within_ + 1) <= within_)
+                        {
+                            return End(true, "there");
+                        }
+                    }
                     return End(false, "the walk ended " + *result);
                 }
                 continue; // something shut on the way: asked again from where it stopped
