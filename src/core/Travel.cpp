@@ -389,6 +389,25 @@ class Journey
         return std::nullopt;
     }
 
+    // The text of the game's message box if one is up; nothing with none, or
+    // with no read of the interface, when the pause is all that is known.
+    std::optional<std::string> Box()
+    {
+        try
+        {
+            const Json gui = bench_.Invoke("inspect", Json{{"kind", "gui"}}).data;
+            if (gui.contains("popup") && !gui.at("popup").is_null())
+            {
+                return gui.at("popup").value("text", std::string());
+            }
+            return std::nullopt;
+        }
+        catch (const std::exception &)
+        {
+            return std::nullopt;
+        }
+    }
+
     // Why the journey is no longer this tool's to make, if it is not.
     std::optional<std::string> NotMine()
     {
@@ -417,6 +436,13 @@ class Journey
         }
         if (health.value("paused", false))
         {
+            // A message box pauses the game, and is what to answer: leaving
+            // the Korcari Wilds, "Gather your party and venture forth?" read
+            // as the game paused (turn-based-agent, 2026-10-03, #19).
+            if (const auto box = Box())
+            {
+                return "the game asks: " + *box + "; game action=press answers it (inspect kind=gui reads its buttons)";
+            }
             return "the game is paused";
         }
         return std::nullopt;

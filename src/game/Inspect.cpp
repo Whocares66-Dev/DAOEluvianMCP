@@ -852,6 +852,9 @@ void AddInspect(Bench &bench, const Watch &watch)
                                    : search.result == 8 ? "no walkable ground there"
                                                         : "not finished in time";
                 walk["result"] = said;
+                // How many searches it took: one, or more for a long walk the
+                // search went on with from where it gave up (DAOLib dac5e99, #19).
+                walk["legs"] = search.legs;
                 if (search.path)
                 {
                     walk["length"] = search.path->Length();

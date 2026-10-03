@@ -73,6 +73,10 @@ struct World
                             {"area", {{"tag", area}, {"name", area == "forest" ? "Forest Clearing" : "Ruins"}}},
                             {"popup", popup}};
             }
+            if (args.value("kind", "") == "gui")
+            {
+                return Json{{"popup", popup}};
+            }
             if (args.value("kind", "") == "exits")
             {
                 return Json{{"exits", Json::array({Json{{"id", "0x1f5"},
@@ -400,6 +404,18 @@ TEST_CASE("a move the game clears and gives no other is given again, not waited 
     CHECK(answer["reason"] == "there"); // not "as near as the walk goes": the cleared move was no move
     REQUIRE(world.orders.size() == 2);
     CHECK(answer["steps"][0]["result"] == "COMMAND_FAILED_COMMAND_CLEARED");
+}
+
+TEST_CASE("a message box that pauses the game is said, with what it asks", "[travel]")
+{
+    World world;
+    world.paused = true;
+    world.popup = Json{{"text", "Gather your party and venture forth?"}};
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Gather your party"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("game action=press"));
+    CHECK(world.orders.empty());
 }
 
 TEST_CASE("a paused game is said, not waited out", "[travel]")

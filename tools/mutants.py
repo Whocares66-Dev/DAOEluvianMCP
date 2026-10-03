@@ -221,8 +221,8 @@ MUTANTS = [
     Mutant(
         "travel walks on while an area loads",
         TRAVEL,
-        'if (mode == "loading")\n        {\n            return "an area is loading";',
-        'if (false)\n        {\n            return "an area is loading";',
+        'if (mode == "loading")\n        {\n            if (auto why = WaitOutLoad())',
+        'if (false)\n        {\n            if (auto why = WaitOutLoad())',
     ),
     Mutant(
         "travel walks in a paused game",
@@ -233,7 +233,7 @@ MUTANTS = [
     Mutant(
         "travel takes a command another cleared for the end of the walker's",
         TRAVEL,
-        'if (result == "COMMAND_FAILED_COMMAND_CLEARED")',
+        "if (result == kCleared)",
         "if (false)",
     ),
     Mutant(
@@ -1219,7 +1219,6 @@ MUTANTS = [
         "lastWalk.reset(); // not a move made: it does not say the walk goes no nearer\n                    continue;",
         'return End(false, "the walk ended " + *result);',
     ),
-
     # #21: a target the walk itself opened is taken from; a target in the
     # walk's way is its end, not a door.
     Mutant(
@@ -1260,6 +1259,13 @@ MUTANTS = [
         TRAVEL,
         "if (!startArea_.empty() && area != startArea_)",
         "if (false)",
+    ),
+    # #19: a pause that is a message box says what it asks.
+    Mutant(
+        "travel says only paused for a message box",
+        TRAVEL,
+        "if (const auto box = Box())",
+        "if (const auto box = std::optional<std::string>())",
     ),
 ]
 
