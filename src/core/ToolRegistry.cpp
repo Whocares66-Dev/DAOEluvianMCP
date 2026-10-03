@@ -95,6 +95,10 @@ Json ToolRegistry::Describe() const
     Json tools = Json::array();
     for (const auto &[name, entry] : tools_)
     {
+        if (!entry.spec.listed)
+        {
+            continue;
+        }
         std::string description = entry.spec.description;
         Json schema = entry.spec.inputSchema;
         if (!entry.handler)
@@ -129,6 +133,18 @@ Json ToolRegistry::Describe() const
         tools.push_back(std::move(tool));
     }
     return tools;
+}
+
+std::vector<std::string> ToolRegistry::Names() const
+{
+    const std::lock_guard lock(mutex_);
+    std::vector<std::string> names;
+    names.reserve(tools_.size());
+    for (const auto &[name, entry] : tools_)
+    {
+        names.push_back(name);
+    }
+    return names;
 }
 
 std::uint64_t ToolRegistry::Revision() const

@@ -63,8 +63,12 @@ class ToolRegistry
     [[nodiscard]] std::optional<Call> Resolve(std::string_view tool, const Json &args) const;
 
     // MCP's tools/list `tools` array, sorted by name, with every base tool's
-    // kinds written into its schema and description.
+    // kinds written into its schema and description. Unlisted tools are left
+    // out.
     [[nodiscard]] Json Describe() const;
+
+    // Every tool's name, listed or not.
+    [[nodiscard]] std::vector<std::string> Names() const;
 
     // Bumped by every Add and AddKind: a client that listed before can tell
     // its list is stale.

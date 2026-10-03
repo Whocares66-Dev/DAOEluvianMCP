@@ -2,6 +2,8 @@
 // checks before the game is touched, and the watch on deaths.
 #include "game/Shared.h"
 
+#include <regex>
+
 namespace eluvian::game
 {
 
@@ -170,17 +172,36 @@ Json PopupJson()
     return Json{{"text", Narrow(popup->text)}, {"buttons", std::move(buttons)}};
 }
 
+namespace
+{
+
+// A line's text as the screen shows it, in plain text: the engine's own
+// token replacement (DAOLib 7bab46e, ReplaceDesignerTags), which fills in
+// <FirstName/> and the like that replies held unresolved (#17), and turns
+// the talk table's markup into the Flash HTML the screen draws (<emp> into
+// <b>); that HTML is taken out here. A token the engine does not know stays
+// as it was, to be seen.
+std::wstring Shown(std::wstring_view text)
+{
+    std::wstring shown = dao::tlk::Resolve(text);
+    static const std::wregex html(LR"(</?(b|i|u|font|br|p|span)\b[^>]*>)", std::regex::icase);
+    return std::regex_replace(shown, html, L"");
+}
+
+} // namespace
+
 // A conversation's line as the screen has it: its place in the file, who
 // speaks as the file writes it (a tag, or OWNER or PLAYER), and its text in
-// the player's language, in the form for the hero's sex. A line may have no
-// text: an NPC line that only routes, a "continue" reply (DAOLib's
-// Dialogue.h, seen at Highever, 2026-09-30). The talk table's markup
-// (<emp>) is left in.
+// the player's language, in the form for the hero's sex, its tokens filled
+// in and its markup taken out. A line may have no text: an NPC line that
+// only routes, a "continue" reply (DAOLib's Dialogue.h, seen at Highever,
+// 2026-09-30).
 Json LineJson(const dao::dialogue::Line &line, bool female)
 {
-    Json json = {{"index", line.index},
-                 {"speaker", Narrow(line.speaker)},
-                 {"text", line.text == 0xFFFFFFFF ? std::string() : Narrow(dao::tlk::String(line.text, female))}};
+    Json json = {
+        {"index", line.index},
+        {"speaker", Narrow(line.speaker)},
+        {"text", line.text == 0xFFFFFFFF ? std::string() : Narrow(Shown(dao::tlk::String(line.text, female)))}};
     if (line.kind == dao::dialogue::Line::Kind::Player)
     {
         json["icon"] = line.icon;

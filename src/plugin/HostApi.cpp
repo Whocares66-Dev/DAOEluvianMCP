@@ -305,9 +305,9 @@ void BindHostApi(Bench &bench)
 {
     const std::lock_guard lock(g_mutex);
     g_bench = &bench;
-    for (const auto &tool : bench.Tools().Describe())
+    for (auto &name : bench.Tools().Names())
     {
-        g_builtIn.insert(tool["name"].get<std::string>());
+        g_builtIn.insert(std::move(name));
     }
 }
 

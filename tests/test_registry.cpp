@@ -4,6 +4,8 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 using namespace eluvian;
 using Catch::Matchers::ContainsSubstring;
@@ -34,6 +36,21 @@ TEST_CASE("a tool resolves to its handler and thread", "[registry]")
     CHECK(call->thread == Thread::Listener);
     CHECK(call->handler(Json::object()).data == Json{{"ok", true}});
     CHECK_FALSE(registry.Resolve("nothing", Json::object()));
+}
+
+TEST_CASE("an unlisted tool is called but not listed, and its name is taken", "[registry]")
+{
+    ToolRegistry registry;
+    registry.Add(ToolSpec{"dialogue", "Answer the conversation.", {}, Thread::Listener}, Answer(1));
+    ToolSpec step{"dialogue.step", "One act of it.", {}, Thread::Frame};
+    step.listed = false;
+    registry.Add(step, Answer(2));
+    REQUIRE(registry.Resolve("dialogue.step", {}));
+    CHECK(registry.Resolve("dialogue.step", {})->handler({}).data == 2);
+    const auto listed = registry.Describe();
+    REQUIRE(listed.size() == 1);
+    CHECK(listed[0]["name"] == "dialogue");
+    CHECK(registry.Names() == std::vector<std::string>{"dialogue", "dialogue.step"});
 }
 
 TEST_CASE("adding a tool of the same name replaces it and says so", "[registry]")

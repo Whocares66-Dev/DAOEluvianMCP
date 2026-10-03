@@ -129,6 +129,7 @@ add_library(
     src/core/Args.cpp
     src/core/Base64.cpp
     src/core/Bench.cpp
+    src/core/Conversation.cpp
     src/core/Erf.cpp
     src/core/EventBus.cpp
     src/core/EventLog.cpp

@@ -107,6 +107,7 @@ ERF = "src/core/Erf.cpp"
 ARGS = "src/core/Args.cpp"
 REGISTRY = "src/core/ToolRegistry.cpp"
 LEVELUP = "src/core/LevelUp.cpp"
+CONVERSATION = "src/core/Conversation.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
 # characters here: "\\r\\n" is the source's "\r\n". An edit that leaves a
@@ -1133,6 +1134,63 @@ MUTANTS = [
         LEVELUP,
         "if (shown == up)",
         "if (shown != up)",
+    ),
+    # dialogue (#17): one step without `until`; with it, on through lines to
+    # the next real choice, an ignored choice asked again, a reply with no
+    # text gone through, the lines kept, an end said with its mode.
+    Mutant(
+        "dialogue without until runs on anyway",
+        CONVERSATION,
+        "if (!untilChoice_)",
+        "if (false)",
+    ),
+    Mutant(
+        "dialogue takes a continue's replies for ones answered",
+        CONVERSATION,
+        'if (action_ == "choose")',
+        "if (true)",
+    ),
+    Mutant(
+        "dialogue does not ask an ignored choice again",
+        CONVERSATION,
+        'if (Left().count() == 0 || tries == kMostTries || !Ask("dialogue.step", step_))',
+        "if (Left().count() == 0 || tries == kMostTries)",
+    ),
+    Mutant(
+        "dialogue goes through no reply with no text",
+        CONVERSATION,
+        'return Ask("dialogue.step", Json{{"action", "continue"}}).has_value();',
+        "return true;",
+    ),
+    Mutant(
+        "dialogue takes the game's continue for a real choice",
+        CONVERSATION,
+        'return replies.is_array() && !replies.empty() && !replies.at(0).value("text", std::string()).empty();',
+        "return replies.is_array() && !replies.empty();",
+    ),
+    Mutant(
+        "dialogue keeps no line spoken",
+        CONVERSATION,
+        "!text.empty())",
+        "text.empty())",
+    ),
+    Mutant(
+        "dialogue takes a mode change to dialog for the end",
+        CONVERSATION,
+        'if (to != "dialog")',
+        'if (to == "dialog")',
+    ),
+    Mutant(
+        "dialogue answers a refusal where the conversation ended",
+        CONVERSATION,
+        'if (read && !read->value("active", true))',
+        "if (false)",
+    ),
+    Mutant(
+        "dialogue cuts lines short without skipLines and not with it",
+        CONVERSATION,
+        "if (skipLines_ && replies.empty()",
+        "if (!skipLines_ && replies.empty()",
     ),
 ]
 

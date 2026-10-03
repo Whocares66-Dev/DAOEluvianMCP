@@ -72,6 +72,11 @@ struct ToolSpec
     // For a tool made of kinds (one without a handler of its own): the
     // argument that chooses the kind, `kind` for inspect, `action` for stage.
     std::string kindProperty = "kind";
+    // Whether tools/list shows it. An unlisted tool is another's step: a
+    // frame thread's single act that a listener tool of the same job calls
+    // and waits over (`dialogue.step` under `dialogue`, #17), so that the
+    // agent meets one tool for the job, not two.
+    bool listed = true;
 };
 
 } // namespace eluvian
