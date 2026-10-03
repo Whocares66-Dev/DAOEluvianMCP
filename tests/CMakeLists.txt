@@ -45,15 +45,50 @@ target_link_libraries(el_tests PRIVATE el_core Catch2::Catch2WithMain)
 include(Catch)
 catch_discover_tests(el_tests)
 
-# The Python tools' own tests (tools/test_*.py), where there is a Python.
+# The Python tools' own tests (tools/test_*.py), where there is a Python:
+# each test its own ctest entry, so they run side by side. As one process
+# the bridge's 45 took 38 s, the longest entry of the run by far, seven of
+# them waiting 2.6 s each on a game that is down (2026-10-03, the user's
+# ask that tests run in parallel). A file holds one unittest.TestCase class
+# and its tests are its `def test_` methods; a new file is picked up at the
+# next configure.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
-    add_test(
-        NAME python_tools
-        COMMAND
-            "${Python3_EXECUTABLE}" -m unittest discover -s
-            "${PROJECT_SOURCE_DIR}/tools" -p "test_*.py"
+    file(
+        GLOB _el_py_tests
+        CONFIGURE_DEPENDS
+        "${PROJECT_SOURCE_DIR}/tools/test_*.py"
     )
+    foreach(_file IN LISTS _el_py_tests)
+        get_filename_component(_module "${_file}" NAME_WE)
+        file(
+            STRINGS "${_file}"
+            _class
+            REGEX "^class [A-Za-z0-9_]+\\(unittest\\.TestCase\\)"
+        )
+        string(
+            REGEX REPLACE "^class ([A-Za-z0-9_]+)\\(.*"
+            "\\1"
+            _class
+            "${_class}"
+        )
+        file(STRINGS "${_file}" _tests REGEX "^    def test_[a-z0-9_]+\\(")
+        foreach(_line IN LISTS _tests)
+            string(
+                REGEX REPLACE "^    def (test_[a-z0-9_]+)\\(.*"
+                "\\1"
+                _test
+                "${_line}"
+            )
+            add_test(
+                NAME "python.${_module}.${_test}"
+                COMMAND
+                    "${Python3_EXECUTABLE}" -m unittest
+                    "${_module}.${_class}.${_test}"
+                WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tools"
+            )
+        endforeach()
+    endforeach()
 endif()
 
 # Coverage, for the core-cov preset:

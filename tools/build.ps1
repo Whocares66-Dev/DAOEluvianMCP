@@ -178,7 +178,11 @@ try {
 
     if ($Test) {
         Show-Line "`n== test ($Preset) ==" -Colour Cyan
-        ctest --preset $Preset
+        # The tests at once, a process a core: they ran one at a time, and
+        # some wait seconds on purpose (a journey's budget, a screen that
+        # will not close), so the step was most of a gate (the user's ask,
+        # 2026-10-03).
+        ctest --preset $Preset --parallel $parallel
         if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
     }
 
