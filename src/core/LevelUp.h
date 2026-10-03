@@ -16,9 +16,14 @@
 
 #include "core/Bench.h"
 
+#include <chrono>
+
 namespace eluvian
 {
 
-void AddLevelUpTool(Bench &bench);
+// `show`: how long it lingers on the screen before its Auto Level Up and on
+// the result after, unless a call says (`showMs`): the plugin's is a
+// second, so whoever watches sees it (#14).
+void AddLevelUpTool(Bench &bench, std::chrono::milliseconds show = {});
 
 } // namespace eluvian

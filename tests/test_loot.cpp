@@ -160,6 +160,15 @@ TEST_CASE("a container is walked to, opened and emptied, and its panel closes", 
     CHECK(chest.panel.empty());
 }
 
+TEST_CASE("the panel stays up a moment before Take All for whoever watches, as long as showMs says", "[loot]")
+{
+    Chest chest;
+    const auto start = std::chrono::steady_clock::now();
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}, {"showMs", 300}});
+    CHECK(answer["looted"] == true);
+    CHECK(std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(300));
+}
+
 TEST_CASE("a panel up already is taken from, with no walk and no use", "[loot]")
 {
     Chest chest;

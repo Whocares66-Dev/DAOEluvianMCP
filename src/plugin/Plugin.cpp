@@ -220,8 +220,10 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     AddLogTool(g->bench, dao::LogDirectory());
     AddScenarioTool(g->bench, whyNothing);
     AddTravelTool(g->bench);
-    AddLootTool(g->bench);
-    AddLevelUpTool(g->bench);
+    // A second on each screen a tool opens and closes in one call, so that
+    // whoever watches sees it (the user, 2026-10-03, #14).
+    AddLootTool(g->bench, std::chrono::seconds(1));
+    AddLevelUpTool(g->bench, std::chrono::seconds(1));
     game::AddHealthTool(g->bench, g->watch, [] {
         static const std::string owner = OwnerSetting();
         return Json{{"port", g->port},

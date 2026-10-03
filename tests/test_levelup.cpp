@@ -104,6 +104,15 @@ TEST_CASE("auto spends every point through the screen's own messages", "[levelup
     CHECK_FALSE(rogue.up);
 }
 
+TEST_CASE("the screen stays up a moment before and after its Auto Level Up, as long as showMs says", "[levelup]")
+{
+    Rogue rogue;
+    const auto start = std::chrono::steady_clock::now();
+    const auto answer = rogue.LevelUp(Json{{"auto", true}, {"showMs", 200}});
+    CHECK(answer["levelled"] == true);
+    CHECK(std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(400));
+}
+
 TEST_CASE("two levels banked that auto spends one at a time take two rounds", "[levelup]")
 {
     Rogue rogue;

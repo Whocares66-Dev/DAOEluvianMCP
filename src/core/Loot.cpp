@@ -6,6 +6,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace eluvian
@@ -32,8 +33,9 @@ constexpr milliseconds kNoUse{3000};
 class Looting
 {
   public:
-    Looting(Bench &bench, const Args &args)
+    Looting(Bench &bench, const Args &args, milliseconds show)
         : bench_(bench), deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 600000))),
+          show_(milliseconds(args.Integer("showMs", show.count(), 0, 10000))),
           target_(args.Has("target") ? args.String("target") : std::string())
     {
         answer_["cursor"] = bench_.Events().Next();
@@ -158,6 +160,10 @@ class Looting
     // the backpack is full with items left.
     Json TakeAll()
     {
+        // The panel up with its items a moment, for whoever watches: in one
+        // call it opened and closed within a frame or two, never seen (the
+        // user, 2026-10-03, #14). The frames go on meanwhile.
+        std::this_thread::sleep_for(std::min(show_, Left()));
         const Json pressed = bench_.Invoke("game", Json{{"action", "press"}, {"button", "Take All"}}).data;
         for (const char *key : {"container", "taken", "left", "full", "backpack", "sent"})
         {
@@ -200,13 +206,14 @@ class Looting
 
     Bench &bench_;
     Clock::time_point deadline_;
+    milliseconds show_;
     std::string target_;
     Json answer_ = Json::object();
 };
 
 } // namespace
 
-void AddLootTool(Bench &bench)
+void AddLootTool(Bench &bench, milliseconds show)
 {
     bench.Tools().Add(
         ToolSpec{"loot",
@@ -221,15 +228,17 @@ void AddLootTool(Bench &bench)
                  "open no panel). A container's treasure may be chosen "
                  "only as it opens, so one that read empty may not be. The events from `cursor` say what "
                  "followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for "
-                 "the whole.",
+                 "the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so "
+                 "whoever watches sees it; 0 for none.",
                  Json{{"type", "object"},
                       {"properties",
                        {{"target", {{"type", "string"}, {"description", "The container's id; none: the panel up now"}}},
-                        {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}}}}},
+                        {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}},
+                        {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
                  Thread::Listener},
-        [&bench](const Json &raw) -> ToolResult {
+        [&bench, show](const Json &raw) -> ToolResult {
             const Args args(raw, "loot");
-            return Looting(bench, args).Run();
+            return Looting(bench, args, show).Run();
         });
 }
 

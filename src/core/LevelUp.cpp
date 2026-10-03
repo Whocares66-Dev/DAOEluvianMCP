@@ -75,7 +75,8 @@ std::set<int> AbilityIds(const Json &abilities)
 class Levelling
 {
   public:
-    Levelling(Bench &bench, const Args &args) : bench_(bench)
+    Levelling(Bench &bench, const Args &args, milliseconds show)
+        : bench_(bench), show_(milliseconds(args.Integer("showMs", show.count(), 0, 10000)))
     {
         if (!args.Bool("auto", false))
         {
@@ -124,8 +125,16 @@ class Levelling
                 return End(false, "the level-up screen did not open: " + refused_ +
                                       " (in a fight or a conversation it may not)");
             }
-            if (!Send("GUILevelUp.AutoLevelUp " + n) || !Send("GUILevelUp.CharGenEnd " + n + " 1 1") ||
-                !Send("GUI.HideFullScreenGUI"))
+            // The screen up a moment before and after its Auto Level Up, for
+            // whoever watches: in one call it came and went in under a
+            // second, never seen (the user, 2026-10-03, #14).
+            std::this_thread::sleep_for(show_);
+            if (!Send("GUILevelUp.AutoLevelUp " + n))
+            {
+                return End(false, refused_);
+            }
+            std::this_thread::sleep_for(show_);
+            if (!Send("GUILevelUp.CharGenEnd " + n + " 1 1") || !Send("GUI.HideFullScreenGUI"))
             {
                 return End(false, refused_);
             }
@@ -275,6 +284,7 @@ class Levelling
     }
 
     Bench &bench_;
+    milliseconds show_;
     std::string id_;
     std::string refused_;
     int rounds_ = 0;
@@ -283,7 +293,7 @@ class Levelling
 
 } // namespace
 
-void AddLevelUpTool(Bench &bench)
+void AddLevelUpTool(Bench &bench, milliseconds show)
 {
     bench.Tools().Add(
         ToolSpec{
@@ -296,18 +306,20 @@ void AddLevelUpTool(Bench &bench)
             "`after` (level, points to spend), the `attributes` raised and by how much, the talents, spells "
             "and skills `gained`, and `cursor`. Refused for a creature with no points to spend "
             "(inspect kind=character says `canLevelUp`). A level-up is the character's for good once the "
-            "game is saved.",
+            "game is saved. `showMs` (default 1000) is how long it lingers on the screen before Auto Level Up "
+            "and on the result after, so whoever watches sees it; 0 for none.",
             Json{{"type", "object"},
                  {"properties",
                   {{"id",
                     {{"type", "string"}, {"description", "Who levels up: a creature id; default the one controlled"}}},
                    {"auto",
-                    {{"type", "boolean"}, {"description", "Spend every point as the screen's Auto Level Up does"}}}}},
+                    {{"type", "boolean"}, {"description", "Spend every point as the screen's Auto Level Up does"}}},
+                   {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}},
                  {"required", {"auto"}}},
             Thread::Listener},
-        [&bench](const Json &raw) -> ToolResult {
+        [&bench, show](const Json &raw) -> ToolResult {
             const Args args(raw, "levelup");
-            return Levelling(bench, args).Run();
+            return Levelling(bench, args, show).Run();
         });
 }
 

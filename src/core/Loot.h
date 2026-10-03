@@ -14,9 +14,13 @@
 
 #include "core/Bench.h"
 
+#include <chrono>
+
 namespace eluvian
 {
 
-void AddLootTool(Bench &bench);
+// `show`: how long it lingers on the panel before Take All unless a call
+// says (`showMs`): the plugin's is a second, so whoever watches sees it (#14).
+void AddLootTool(Bench &bench, std::chrono::milliseconds show = {});
 
 } // namespace eluvian
