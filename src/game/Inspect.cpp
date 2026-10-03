@@ -113,6 +113,79 @@ Json JournalList(std::wstring_view list)
 
 } // namespace
 
+namespace
+{
+
+// Brief reads (#16): a thing a line, what a player wants of it on arriving,
+// for an agent that pays for every field of every creature on every look:
+// thirty creatures in full were a page of JSON, and the playthrough's
+// driver had two verbs that only boiled them down (turn-based-agent,
+// 2026-10-03).
+std::string Metres(double metres)
+{
+    return std::format("{:.1f} m", metres);
+}
+
+std::string CreatureLine(const Json &c)
+{
+    std::string line =
+        std::format("{} {} [{}] {}", c.value("id", ""), c.value("name", ""), c.value("tag", ""), c.value("side", ""));
+    const Json health = c.value("health", Json::object());
+    line += std::format(", {:.0f}/{:.0f} hp", health.value("current", 0.0), health.value("max", 0.0));
+    if (c.value("dead", false))
+    {
+        line += ", dead";
+    }
+    return line + ", " + Metres(c.value("distance", 0.0));
+}
+
+std::string PlaceableLine(const Json &p)
+{
+    std::string line = std::format("{} {} [{}] {}, state {}", p.value("id", ""), p.value("name", ""),
+                                   p.value("tag", ""), Metres(p.value("distance", 0.0)), p.value("state", 0));
+    const Json lock = p.value("lock", Json::object());
+    // A pick level is how hard its lock would be to pick, not that it is
+    // locked: an open cave entrance in the forest has one (seen in play,
+    // 2026-10-03). The state says whether it is shut.
+    if (lock.value("pickLevel", 0) > 0)
+    {
+        line += std::format(", pick {}", lock.value("pickLevel", 0));
+    }
+    if (lock.value("keyRequired", false))
+    {
+        line += ", key " + lock.value("keyTag", std::string());
+    }
+    if (!p.value("interactive", true))
+    {
+        line += ", not interactive";
+    }
+    if (p.contains("leadsTo"))
+    {
+        line += " -> " + p.at("leadsTo").value("area", std::string());
+    }
+    return line;
+}
+
+std::string ExitLine(const Json &e)
+{
+    std::string line = std::format(
+        "{} {} [{}] {} to {}, {}", e.value("id", ""), e.value("name", ""), e.value("tag", ""), e.value("kind", ""),
+        e.value(Json::json_pointer("/leadsTo/area"), std::string()), Metres(e.value("distance", 0.0)));
+    return e.value("active", true) ? line : line + ", inactive";
+}
+
+Json Lines(const Json &things, std::string (*line)(const Json &))
+{
+    Json lines = Json::array();
+    for (const auto &thing : things)
+    {
+        lines.push_back(line(thing));
+    }
+    return lines;
+}
+
+} // namespace
+
 void AddInspect(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(ToolSpec{
@@ -152,7 +225,12 @@ void AddInspect(Bench &bench, const Watch &watch)
                {"includeDead", {{"type", "boolean"}, {"description", "kind=creatures: default true"}}},
                {"includeInactive",
                 {{"type", "boolean"},
-                 {"description", "kind=creatures: creatures the area keeps hidden; default false"}}}}}},
+                 {"description", "kind=creatures: creatures the area keeps hidden; default false"}}},
+               {"brief",
+                {{"type", "boolean"},
+                 {"description", "kind=creatures, placeables, exits: a thing a line (`lines`) instead of in full"}}},
+               {"interactive",
+                {{"type", "boolean"}, {"description", "kind=placeables: only those that can be used (true)"}}}}}},
         Thread::Frame, true});
 
     bench.Tools().AddKind(
@@ -436,7 +514,8 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "number: a door's or a chest's changes when it opens), whether it is active and can be "
                  "interacted with, what its tooltip says, and its lock: whether it needs a key, the key's tag, "
                  "and the level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
-                 "waypoint's there). order action=use uses one."},
+                 "waypoint's there). order action=use uses one. `interactive: true` keeps only those that can be "
+                 "used; `brief: true` answers a line each (`lines`) instead."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -448,10 +527,13 @@ void AddInspect(Bench &bench, const Watch &watch)
             const auto from = api::GetPosition(around);
             const auto radius = args.Number("radius", -1);
             const bool includeInactive = args.Bool("includeInactive", false);
+            const auto interactive =
+                args.Has("interactive") ? std::optional{args.Bool("interactive", true)} : std::nullopt;
             std::vector<std::pair<float, Json>> found;
             for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
             {
-                if (api::GetObjectType(id) != k::OBJECT_TYPE_PLACEABLE)
+                if (api::GetObjectType(id) != k::OBJECT_TYPE_PLACEABLE ||
+                    (interactive && (api::GetObjectInteractive(id) != 0) != *interactive))
                 {
                     continue;
                 }
@@ -485,7 +567,46 @@ void AddInspect(Bench &bench, const Watch &watch)
             {
                 placeables.push_back(std::move(placeable));
             }
+            if (args.Bool("brief", false))
+            {
+                return Json{
+                    {"near", Brief(around)}, {"count", placeables.size()}, {"lines", Lines(placeables, PlaceableLine)}};
+            }
             return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"placeables", std::move(placeables)}};
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"surroundings",
+                 "One look around, a thing a line: the `creatures`, the placeables that can be used (`usable`: "
+                 "chests, doors, bodies' remains, with their state and lock) and the `exits` within `radius` "
+                 "(default 30 m) of `near` (default the creature controlled), nearest first, each as "
+                 "kind=creatures, placeables and exits give it with `brief: true`. The read on arriving "
+                 "anywhere; inspect a thing's kind in full for more."},
+        [&bench, &watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const double radius = args.Number("radius", 30);
+            // The other kinds' own handlers, on this thread: one read of the
+            // area as they read it, each in brief.
+            const auto look = [&bench, &raw, radius](const char *kind, Json call) {
+                call["kind"] = kind;
+                call["brief"] = true;
+                call["radius"] = radius;
+                if (raw.contains("near"))
+                {
+                    call["near"] = raw.at("near");
+                }
+                return bench.Tools().Resolve("inspect", call)->handler(call).data;
+            };
+            const Json creatures = look("creatures", Json::object());
+            const Json usable = look("placeables", Json{{"interactive", true}});
+            const Json exits = look("exits", Json::object());
+            return Json{{"near", creatures.value("near", Json())},
+                        {"radius", radius},
+                        {"creatures", creatures.value("lines", Json::array())},
+                        {"usable", usable.value("lines", Json::array())},
+                        {"exits", exits.value("lines", Json::array())}};
         });
 
     bench.Tools().AddKind(
@@ -496,7 +617,8 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "there), its kind, position, distance and whether it is active. A placeable is used with "
                  "order action=use; a trigger is walked into (travel to its position). Some doors choose where "
                  "they lead only when used, so their `leadsTo` may be empty or the last use's. Going through "
-                 "one loads the other area, and the game may autosave."},
+                 "one loads the other area, and the game may autosave. `radius` keeps those within it; `brief: "
+                 "true` answers a line each (`lines`)."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -521,6 +643,10 @@ void AddInspect(Bench &bench, const Watch &watch)
                 }
                 const auto position = api::GetPosition(id);
                 const float distance = Distance(from, position);
+                if (const auto radius = args.Number("radius", -1); radius >= 0 && distance > radius)
+                {
+                    continue;
+                }
                 Json exit = Brief(id);
                 exit["kind"] = type == k::OBJECT_TYPE_TRIGGER ? "trigger" : "placeable";
                 exit["leadsTo"] = std::move(leads);
@@ -534,6 +660,11 @@ void AddInspect(Bench &bench, const Watch &watch)
             for (auto &[distance, exit] : found)
             {
                 exits.push_back(std::move(exit));
+            }
+            if (args.Bool("brief", false))
+            {
+                return Json{
+                    {"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"lines", Lines(exits, ExitLine)}};
             }
             return Json{{"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"exits", std::move(exits)}};
         });
@@ -569,7 +700,8 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "hostile, 2 friendly), position, distance, dead, health and mana or stamina, combat state, "
                  "whom it attacks, its `room` (number; `seen` by the party: never, which the game draws "
                  "black with what stands in it, in view, or before; `shown`; and how much the game wants "
-                 "the room and whether it is in memory), and the command it is carrying out."},
+                 "the room and whether it is in memory), and the command it is carrying out. `brief: true` "
+                 "answers a line each (`lines`: id, name, tag, side, health, dead, distance) instead."},
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "inspect");
             const Args args(raw, "inspect");
@@ -613,6 +745,11 @@ void AddInspect(Bench &bench, const Watch &watch)
             for (auto &[distance, creature] : found)
             {
                 creatures.push_back(std::move(creature));
+            }
+            if (args.Bool("brief", false))
+            {
+                return Json{
+                    {"near", Brief(around)}, {"count", creatures.size()}, {"lines", Lines(creatures, CreatureLine)}};
             }
             return Json{{"near", Brief(around)}, {"count", creatures.size()}, {"creatures", std::move(creatures)}};
         });

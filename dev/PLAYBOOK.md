@@ -70,6 +70,9 @@ inspect {"kind": "plot", "plot": "bed000pt_main"}
 inspect {"kind": "equipment", "id": "0x82"}      each slot's item in full: type, material, stats, properties
 inspect {"kind": "inventory"}                    the party's backpack; {"kind": "item", "id": ...} is one item in full
 inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock
+inspect {"kind": "surroundings"}                 one look around, a line a thing: creatures, what can be used,
+                                                 exits, within 30 m; `brief: true` on creatures, placeables
+                                                 and exits does the same for one kind
 order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
 loot {"target": "0x1fd"}                        walk there, open it, take all; answers what was taken and what is
                                                  left, or why it did not open (`empty`: empty remains open nothing)
