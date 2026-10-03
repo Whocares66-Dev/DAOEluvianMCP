@@ -145,6 +145,19 @@ Or as one call:
 ]}
 ```
 
+## A screen's own controls
+
+A screen's tabs, lists and sliders are its movie's own script, which no message reaches. `input` with `screen` (a shown screen's name, as `inspect kind=gui` lists it) calls a function in that movie, sets a variable, or reads a number or a bool back. The Options screen on its Controls tab, at the bottom of the key bindings (seen in play, 2026-10-03):
+
+```
+input {"message": "GUI.ToggleFullScreenGUI Options"}                                   the screen, on its Game tab; the same again closes it
+input {"screen": "Options", "call": "SceneManager.PlayScene", "args": ["Controls"]}     the Controls page
+input {"screen": "Options", "call": "_root.KeyBindings_mc.SetScrollPercentage", "args": [100]}   the key bindings' list at its bottom
+input {"screen": "Options", "get": "OptionsMenu.ms_nCurrentTab"}                       a number read back, the path as a string (not yet seen in play)
+```
+
+`PlayScene` shows the page but is not the tab button's whole handler: that also sets `OptionsMenu.ms_nCurrentTab` (2 for Controls) and its observers, so Restore Defaults after it would restore the Game page's settings, and the tab strip still lights Game. Fine for a picture; for more, set the tab number as well. `OptionsMenu.OptionTabAction` returns the button's handler and does nothing called.
+
 ## A mod's own
 
 A mod that registers with Eluvian (`src/api/EluvianAPI.h`) shows up in `health`'s `plugins`; its tools are in the tool list (named with its prefix, `mymod_reset`), its reads are `inspect` kinds (`mymod.state`) and its set-ups `stage` actions (`mymod.arena`), each listed in its tool's description, and its events come on the same bus under its prefix (`mymod.*`). `events {"describe": true}` lists every topic there is, Eluvian's and the mods', with what it means and what its payload holds; a mod's own docs say the rest. The turn-based mod's are in DAOTurnBased (`inspect kind=turnbased.state`, `turnbased_*` tools, `turnbased.*` events: its `dev/TESTING.md`).
