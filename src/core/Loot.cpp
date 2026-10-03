@@ -150,31 +150,36 @@ class Looting
             }
             if (!started && Clock::now() - ordered > kNoUse)
             {
-                return Untouched();
+                return Untouched("the use started nothing");
             }
             if (endedAt && Clock::now() - *endedAt > kPanelGrace)
             {
-                return End(false, "it did not open: the use ended " + result +
-                                      " and no loot panel came. A locked one is unlocked first (order action=use "
-                                      "objectAction=unlock); inspect kind=placeables says its state");
+                return Untouched("the use ended " + result);
             }
         }
         return End(false, "no loot panel came in the time given");
     }
 
     // A use that started nothing: what the container holds says why.
-    Json Untouched()
+    // No panel came, the use having started nothing or ended without one:
+    // what the container holds says why. Empty remains do either, and were
+    // told "a locked one is unlocked first", which misled for a body
+    // (turn-based-agent, 2026-10-03, #10); the lock is named only for one
+    // that holds something.
+    Json Untouched(const std::string &use)
     {
         const Json inventory = Ask("inspect", Json{{"kind", "inventory"}, {"id", target_}}).value_or(Json::object());
         const auto count = inventory.value("count", 0);
         answer_["empty"] = count == 0;
         if (count == 0)
         {
-            return End(false, "nothing there: the use started nothing, no loot panel came, and it holds no items "
-                              "(empty remains open none)");
+            return End(false, "nothing there: " + use + ", no loot panel came, and it holds no items (empty "
+                              "remains open none)");
         }
-        return End(false, "the use started nothing and no loot panel came, though it holds " + std::to_string(count) +
-                              (count == 1 ? " item" : " items") + " (inspect kind=inventory lists them)");
+        return End(false, "it did not open: " + use + " and no loot panel came, though it holds " +
+                              std::to_string(count) + (count == 1 ? " item" : " items") +
+                              ". A locked one is unlocked first (order action=use objectAction=unlock); inspect "
+                              "kind=placeables says its state and lock");
     }
 
     // Take All, as the panel's own button: the panel closes after, unless

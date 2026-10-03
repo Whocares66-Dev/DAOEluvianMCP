@@ -245,6 +245,18 @@ TEST_CASE("a walk that stops says why, and nothing is used", "[loot]")
     CHECK(chest.calls == std::vector<std::string>{"travel"});
 }
 
+TEST_CASE("an empty body whose use ends with no panel is said to hold nothing, no lock named", "[loot]")
+{
+    Chest chest;
+    chest.opens = false;
+    chest.items = Json::array();
+    const auto answer = chest.Loot(Json{{"target", "0x4c65"}});
+    CHECK(answer["looted"] == false);
+    CHECK(answer["empty"] == true);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("nothing there"));
+    CHECK_THAT(answer["reason"].get<std::string>(), !ContainsSubstring("unlock"));
+}
+
 TEST_CASE("a container that does not open says so once its use has ended", "[loot]")
 {
     Chest chest;
@@ -252,6 +264,7 @@ TEST_CASE("a container that does not open says so once its use has ended", "[loo
     const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
     CHECK(answer["looted"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not open"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the use ended success")); // its end was seen
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("unlock"));
 }
 
@@ -277,7 +290,8 @@ TEST_CASE("a use that starts nothing on a container that holds items says so", "
     CHECK(answer["looted"] == false);
     REQUIRE(answer.contains("empty")); // the use was seen to start nothing
     CHECK(answer["empty"] == false);
-    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("holds 1 item "));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("holds 1 item."));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the use started nothing")); // not the companion's
 }
 
 TEST_CASE("a use the game refuses ends the looting with the refusal, not an error", "[loot]")
