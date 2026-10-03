@@ -97,6 +97,18 @@ std::optional<ObjectId> LootPanelContainer();
 Json LootPanelJson();
 Json PressLootButton(Bench &bench, std::size_t index);
 
+// The data tree's reads the panels share (Gui.cpp): an object id the tree
+// holds in decimal; the creature the interface has selected; the items an
+// inventory holds, its backpack's.
+std::optional<ObjectId> TreeId(std::wstring_view path);
+ObjectId Selected();
+std::vector<ObjectId> ItemsIn(ObjectId owner);
+
+// The store screen (Store.cpp): its store object if one is up, and the
+// store as inspect kind=gui gives it, null with none.
+std::optional<ObjectId> StoreUp();
+Json StoreJson();
+
 Json LineJson(const dao::dialogue::Line &line, bool female);
 bool HeroIsFemale();
 Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female);
@@ -204,5 +216,6 @@ void AddScreen(Bench &bench, const Watch &watch);
 void AddResources(Bench &bench);
 void AddCharacter(Bench &bench, const Watch &watch); // inspect's character, equipment, inventory and item
 void AddGui(Bench &bench, const Watch &watch);       // inspect's gui
+void AddStore(Bench &bench, const Watch &watch);
 
 } // namespace eluvian::game

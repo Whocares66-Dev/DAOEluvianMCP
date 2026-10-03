@@ -80,6 +80,9 @@ loot {"target": "0x1fd"}                        walk there, open it, take all; a
                                                  left, or why it did not open (`empty`: empty remains open nothing)
 levelup {"id": "0x82", "auto": true}           spend its level-up points as the screen's Auto Level Up does;
                                                  answers what was raised and gained
+store {"action": "buy", "item": "0x673", "count": 2}
+                                                 at a merchant's Store screen (talk, then the wares reply);
+                                                 inspect kind=gui's `store` has the stock, prices and money
 inspect {"kind": "gui"}                          what is up: the screens shown (Inventory, Map, Store...), the
                                                  full-screen one, the message box, the loot panel and its items
 game {"action": "press", "button": "Take All"}   the loot panel's buttons, Take All and Close, as a click sends them

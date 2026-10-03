@@ -37,6 +37,8 @@ namespace
 // emptied a body bag, a pile of bones, a chest and a cocoon and closed the
 // panel each time.
 
+} // namespace
+
 // An object id the tree holds as text, in decimal ("1004").
 std::optional<ObjectId> TreeId(std::wstring_view path)
 {
@@ -55,6 +57,9 @@ std::optional<ObjectId> TreeId(std::wstring_view path)
     return value;
 }
 
+namespace
+{
+
 std::wstring TakeAllText(ObjectId container)
 {
     return std::format(L"GUI.SelectedChar.AcquireAllItems {}", container);
@@ -65,6 +70,8 @@ std::vector<std::wstring> CloseTexts(ObjectId selected, ObjectId container)
     return {L"Container.InventoryClosedMessage",
             std::format(L"GameModeController.PerformUseObject {} {} 2", selected, container), L"GUI.HideFullScreenGUI"};
 }
+
+} // namespace
 
 ObjectId Selected()
 {
@@ -82,6 +89,9 @@ std::vector<ObjectId> ItemsIn(ObjectId container)
     }
     return items;
 }
+
+namespace
+{
 
 Json Backpack()
 {
@@ -214,7 +224,9 @@ void AddGui(Bench &bench, const Watch &watch)
                         "which is the Inventory screen: its `container`, the `items` in it, the `backpack`'s items "
                         "and most, and its `buttons`, Take All and Close, with what each sends. game action=press "
                         "presses a button of the message box or the loot panel; the loot tool walks to a "
-                        "container, opens it and takes all in one call. Answers in any mode."},
+                        "container, opens it and takes all in one call. `store`, with a merchant's Store screen up: "
+                        "the `stock` with each item's `price`, the `pack` with what each `sellsFor`, the `money` "
+                        "(copper), the markups; the store tool buys and sells. Answers in any mode."},
         [&watch](const Json &) -> ToolResult {
             // DAOLib's ShownScreens and CurrentFullScreen (0dd22bb, #2): a
             // screen is shown while its movie is drawn, and the full-screen
@@ -234,8 +246,9 @@ void AddGui(Bench &bench, const Watch &watch)
                            {"fullScreen", full ? Json(Narrow(full->name)) : Json(nullptr)},
                            {"popup", PopupJson()}};
             const auto mode = watch.Mode();
-            answer["loot"] =
-                mode < 0 || mode == static_cast<std::int32_t>(dao::GameMode::Loading) ? Json(nullptr) : LootPanelJson();
+            const bool world = mode >= 0 && mode != static_cast<std::int32_t>(dao::GameMode::Loading);
+            answer["loot"] = world ? LootPanelJson() : Json(nullptr);
+            answer["store"] = world ? StoreJson() : Json(nullptr);
             return answer;
         });
 }
