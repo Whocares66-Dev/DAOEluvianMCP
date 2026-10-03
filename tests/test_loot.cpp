@@ -37,12 +37,21 @@ struct Chest
     std::string mode;               // the mode the use brought, if any
     int startIn = 0;                // gui reads until the use starts; 0: started, or none ordered
     int panelIn = 0;                // gui reads until its panel comes; 0: come, or none coming
+    bool walkOpens = false;         // whether the walk opens the target itself on the way, stopped by its pause
 
     Chest()
     {
         bench.Tools().Add(ToolSpec{"travel", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             calls.emplace_back("travel");
             walkArgs = args;
+            if (walkOpens)
+            {
+                panel = args.value("target", "");
+                return Json{{"arrived", false},
+                            {"reason", "the game is paused"},
+                            {"distance", 2.0},
+                            {"opened", Json::array({Json{{"id", panel}}})}};
+            }
             return Json{{"arrived", arrives},
                         {"reason", arrives ? "there" : "a fight began"},
                         {"distance", 1.0},
@@ -172,6 +181,16 @@ TEST_CASE("the panel stays up a moment before Take All for whoever watches, as l
     const auto answer = chest.Loot(Json{{"target", "0x3ec"}, {"showMs", 300}});
     CHECK(answer["looted"] == true);
     CHECK(std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(300));
+}
+
+TEST_CASE("a target the walk itself opened is taken from, its panel's pause no stop", "[loot]")
+{
+    Chest chest;
+    chest.walkOpens = true;
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    CHECK(answer["looted"] == true);
+    CHECK(answer["taken"].size() == 1);
+    CHECK(chest.calls == std::vector<std::string>{"travel", "game press Take All"}); // no use after the walk
 }
 
 TEST_CASE("a panel up already is taken from, with no walk and no use", "[loot]")

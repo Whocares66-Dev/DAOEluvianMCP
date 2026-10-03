@@ -271,6 +271,13 @@ class Journey
                 continue; // something shut on the way: asked again from where it stopped
             }
             const std::string blocker = walk.value(Json::json_pointer("/blocker/id"), std::string());
+            if (!blocker.empty() && blocker == where_.value("target", std::string()))
+            {
+                // The target itself is what stands in the way: it is reached,
+                // not a door to open on the way (a chest in a narrow place was
+                // opened as one, #21).
+                return End(true, "as near as the walk goes: the target itself stands in the way");
+            }
             if (!blocker.empty())
             {
                 if (doors_.size() >= maxDoors_)

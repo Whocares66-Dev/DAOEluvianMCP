@@ -70,6 +70,15 @@ class Looting
                                {"reason", reason},
                                {"distance", walked.value("distance", Json())},
                                {"opened", walked.value("opened", Json::array())}};
+        // The walk may have opened the target itself, as a thing in its way:
+        // a locked chest picked, crates in the path, their panel up and the
+        // game paused, the walk then stopped or the use after it refused
+        // (turn-based-agent, Tower of Ishal, 2026-10-03, #21). Its panel up
+        // is the panel waited for.
+        if (const auto gui = Ask("inspect", Json{{"kind", "gui"}}); gui && PanelOf(*gui) == target_)
+        {
+            return TakeAll();
+        }
         if (!walked.value("arrived", false))
         {
             return End(false, "the walk there stopped: " + reason);

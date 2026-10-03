@@ -33,6 +33,7 @@ struct World
     bool chatter = false;   // whether others' commands end around each order, and the walker's last is cleared
     bool doorLoads = false; // whether the door's use starts a load, refusing the orders after it
     int clears = 0;         // how many moves the game clears before they go, giving no other
+    bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
@@ -86,7 +87,9 @@ struct World
             }
             else if (named || at - door < 1.5)
             {
-                walk = Json{{"found", false}, {"result", "something is in the way"}, {"blocker", {{"id", "0x1f1"}}}};
+                walk = Json{{"found", false},
+                            {"result", "something is in the way"},
+                            {"blocker", {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")}}}};
             }
             else
             {
@@ -298,6 +301,16 @@ TEST_CASE("a search that gets no nearer from as far as it got says there is no w
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no walk there: gave up part way"));
     CHECK(world.orders.size() == 1); // as far as the search got, once
+}
+
+TEST_CASE("a target that is itself in the way is reached, not opened as a door", "[travel]")
+{
+    World world;
+    world.blocksItself = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the target itself"));
+    CHECK(world.orders.empty());
 }
 
 TEST_CASE("no doors allowed, and one in the way", "[travel]")

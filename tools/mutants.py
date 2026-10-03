@@ -1219,6 +1219,21 @@ MUTANTS = [
         "lastWalk.reset(); // not a move made: it does not say the walk goes no nearer\n                    continue;",
         'return End(false, "the walk ended " + *result);',
     ),
+
+    # #21: a target the walk itself opened is taken from; a target in the
+    # walk's way is its end, not a door.
+    Mutant(
+        "loot uses a target the walk already opened",
+        LOOT,
+        "PanelOf(*gui) == target_)",
+        "PanelOf(*gui) == target_ && false)",
+    ),
+    Mutant(
+        "travel opens its own target as a door in the way",
+        TRAVEL,
+        'blocker == where_.value("target", std::string())',
+        'blocker == std::string("no such")',
+    ),
 ]
 
 
