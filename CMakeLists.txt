@@ -134,6 +134,7 @@ add_library(
     src/core/EventLog.cpp
     src/core/FrameQueue.cpp
     src/core/Http.cpp
+    src/core/LevelUp.cpp
     src/core/LogTail.cpp
     src/core/Loot.cpp
     src/core/Mcp.cpp

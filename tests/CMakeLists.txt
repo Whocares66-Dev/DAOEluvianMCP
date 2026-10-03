@@ -28,6 +28,7 @@ add_executable(
     test_event_log.cpp
     test_frame_queue.cpp
     test_http.cpp
+    test_levelup.cpp
     test_log_tail.cpp
     test_loot.cpp
     test_mcp.cpp

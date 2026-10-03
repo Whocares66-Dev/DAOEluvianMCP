@@ -16,6 +16,7 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `pointer` | Hold the game's cursor over a creature, a point or a pixel without a click, for what shows only under the cursor; the real mouse is not moved |
 | `travel` | Walk a creature to a target or point, opening what is shut on the way, or the party to another area by an exit; stops and says why when a fight, a conversation, a message box or a pause takes the journey from it |
 | `loot` | Take what a container holds in one call: walk there, open it, take all as the loot panel's button does; what was taken and what is left, or why it did not open |
+| `levelup` | Spend a creature's level-up points as the game's level-up screen does, through its Auto Level Up: what was raised and gained |
 | `dialogue` | Answer the conversation on the screen: choose a reply, continue, skip a cutscene |
 | `camera` | Read it; face a target, follow a creature, turn: so a screenshot shows what the test means |
 | `screen` | For the real mouse: a pixel to click a creature or object at (on its body, with nothing in front), a world point's pixel, what lies under a pixel; each as the game's pixels, a fraction of the picture and a desktop pixel |

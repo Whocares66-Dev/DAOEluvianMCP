@@ -18,7 +18,7 @@ DAOLib's `CLAUDE.md` has the game, the one exe build every address is from, the 
 src/core/     the bench without the game: HTTP parsing and routes, MCP's JSON-RPC, REST, the tool
               registry, the event bus and its file (EventLog), the queue to the frame thread, arguments, logs
               from a cursor, the game's archive indexes (Erf), and the tools that only decide over other
-              tools' answers (scenario, travel, loot).
+              tools' answers (scenario, travel, loot, levelup).
               No <Windows.h>, no DAOLib, no dao:: type. Tested.
 src/server/   the socket loop under core/Http.h: Winsock, 127.0.0.1, a thread per connection. Tested
               over loopback.

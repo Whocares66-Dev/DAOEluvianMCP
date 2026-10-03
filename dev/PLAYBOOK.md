@@ -73,6 +73,8 @@ inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, t
 order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
 loot {"target": "0x1fd"}                        walk there, open it, take all; answers what was taken and what is
                                                  left, or why it did not open (`empty`: empty remains open nothing)
+levelup {"id": "0x82", "auto": true}           spend its level-up points as the screen's Auto Level Up does;
+                                                 answers what was raised and gained
 inspect {"kind": "gui"}                          what is up: the screens shown (Inventory, Map, Store...), the
                                                  full-screen one, the message box, the loot panel and its items
 game {"action": "press", "button": "Take All"}   the loot panel's buttons, Take All and Close, as a click sends them
