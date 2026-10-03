@@ -366,3 +366,23 @@ The distance after a stop, the level-up and a shop, 2026-10-03 00:40 to 01:15 (D
 - Ilen's wares on GH3 13, the Store screen up after his first reply: `Store.ID` 6654 (the store object, whose stock `inspect kind=inventory` lists: 26 items), `Store.Name`, `Store.MarkUp` 100, `Store.MarkDown` 25, `Party.Money.Total` 78. `Store.SellItem 130 999 1` sold the Greenstone (value 400) for 100 copper, and `Store.BuyItem 130 1651 1` bought a Lesser Health Poultice (value 100) for 100, the stack in the store from 3 to 2. `GUI.HideFullScreenGUI` closed the Store.
 - `travel` to Ilen, a creature, answered "the walk ended COMMAND_FAILED_INVALID_PATH" with 0.45 m left.
 - The smoke test: 63 of 63.
+
+The store, the engine's ability check, a long walk and a conversation run on, 2026-10-03 02:45 to 03:25 (DAOLib `7bab46e`, lib-agent's try-5-6-7, with turn-based-agent's loader `7100dae` and its address files; in its window, under a claim, its saves loaded, none written). #7, #8, #9, #11, #14, #17, #19:
+
+- inspect abilities (#11) on GH3 28's Tower Guard, a bow and no shield, at full stamina (115): Shield Bash and Shield Block `ready` false, `why` "No shield equipped"; the shots and Taunt ready, `cost` 23.02 to 46.04 (the table's 20 to 40 times 1.151, his fatigue). With his stamina set to 12 by the scripts' SetCreatureProperty(id, 8, 12.0, 3), every one `ready` false, "Insufficient stamina". IsAbilityAvailable had said yes to all.
+- A long walk (#19): from the Tower of Ishal's courtyard to the Quartermaster, 229.5 m straight, the walk found at 276.4 m in one search and walked in one move.
+- `store` (#9) at the Quartermaster (GH3 24), after his reply "Let me see what you have.": inspect kind=gui's `store` with MarkUp 115 and MarkDown 25 (a Lesser Injury Kit at 1897, 1650 × 1.15) and 21927 copper; two Elfroot bought at 57 each (21813), the Feral Wolf Charm sold for 4875 (26688) and buyable back.
+- `dialogue ... until: "choice"` (#17): first, a continue with his replies already up waited out its budget, and his talk ending into the Store answered a refusal. Both fixed in the window: a continue ran on to his three replies, and choosing the wares answered `ended`, mode gui, with his line.
+- The smoke test: 63 of 63, on the build before the dialogue fix.
+
+Brief reads and the paperdoll, 2026-10-03 (in turn-based-agent's window, under a claim, its saves loaded, none written). #16, #18:
+
+- `inspect kind=surroundings` at the forest clearing: the party, the creatures, the usable placeables and the exits within 30 m, a line each. The first build wrote "locked (pick 1)" for an unlocked cave entrance, which has a pick level and no lock; the line now says "pick N" and the state says whether it is shut.
+- `equip` on Lyna: the Feral Wolf Charm onto her neck (the Pearl back to the pack) and off again; Blood Dragon Plate refused, `before` equal to `after`, with the note about requirements. In turn-based-agent's play after: Havard's Aegis refused for Alistair's strength, then Band of Fire on his ring and the warpaint on the mabari once each was selected by the binding `SelectPartyMemberIndexMessage <place> 0`.
+
+The world map, control and a walk to a creature, 2026-10-03, the morning (DAOLib `dac5e99`; in turn-based-agent's window, under a claim, its manual 58 loaded, none written; the build `deploy-1003c`). #12, #22, #24:
+
+- `inspect kind=worldmap` with the map down, at Dane's Refuge: 58 pins by index paths, each with its name, tag, area and state; `at` lot100ar_lothering (the map's own place for the party, not the refuge); active Lothering, Party Camp and Flemeth's Hut, Denerim, Redcliffe and the Circle Tower greyed.
+- `order {"action": "control", "id": Alistair}`: `taken` true, the selection following him; back to Lyna the same way; the refuge's exit refused as not of the party.
+- `travel` to the cook, a creature 12 m off behind the kitchen door: the door used, then the move ended COMMAND_FAILED_INVALID_PATH 0.49 m from him, and the answer `arrived` "there" (#12), where it had answered "the walk ended COMMAND_FAILED_INVALID_PATH".
+- Not tried there: travel across the map (`to`) and an autosave waited out (#15), which change the area and so write the game's autosave into the playthrough's slot.
