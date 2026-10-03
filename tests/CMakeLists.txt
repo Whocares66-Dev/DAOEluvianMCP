@@ -32,6 +32,7 @@ add_executable(
     test_levelup.cpp
     test_log_tail.cpp
     test_loot.cpp
+    test_party.cpp
     test_mcp.cpp
     test_origin.cpp
     test_registry.cpp

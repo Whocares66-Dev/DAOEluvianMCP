@@ -16,6 +16,7 @@
 #include "core/LevelUp.h"
 #include "core/Loot.h"
 #include "core/Mcp.h"
+#include "core/Party.h"
 #include "core/Rest.h"
 #include "core/Scenario.h"
 #include "core/Travel.h"
@@ -226,6 +227,7 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     // whoever watches sees it (the user, 2026-10-03, #14).
     AddLootTool(g->bench, std::chrono::seconds(1));
     AddLevelUpTool(g->bench, std::chrono::seconds(1));
+    AddPartyTool(g->bench);
     game::AddHealthTool(g->bench, g->watch, [] {
         static const std::string owner = OwnerSetting();
         return Json{{"port", g->port},

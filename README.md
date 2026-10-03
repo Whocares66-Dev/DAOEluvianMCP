@@ -18,6 +18,7 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `loot` | Take what a container holds in one call: walk there, open it, take all as the loot panel's button does; what was taken and what is left, or why it did not open |
 | `levelup` | Spend a creature's level-up points as the game's level-up screen does, through its Auto Level Up: what was raised and gained |
 | `store` | Buy and sell at a merchant's Store screen as its own buttons do; `inspect kind=gui` reads the stock, prices and money |
+| `party` | The party picker after a recruit and at camp: who is chosen; choose a follower in the picker's scene (found by the name under the cursor), unchoose one, clear, accept |
 | `equip` | Put an item of the pack on, or take one off, as the inventory screen's paperdoll does, so the game's rules hold |
 | `dialogue` | Answer the conversation on the screen: choose a reply, continue, skip a cutscene; or run on to the next choice in one call, with the lines spoken on the way |
 | `camera` | Read it; face a target, follow a creature, turn: so a screenshot shows what the test means |

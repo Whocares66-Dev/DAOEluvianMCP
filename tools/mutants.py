@@ -92,6 +92,7 @@ class Mutant:
 
 TRAVEL = "src/core/Travel.cpp"
 LOOT = "src/core/Loot.cpp"
+PARTY = "src/core/Party.cpp"
 SCENARIO = "src/core/Scenario.cpp"
 BUS = "src/core/EventBus.cpp"
 BENCH = "src/core/Bench.cpp"
@@ -1291,6 +1292,51 @@ MUTANTS = [
         TRAVEL,
         "if (steppedBack || !StepBack(exit))",
         "if (steppedBack)",
+    ),
+    # #25: the party picker; a follower found where the name under the cursor
+    # turns to theirs, in any case; the cursor given back; their slot
+    # unchosen; Accept waited out; a click that chose nobody said.
+    Mutant(
+        "party takes a name read from before for a hit",
+        PARTY,
+        "const bool turned = name != last;",
+        "const bool turned = !name.empty();",
+    ),
+    Mutant(
+        "party names a follower only in their own case",
+        PARTY,
+        "if (turned && Lower(name) == Lower(name_))",
+        "if (turned && name == name_)",
+    ),
+    Mutant(
+        "party leaves the cursor held after a click",
+        PARTY,
+        "Release(); // the cursor the mouse's again once the click is sent",
+        "// no release",
+    ),
+    Mutant(
+        "party unchooses the slot after theirs",
+        PARTY,
+        'Send("GameModeController.UnselectPartyMember " + std::to_string(*slot));',
+        'Send("GameModeController.UnselectPartyMember " + std::to_string(*slot + 1));',
+    ),
+    Mutant(
+        "party answers Accept before the picker closes",
+        PARTY,
+        'while (mode == "partypicker" && Clock::now() < until)',
+        "while (false)",
+    ),
+    Mutant(
+        "party says nothing of a click that chose nobody",
+        PARTY,
+        "if (!SlotOf(Chosen()))",
+        "if (false)",
+    ),
+    Mutant(
+        "party answers Accept before the party holds everyone chosen",
+        PARTY,
+        "party.size() >= chosen)",
+        "party.size() + chosen >= chosen)",
     ),
 ]
 

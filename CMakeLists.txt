@@ -140,6 +140,7 @@ add_library(
     src/core/Loot.cpp
     src/core/Mcp.cpp
     src/core/Origin.cpp
+    src/core/Party.cpp
     src/core/Rest.cpp
     src/core/Scenario.cpp
     src/core/ToolRegistry.cpp
