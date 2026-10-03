@@ -109,9 +109,10 @@ std::vector<ObjectId> ItemsIn(ObjectId owner);
 std::optional<ObjectId> StoreUp();
 Json StoreJson();
 
-Json LineJson(const dao::dialogue::Line &line, bool female);
+Json LineJson(const dao::dialogue::Line &line, bool female, const dao::dialogue::Conversation *conversation = nullptr);
 bool HeroIsFemale();
-Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female);
+Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female,
+                 const dao::dialogue::Conversation *conversation = nullptr);
 
 Json RoomJson(ObjectId id);
 // A creature as every listing and every stage answer gives it.

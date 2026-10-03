@@ -483,7 +483,9 @@ void AddInspect(Bench &bench, const Watch &watch)
         KindSpec{
             "dialogue",
             "The conversation on the screen (health's mode is dialog while one is): the `line` spoken last, "
-            "with its speaker and text, and the `replies` the player may choose from now, in their order, "
+            "with its speaker as the file writes it, `by` (the creature the game resolves it to) and `to` (whom it "
+            "is spoken to) and text, the conversation's `owner`, and the `replies` the player may choose from now, "
+            "in their order, "
             "each with its `place`, text and icon. No replies while the other speaks. The same comes as "
             "events: eluvian.dialogue.line, .replies and .chosen. `cutscene` and `movie` say whether one is playing. "
             "The dialogue tool answers."},
@@ -501,8 +503,11 @@ void AddInspect(Bench &bench, const Watch &watch)
             const bool female = HeroIsFemale();
             const auto current = conversation->CurrentLine();
             const auto line = current ? conversation->LineAt(*current) : std::nullopt;
-            answer["line"] = line ? LineJson(*line, female) : Json(nullptr);
-            answer["replies"] = RepliesJson(dao::dialogue::Replies(), female);
+            answer["line"] = line ? LineJson(*line, female, conversation) : Json(nullptr);
+            answer["replies"] = RepliesJson(dao::dialogue::Replies(), female, conversation);
+            // Whose conversation it is (DAOLib's Owner, #23).
+            const ObjectId owner = conversation->Owner();
+            answer["owner"] = owner != kInvalidObject ? Brief(owner) : Json(nullptr);
             return answer;
         });
 

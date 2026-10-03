@@ -129,7 +129,11 @@ struct Talker
         {
             bench.Events().Emit("eluvian.mode.changed", Json{{"from", "cutscene"}, {"to", "dialog"}});
         }
-        bench.Events().Emit("eluvian.dialogue.line", Json{{"speaker", "OWNER"}, {"text", nodes[node].line}});
+        bench.Events().Emit("eluvian.dialogue.line",
+                            Json{{"speaker", "OWNER"},
+                                 {"by", {{"id", "0x9c"}}},
+                                 {"to", {{"listener", "PLAYER"}, {"creature", {{"id", "0x82"}}}}},
+                                 {"text", nodes[node].line}});
         speaking = slow;
         if (!slow)
         {
@@ -163,6 +167,8 @@ TEST_CASE("a choice goes on to the next real one, with every line spoken on the 
     CHECK(answer["done"] == true);
     REQUIRE(answer["lines"].size() == 2);
     CHECK(answer["lines"][0]["text"] == "Hmm.");
+    CHECK(answer["lines"][0]["by"]["id"] == "0x9c");             // who spoke, as the event named them
+    CHECK(answer["lines"][0]["to"]["creature"]["id"] == "0x82"); // and to whom
     CHECK(answer["lines"][1]["text"] == "What will it be?");
     REQUIRE(answer["replies"].size() == 2);
     CHECK(answer["replies"][0]["text"] == "Your wares.");

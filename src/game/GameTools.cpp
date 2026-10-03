@@ -166,6 +166,10 @@ void DescribeTopics(EventCatalog &topics)
              "are conversations too). Some have no text: a line that only routes to the next.",
              Json{{"index", "the line's place in the conversation's file"},
                   {"speaker", "who, as the file writes it: a tag, OWNER or PLAYER"},
+                  {"by", "the creature who speaks it {id, name, tag}, as the game resolves the file's speaker: "
+                         "OWNER the conversation's owner, PLAYER the hero, a tag the creature that has it"},
+                  {"to", "whom it is spoken to: `listener` as the file writes it (often empty) and the "
+                         "`creature` the game resolves"},
                   {"text", "the line, in the player's language"}});
     describe("eluvian.dialogue.replies", "The replies now offered to the player, in their order on the screen.",
              Json{{"replies", "each with its place, index, text and icon"}});
@@ -255,14 +259,14 @@ void AddEngineEvents(Bench &bench)
     });
     // Conversations, as DAOLib's hooks see them: inside the engine's own
     // work, so each does no more than read the line and put it on the bus.
-    dao::dialogue::OnNpcLine([&bench](dao::dialogue::Conversation &, const dao::dialogue::Line &line) {
-        bench.Events().Emit("eluvian.dialogue.line", LineJson(line, HeroIsFemale()));
+    dao::dialogue::OnNpcLine([&bench](dao::dialogue::Conversation &talk, const dao::dialogue::Line &line) {
+        bench.Events().Emit("eluvian.dialogue.line", LineJson(line, HeroIsFemale(), &talk));
     });
-    dao::dialogue::OnReplies([&bench](dao::dialogue::Conversation &, std::span<const dao::dialogue::Line> replies) {
-        bench.Events().Emit("eluvian.dialogue.replies", Json{{"replies", RepliesJson(replies, HeroIsFemale())}});
+    dao::dialogue::OnReplies([&bench](dao::dialogue::Conversation &talk, std::span<const dao::dialogue::Line> replies) {
+        bench.Events().Emit("eluvian.dialogue.replies", Json{{"replies", RepliesJson(replies, HeroIsFemale(), &talk)}});
     });
-    dao::dialogue::OnReplyChosen([&bench](dao::dialogue::Conversation &, const dao::dialogue::Line &reply) {
-        bench.Events().Emit("eluvian.dialogue.chosen", LineJson(reply, HeroIsFemale()));
+    dao::dialogue::OnReplyChosen([&bench](dao::dialogue::Conversation &talk, const dao::dialogue::Line &reply) {
+        bench.Events().Emit("eluvian.dialogue.chosen", LineJson(reply, HeroIsFemale(), &talk));
     });
     dao::saves::OnSaved([&bench](const dao::saves::Slot &slot) {
         bench.Events().Emit("eluvian.game.saved", Json{{"character", Narrow(slot.character)},

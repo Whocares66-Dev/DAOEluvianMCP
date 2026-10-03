@@ -130,8 +130,10 @@ class Talk
                 {
                     if (const auto text = event->payload.value("text", std::string()); !text.empty())
                     {
-                        lines_.push_back(
-                            Json{{"speaker", event->payload.value("speaker", std::string())}, {"text", text}});
+                        lines_.push_back(Json{{"speaker", event->payload.value("speaker", std::string())},
+                                              {"by", event->payload.value("by", Json())},
+                                              {"to", event->payload.value("to", Json())},
+                                              {"text", text}});
                     }
                     continue;
                 }
@@ -297,7 +299,8 @@ void AddDialogueTool(Bench &bench)
                  "\"choice\", it goes on from there to the next real choice in one call: an answer the game "
                  "ignored is asked again, a reply with no text gone through, and the lines play as they would "
                  "for a player (`skipLines`: true cuts each short); it answers every line spoken on the way "
-                 "(`lines`: speaker and text), the `replies` of the next choice, or that it `ended` and the "
+                 "(`lines`: speaker as the file writes it, `by` and `to` the creatures, and text), the `replies` of "
+                 "the next choice, or that it `ended` and the "
                  "`mode` after (explore, a cutscene, a fight, an area loading). Without `until` it answers that "
                  "the game was asked, and `cursor`: wait_for eluvian.dialogue.chosen, .line or "
                  "eluvian.mode.changed from it. `budgetMs` (default 60000) bounds an `until`.",

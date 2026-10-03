@@ -1345,6 +1345,13 @@ MUTANTS = [
         'why.starts_with("no walk there"))',
         "false)",
     ),
+    # #23: who spoke a line goes with it.
+    Mutant(
+        "dialogue drops who spoke a line",
+        CONVERSATION,
+        '{"by", event->payload.value("by", Json())},',
+        '{"by", Json()},',
+    ),
 ]
 
 

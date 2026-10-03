@@ -2,6 +2,8 @@
 // checks before the game is touched, and the watch on deaths.
 #include "game/Shared.h"
 
+#include <algorithm>
+#include <cwctype>
 #include <regex>
 
 namespace eluvian::game
@@ -175,6 +177,59 @@ Json PopupJson()
 namespace
 {
 
+// Who speaks a line, by the game's objects, where the file names the
+// speaker by a tag ("OWNER" for the conversation's own creature, "PLAYER",
+// or a creature's tag) and an agent reading it learned nothing of who
+// spoke: the Tower Guard's lines all read OWNER (turn-based-agent,
+// 2026-10-03, #23). The engine's own answer first, the one the camera and
+// lip sync follow (DAOLib's Speaker, lib-agent's #10 that day: OWNER the
+// conversation's owner, PLAYER the player, HENCH a party member, any other
+// text a tag near the owner). Without a conversation to ask, the player's
+// lines are the hero's (GetPCSpeaker) and a tag is the nearest creature
+// that has it; OWNER then is null, no script command giving it
+// (GetLastSpeaker, 439, has no function).
+Json SpeakerJson(const dao::dialogue::Line &line, const dao::dialogue::Conversation *conversation)
+{
+    if (conversation != nullptr)
+    {
+        if (const auto who = conversation->Speaker(line.index); who && *who != kInvalidObject)
+        {
+            return Brief(*who);
+        }
+    }
+    std::wstring speaker = line.speaker;
+    std::ranges::transform(speaker, speaker.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towupper(c)); });
+    if (line.kind == dao::dialogue::Line::Kind::Player || speaker == L"PLAYER")
+    {
+        const ObjectId pc = api::GetPCSpeaker();
+        return Brief(pc != kInvalidObject ? pc : api::GetHero());
+    }
+    if (speaker.empty() || speaker == L"OWNER")
+    {
+        return nullptr;
+    }
+    const ObjectId nearest = api::UT_GetNearestObjectByTag(api::GetHero(), line.speaker, 1);
+    return nearest != kInvalidObject ? Brief(nearest) : Json(nullptr);
+}
+
+// Whom a line is spoken to, as the file names the listener (often empty)
+// and as the engine resolves it (DAOLib's Listener). For an empty one the
+// engine falls back to whoever began the conversation, BeginConversation's
+// oInitiator (the character the player controls, for a creature told to
+// talk to itself), as addr-lib-agent read it; the owner is its oTarget
+// (DAOLib ecb1f60's notes, 2026-10-03, #23). Not yet seen in play. Null
+// without a conversation to ask.
+Json ListenerJson(const dao::dialogue::Line &line, const dao::dialogue::Conversation *conversation)
+{
+    if (conversation == nullptr)
+    {
+        return nullptr;
+    }
+    const auto who = conversation->Listener(line.index);
+    return Json{{"listener", Narrow(line.listener)},
+                {"creature", who && *who != kInvalidObject ? Brief(*who) : Json(nullptr)}};
+}
+
 // A line's text as the screen shows it, in plain text: the engine's own
 // token replacement (DAOLib 7bab46e, ReplaceDesignerTags), which fills in
 // <FirstName/> and the like that replies held unresolved (#17), and turns
@@ -196,11 +251,17 @@ std::wstring Shown(std::wstring_view text)
 // in and its markup taken out. A line may have no text: an NPC line that
 // only routes, a "continue" reply (DAOLib's Dialogue.h, seen at Highever,
 // 2026-09-30).
-Json LineJson(const dao::dialogue::Line &line, bool female)
+Json LineJson(const dao::dialogue::Line &line, bool female, const dao::dialogue::Conversation *conversation)
 {
+    if (conversation == nullptr)
+    {
+        conversation = dao::dialogue::Current();
+    }
     Json json = {
         {"index", line.index},
         {"speaker", Narrow(line.speaker)},
+        {"by", SpeakerJson(line, conversation)},
+        {"to", ListenerJson(line, conversation)},
         {"text", line.text == 0xFFFFFFFF ? std::string() : Narrow(Shown(dao::tlk::String(line.text, female)))}};
     if (line.kind == dao::dialogue::Line::Kind::Player)
     {
@@ -216,12 +277,13 @@ bool HeroIsFemale()
 
 // The replies on the screen, each with its `place` among them: the number
 // a choice names.
-Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female)
+Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female,
+                 const dao::dialogue::Conversation *conversation)
 {
     Json list = Json::array();
     for (std::size_t place = 0; place < replies.size(); ++place)
     {
-        Json reply = LineJson(replies[place], female);
+        Json reply = LineJson(replies[place], female, conversation);
         reply["place"] = place;
         list.push_back(std::move(reply));
     }
