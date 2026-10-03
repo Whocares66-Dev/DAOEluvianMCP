@@ -39,6 +39,8 @@ struct World
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
     std::string loadOn;  // an order after which an area loads, and the frame tools have no frame
+    int loadFor = 100;   // health calls the load lasts: an autosave's is short, and the area stays
+    std::string loadInto; // the area a load ends in, if another
     std::vector<Json> orders;
     std::string area = "ruins"; // the area's tag
     bool crosses = true;        // whether using the exit takes the party out
@@ -171,7 +173,11 @@ struct World
             if (action == loadOn)
             {
                 mode = "loading";
-                loadingFor = 100;
+                loadingFor = loadFor;
+                if (!loadInto.empty())
+                {
+                    area = loadInto;
+                }
             }
             const std::string type = action == "move" ? "MoveToLocation" : "UseObject";
             if (chatter)
@@ -429,6 +435,27 @@ TEST_CASE("an area that begins to load ends the journey, with no distance rather
     CHECK(answer["arrived"] == false);
     CHECK(answer["reason"] == "an area is loading");
     CHECK_FALSE(answer.contains("distance")); // no frame to measure it in; the 30 m from before the move is stale
+}
+
+TEST_CASE("the game's autosave on the way is waited out, and the journey goes on", "[travel]")
+{
+    World world;
+    world.loadOn = "use"; // the door's use makes the game autosave
+    world.loadFor = 2;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["opened"].size() == 1);
+}
+
+TEST_CASE("a load that ends in another area ends the journey, saying which", "[travel]")
+{
+    World world;
+    world.loadOn = "use";
+    world.loadFor = 2;
+    world.loadInto = "forest";
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("another area loaded: forest"));
 }
 
 TEST_CASE("a fight that takes a move's end with it is said, though the end never comes", "[travel]")

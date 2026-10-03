@@ -1247,6 +1247,20 @@ MUTANTS = [
         'if (after->value("distance", within_ + 1) <= within_)',
         "if (false)",
     ),
+    # #15: an autosave's loading is waited out; a load into another area is
+    # the journey's end.
+    Mutant(
+        "travel stops for an autosave as for an area loading",
+        TRAVEL,
+        "return NotMine(); // an autosave, done",
+        'return std::string("an area is loading"); // an autosave, done',
+    ),
+    Mutant(
+        "travel walks on after a load into another area",
+        TRAVEL,
+        "if (!startArea_.empty() && area != startArea_)",
+        "if (false)",
+    ),
 ]
 
 

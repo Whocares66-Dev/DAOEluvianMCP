@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 namespace eluvian
@@ -83,6 +84,7 @@ class Journey
         // A use by the controlled creature goes by click, which chooses what
         // the object takes; another's goes by command and must name it.
         byClick_ = who_ == controlled;
+        startArea_ = game.value(Json::json_pointer("/area/tag"), std::string());
         const bool leaving = !exit_.empty() || !area_.empty();
         if (leaving)
         {
@@ -354,6 +356,39 @@ class Journey
         return std::max(milliseconds(0), std::chrono::duration_cast<milliseconds>(deadline_ - Clock::now()));
     }
 
+    // The game's loading mode, waited out: it shows it while it autosaves,
+    // as while an area loads, and an autosave leaves the area as it was. A
+    // walk in the Korcari Wilds stopped "an area is loading" for the game's
+    // own autosave on the way (turn-based-agent, 2026-10-03, #15). Nothing
+    // if the journey can go on: the mode back and the area the same.
+    std::optional<std::string> WaitOutLoad()
+    {
+        while (Left().count() > 0)
+        {
+            const Json health = bench_.Invoke("health", Json::object()).data;
+            if (health.value("mode", std::string()) != "loading")
+            {
+                break;
+            }
+            std::this_thread::sleep_for(std::min(Left(), milliseconds(250)));
+        }
+        if (Left().count() == 0)
+        {
+            return "an area is loading";
+        }
+        const auto game = Ask("inspect", Json{{"kind", "game"}});
+        if (!game)
+        {
+            return "an area is loading";
+        }
+        const std::string area = game->value(Json::json_pointer("/area/tag"), std::string());
+        if (!startArea_.empty() && area != startArea_)
+        {
+            return "another area loaded: " + area;
+        }
+        return std::nullopt;
+    }
+
     // Why the journey is no longer this tool's to make, if it is not.
     std::optional<std::string> NotMine()
     {
@@ -374,7 +409,11 @@ class Journey
         }
         if (mode == "loading")
         {
-            return "an area is loading";
+            if (auto why = WaitOutLoad())
+            {
+                return why;
+            }
+            return NotMine(); // an autosave, done: the journey goes on, the rest asked again
         }
         if (health.value("paused", false))
         {
@@ -393,7 +432,11 @@ class Journey
     std::optional<std::string> Order(const Json &order, const char *type, std::string what)
     {
         measured_ = false;
-        const auto ordered = Ask("order", order);
+        auto ordered = Ask("order", order);
+        if (!ordered && stopped_ && stopped_->find("loading") != std::string::npos && !WaitOutLoad())
+        {
+            ordered = Ask("order", order); // refused as an autosave began: once more after it
+        }
         if (!ordered)
         {
             steps_.push_back(Json{{"did", what}, {"result", *stopped_}});
@@ -501,6 +544,7 @@ class Journey
     std::string area_;     // `area`: the area to reach, by an exit that leads there
     Json exitAt_;          // the exit chosen, as inspect kind=exits gave it
     std::string fromArea_; // the area's tag before the crossing
+    std::string startArea_; // the area's tag as the journey began
     std::string who_;
     bool byClick_ = false;
     bool wentToReached_ = false;
