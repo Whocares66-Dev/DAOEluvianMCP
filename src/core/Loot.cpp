@@ -6,6 +6,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -81,7 +82,12 @@ class Looting
     // panel: what else came instead is said.
     Json Open()
     {
-        const Json given = bench_.Invoke("order", Json{{"action", "use"}, {"target", target_}}).data;
+        const auto taken = Ask("order", Json{{"action", "use"}, {"target", target_}});
+        if (!taken)
+        {
+            return End(false, "the use was refused: " + refused_);
+        }
+        const Json &given = *taken;
         const auto ordered = Clock::now();
         const std::string who = given.value(Json::json_pointer("/creature/id"), std::string());
         auto since = given.value("cursor", bench_.Events().Next());
@@ -102,7 +108,13 @@ class Looting
                     endedAt = Clock::now();
                 }
             }
-            const Json gui = Gui();
+            const auto read = Ask("inspect", Json{{"kind", "gui"}});
+            if (!read)
+            {
+                return End(false, "as it opened, the game stopped answering: " + refused_ +
+                                      "; wait_for eluvian.mode.changed, then inspect kind=gui says what came");
+            }
+            const Json &gui = *read;
             const std::string open = PanelOf(gui);
             if (open == target_)
             {
@@ -144,7 +156,7 @@ class Looting
     // A use that started nothing: what the container holds says why.
     Json Untouched()
     {
-        const Json inventory = bench_.Invoke("inspect", Json{{"kind", "inventory"}, {"id", target_}}).data;
+        const Json inventory = Ask("inspect", Json{{"kind", "inventory"}, {"id", target_}}).value_or(Json::object());
         const auto count = inventory.value("count", 0);
         answer_["empty"] = count == 0;
         if (count == 0)
@@ -164,7 +176,12 @@ class Looting
         // call it opened and closed within a frame or two, never seen (the
         // user, 2026-10-03, #14). The frames go on meanwhile.
         std::this_thread::sleep_for(std::min(show_, Left()));
-        const Json pressed = bench_.Invoke("game", Json{{"action", "press"}, {"button", "Take All"}}).data;
+        const auto press = Ask("game", Json{{"action", "press"}, {"button", "Take All"}});
+        if (!press)
+        {
+            return End(false, "Take All was refused: " + refused_);
+        }
+        const Json &pressed = *press;
         for (const char *key : {"container", "taken", "left", "full", "backpack", "sent"})
         {
             if (pressed.contains(key))
@@ -185,6 +202,27 @@ class Looting
     Json Gui()
     {
         return bench_.Invoke("inspect", Json{{"kind", "gui"}}).data;
+    }
+
+    // A call the game refuses for its state (an area loading, the frame
+    // stalled), once looting is under way: the looting ends with the
+    // refusal said, not thrown, as travel's journeys do (#7). Nothing if
+    // refused, and `refused_` says why.
+    std::optional<Json> Ask(std::string_view tool, const Json &args)
+    {
+        try
+        {
+            return bench_.Invoke(tool, args).data;
+        }
+        catch (const ToolError &e)
+        {
+            refused_ = e.what();
+        }
+        catch (const FrameTimeout &e)
+        {
+            refused_ = std::string("no answer from ") + std::string(tool) + ": " + e.what();
+        }
+        return std::nullopt;
     }
 
     static std::string PanelOf(const Json &gui)
@@ -208,6 +246,7 @@ class Looting
     Clock::time_point deadline_;
     milliseconds show_;
     std::string target_;
+    std::string refused_; // why the last call Ask made was refused
     Json answer_ = Json::object();
 };
 

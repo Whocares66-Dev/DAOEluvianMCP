@@ -29,6 +29,7 @@ struct Chest
     bool chatter = false;     // whether a companion's use ends as the looter's is ordered
     int startsLate = 0;       // gui reads after the order before the use starts: the looter still on its way
     int panelLate = 0;        // gui reads after the use before its panel comes
+    bool refuses = false;     // whether the game refuses the use: an area loading
     Json items = Json::array({Json{{"id", "0x500"}, {"name", "Greenstone"}}});
     std::vector<std::string> calls; // the tools called, in order
     Json walkArgs;                  // what the walk there was given
@@ -49,6 +50,10 @@ struct Chest
         });
         bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             calls.emplace_back("order " + args.value("action", ""));
+            if (refuses)
+            {
+                throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
+            }
             const auto cursor = bench.Events().Next();
             used = args.value("target", "");
             if (chatter)
@@ -254,6 +259,16 @@ TEST_CASE("a use that starts nothing on a container that holds items says so", "
     REQUIRE(answer.contains("empty")); // the use was seen to start nothing
     CHECK(answer["empty"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("holds 1 item "));
+}
+
+TEST_CASE("a use the game refuses ends the looting with the refusal, not an error", "[loot]")
+{
+    Chest chest;
+    chest.refuses = true;
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    CHECK(answer["looted"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("an area is loading"));
+    CHECK(answer["walk"]["arrived"] == true);
 }
 
 TEST_CASE("a message box instead of the panel is said, with how to answer it", "[loot]")

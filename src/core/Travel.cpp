@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace eluvian
@@ -131,7 +132,10 @@ class Journey
         const std::string to = exitAt_.value(Json::json_pointer("/leadsTo/area"), std::string());
         auto since = bench_.Events().Next();
         measured_ = false;
-        bench_.Invoke("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}});
+        if (!Ask("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}}))
+        {
+            return End(false, *stopped_);
+        }
         steps_.push_back(Json{{"did", "use " + exit}, {"result", "asked"}});
         const auto loaded = EventFilter::FromArgs(Json{{"topic", "eluvian.script.area_loaded"}});
         while (Left().count() > 0)
@@ -148,7 +152,13 @@ class Journey
             {
                 continue;
             }
-            const Json game = bench_.Invoke("inspect", Json{{"kind", "game"}}).data;
+            // Refused as the other area comes in: asked again.
+            const auto read = Ask("inspect", Json{{"kind", "game"}});
+            if (!read)
+            {
+                continue;
+            }
+            const Json &game = *read;
             const std::string area = game.value(Json::json_pointer("/area/tag"), std::string());
             if (!area.empty() && area != fromArea_)
             {
@@ -193,7 +203,12 @@ class Journey
             }
             Json ask = where_;
             ask.update(Json{{"kind", "geometry"}, {"id", who_}, {"walk", true}, {"waypoints", true}});
-            const Json geometry = bench_.Invoke("inspect", ask).data;
+            const auto measured = Ask("inspect", ask);
+            if (!measured)
+            {
+                return End(false, *stopped_);
+            }
+            const Json &geometry = *measured;
             const Json walk = geometry.value("walk", Json::object());
             const double distance = geometry.value("distance", 0.0);
             answer_["distance"] = distance;
@@ -334,7 +349,13 @@ class Journey
     std::optional<std::string> Order(const Json &order, const char *type, std::string what)
     {
         measured_ = false;
-        const Json given = bench_.Invoke("order", order).data;
+        const auto ordered = Ask("order", order);
+        if (!ordered)
+        {
+            steps_.push_back(Json{{"did", what}, {"result", *stopped_}});
+            return std::nullopt;
+        }
+        const Json &given = *ordered;
         auto since = given.value("cursor", bench_.Events().Next());
         const auto filter =
             EventFilter::FromArgs(Json{{"topic", "eluvian.command.ended"}, {"match", {{"id", who_}, {"type", type}}}});
@@ -361,6 +382,28 @@ class Journey
             }
             steps_.push_back(Json{{"did", std::move(what)}, {"result", result}});
             return result;
+        }
+        return std::nullopt;
+    }
+
+    // A call the game refuses for its state mid-journey stops the journey
+    // with the refusal for its reason, the steps and the doors kept: a door
+    // whose plot put the game in its loading mode a frame after its use
+    // ended had the next move refused, and the refusal thrown up lost them
+    // (#7, 2026-10-02). Nothing if refused, and `stopped_` says why.
+    std::optional<Json> Ask(std::string_view tool, const Json &args)
+    {
+        try
+        {
+            return bench_.Invoke(tool, args).data;
+        }
+        catch (const ToolError &e)
+        {
+            stopped_ = e.what();
+        }
+        catch (const FrameTimeout &e)
+        {
+            stopped_ = std::string("the game did not answer ") + std::string(tool) + ": " + e.what();
         }
         return std::nullopt;
     }

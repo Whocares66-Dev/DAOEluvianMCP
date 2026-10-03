@@ -18,19 +18,20 @@ namespace
 struct World
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
-    double at = 30;        // metres from the goal
-    double door = 10;      // where the door stands, from the goal
-    bool shut = true;      // the door
-    bool opens = true;     // whether a use opens it
-    bool named = true;     // whether the search names the door from afar
-    bool stuck = false;    // whether a move ends where it began: the walk's end is where none can stand
-    double shortBy = 0;    // how far from the goal a walk ends: the goal fills its own place
-    double partway = 0;    // where a move stops, if not where it was sent
-    bool hidden = false;   // whether the search walks through the shut door until a move is stopped at it
-    double reach = 1;      // how far short of the door a search that cannot name it gets
-    std::string moveFails; // the result every move ends with instead of success, if any
-    bool silent = false;   // whether a move's end never comes: a fight takes the command with it
-    bool chatter = false;  // whether others' commands end around each order, and the walker's last is cleared
+    double at = 30;         // metres from the goal
+    double door = 10;       // where the door stands, from the goal
+    bool shut = true;       // the door
+    bool opens = true;      // whether a use opens it
+    bool named = true;      // whether the search names the door from afar
+    bool stuck = false;     // whether a move ends where it began: the walk's end is where none can stand
+    double shortBy = 0;     // how far from the goal a walk ends: the goal fills its own place
+    double partway = 0;     // where a move stops, if not where it was sent
+    bool hidden = false;    // whether the search walks through the shut door until a move is stopped at it
+    double reach = 1;       // how far short of the door a search that cannot name it gets
+    std::string moveFails;  // the result every move ends with instead of success, if any
+    bool silent = false;    // whether a move's end never comes: a fight takes the command with it
+    bool chatter = false;   // whether others' commands end around each order, and the walker's last is cleared
+    bool doorLoads = false; // whether the door's use starts a load, refusing the orders after it
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
@@ -41,6 +42,7 @@ struct World
     bool exitActive = true;     // whether the exit is active
     bool loads = false;         // whether the crossing loads the other area over a health call
     int loadingFor = 0;         // health calls an area's loading is still said for
+    int readsWhileLoading = 0;  // frame reads asked while it loads: each waits out the frame timeout in the game
     bool asks = false;          // whether the game asks first, with a message box
     Json popup = nullptr;
 
@@ -57,6 +59,7 @@ struct World
         bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             if (mode == "loading")
             {
+                ++readsWhileLoading;
                 throw FrameTimeout("no frame took the call within 2000 ms"); // as a frame tool's, while frames stop
             }
             if (args.value("kind", "") == "game")
@@ -91,6 +94,10 @@ struct World
             return Json{{"from", {{"id", args.value("id", "")}}}, {"to", {0, 0, 0}}, {"distance", at}, {"walk", walk}};
         });
         bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
+            if (doorLoads && !shut)
+            {
+                throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
+            }
             orders.push_back(args);
             const auto cursor = bench.Events().Next();
             const std::string action = args.value("action", "");
@@ -316,6 +323,18 @@ TEST_CASE("a walk a fight stops part way says what is left where it stopped", "[
     CHECK(answer["distance"] == 8.3); // not the 30 measured before the move
 }
 
+TEST_CASE("a door whose plot starts a load stops the journey with the refusal, the door kept", "[travel]")
+{
+    World world;
+    world.doorLoads = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("an area is loading"));
+    REQUIRE(answer["opened"].size() == 1);
+    CHECK(answer["opened"][0]["id"] == "0x1f1");
+    CHECK(world.orders.size() == 1); // the use; the move after it was refused
+}
+
 TEST_CASE("a paused game is said, not waited out", "[travel]")
 {
     World world;
@@ -524,6 +543,7 @@ TEST_CASE("a crossing waits while the other area loads, and answers once it is i
     REQUIRE(answer["arrived"] == true);
     CHECK(answer["area"]["tag"] == "forest");
     CHECK(answer["mode"] == "explore");
+    CHECK(world.readsWhileLoading == 0); // health said loading: no read that waits for a frame
 }
 
 TEST_CASE("a fight before the party leaves stops the crossing, and says so", "[travel]")

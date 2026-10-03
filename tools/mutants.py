@@ -1192,6 +1192,20 @@ MUTANTS = [
         "if (skipLines_ && replies.empty()",
         "if (!skipLines_ && replies.empty()",
     ),
+    # #7: a call the game refuses mid-journey ends the journey with the
+    # refusal, the steps kept, instead of going up as the call's error.
+    Mutant(
+        "travel throws a refusal mid-journey up",
+        TRAVEL,
+        "stopped_ = e.what();",
+        "throw ToolError(e.what());",
+    ),
+    Mutant(
+        "loot throws a refusal mid-way up",
+        LOOT,
+        "refused_ = e.what();",
+        "throw ToolError(e.what());",
+    ),
 ]
 
 
