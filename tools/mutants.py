@@ -1234,6 +1234,13 @@ MUTANTS = [
         'blocker == where_.value("target", std::string())',
         'blocker == std::string("no such")',
     ),
+    Mutant(
+        "travel takes its cursor at the end, past its own events",
+        TRAVEL,
+        """(noticed writing the mutants, 2026-10-03, #13).
+        answer_["cursor"] = bench_.Events().Next();""",
+        "(noticed writing the mutants, 2026-10-03, #13).",
+    ),
 ]
 
 

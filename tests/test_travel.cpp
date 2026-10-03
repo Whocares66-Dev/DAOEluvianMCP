@@ -313,6 +313,16 @@ TEST_CASE("a target that is itself in the way is reached, not opened as a door",
     CHECK(world.orders.empty());
 }
 
+TEST_CASE("the cursor is taken as the journey begins, so its events are read from it", "[travel]")
+{
+    World world;
+    world.shut = false;
+    const auto before = world.bench.Events().Next();
+    const auto answer = world.Travel();
+    CHECK(answer["cursor"] == before); // the move's end, emitted during the journey, is after it
+    CHECK_FALSE(world.bench.Events().Since(answer["cursor"].get<std::uint64_t>(), EventFilter{}, 10).events.empty());
+}
+
 TEST_CASE("no doors allowed, and one in the way", "[travel]")
 {
     World world;

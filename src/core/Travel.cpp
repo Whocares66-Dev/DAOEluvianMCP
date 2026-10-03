@@ -34,6 +34,11 @@ class Journey
         : bench_(bench), deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 600000))),
           maxDoors_(static_cast<std::size_t>(args.Integer("maxDoors", 4, 0, 20))), within_(args.Number("within", 1.5))
     {
+        // The bus's place as the journey begins, so that the events from it
+        // are the journey's: a door's fight, a plot's step, the walk's
+        // commands. It was taken at the end, and read nothing of them
+        // (noticed writing the mutants, 2026-10-03, #13).
+        answer_["cursor"] = bench_.Events().Next();
         const int given = (args.Has("target") ? 1 : 0) + (args.Has("point") ? 1 : 0) + (args.Has("exit") ? 1 : 0) +
                           (args.Has("area") ? 1 : 0);
         if (given != 1)
@@ -470,7 +475,6 @@ class Journey
         answer_["who"] = who_;
         answer_["opened"] = doors_;
         answer_["steps"] = steps_;
-        answer_["cursor"] = bench_.Events().Next();
         return answer_;
     }
 
@@ -507,7 +511,7 @@ void AddTravelTool(Bench &bench)
                  "there), `reason`, the `distance` left, what it "
                  "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
                  "its to make: a fight began, a conversation or cutscene took the screen, the game is paused. "
-                 "Opening a door may start a fight or a plot's step; the events from `cursor` say what followed. "
+                 "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say what came of the journey. "
                  "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
                  "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
                  "comes once the other `area` is in place; it stops and says so if the game asks first (a "
