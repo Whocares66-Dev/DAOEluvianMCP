@@ -159,7 +159,9 @@ void AddOrder(Bench &bench, const Watch &watch)
         ToolSpec{"order",
                  "Give an order as the player does, by id. `action`: attack `target`; move to `point`; ability "
                  "`ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable: a "
-                 "door, a chest, a lever). "
+                 "door, a chest, a lever); control, make `id`, a party member, the creature controlled, as a "
+                 "click on its portrait does (out of combat a follower takes an order by command poorly; "
+                 "control it, then order it by click). "
                  "`via`: \"command\" (the default, but for use by the controlled creature) gives it through "
                  "the engine's own click functions, so the "
                  "command is player-issued and anything watching the command queue sees one; any creature "
@@ -178,7 +180,7 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "own events).",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"attack", "move", "ability", "use"}}}},
+                       {{"action", {{"type", "string"}, {"enum", {"attack", "move", "ability", "use", "control"}}}},
                         {"id", {{"description", "Who obeys: a creature id; default the one controlled"}}},
                         {"target", {{"description", "A creature or object id"}}},
                         {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
@@ -206,9 +208,30 @@ void AddOrder(Bench &bench, const Watch &watch)
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "order");
-            const auto action = args.Choice("action", {"attack", "move", "ability", "use"});
+            const auto action = args.Choice("action", {"attack", "move", "ability", "use", "control"});
             RequireWorld(watch, "order");
             const ObjectId controlled = api::GetMainControlled();
+            if (action == "control")
+            {
+                // The scripts' SetPrimaryControlled, what the game's own
+                // scripts use to hand control to a follower. A follower given
+                // an order by command out of combat took none, and the
+                // selection's binding left the hero controlled
+                // (turn-based-agent, 2026-10-03, #22).
+                const ObjectId member = args.Id("id", "a party member, as inspect kind=game lists the party");
+                if (!PartyOf(api::GetHero()).contains(member))
+                {
+                    throw ToolError(
+                        std::format("order: {} is not in the party; inspect kind=game lists it", FormatId(member)));
+                }
+                api::SetPrimaryControlled(member);
+                const ObjectId now = api::GetMainControlled();
+                return Json{{"action", action},
+                            {"before", Brief(controlled)},
+                            {"controlled", Brief(now)},
+                            {"taken", now == member},
+                            {"cursor", bench.Events().Next()}};
+            }
             const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(controlled);
             if (who == kInvalidObject)
             {
