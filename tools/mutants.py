@@ -222,7 +222,7 @@ MUTANTS = [
         "travel walks on while an area loads",
         TRAVEL,
         'if (mode == "loading")\n        {\n            if (auto why = WaitOutLoad())',
-        'if (false)\n        {\n            if (auto why = WaitOutLoad())',
+        "if (false)\n        {\n            if (auto why = WaitOutLoad())",
     ),
     Mutant(
         "travel walks in a paused game",
@@ -1266,6 +1266,18 @@ MUTANTS = [
         TRAVEL,
         "if (const auto box = Box())",
         "if (const auto box = std::optional<std::string>())",
+    ),
+    Mutant(
+        "dialogue does not say how to skip the cutscene a conversation ends into",
+        CONVERSATION,
+        'if (mode == "cutscene")',
+        "if (false)",
+    ),
+    Mutant(
+        "dialogue asks an ignored choice more than three times",
+        CONVERSATION,
+        "constexpr int kMostTries = 3;",
+        "constexpr int kMostTries = 5;",
     ),
 ]
 

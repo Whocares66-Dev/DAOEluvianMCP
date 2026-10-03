@@ -30,6 +30,7 @@ struct Talker
     int at = 0;
     bool active = true;
     bool ignoreOne = false; // whether the game ignores the first choice
+    bool ignoreAll = false; // whether the game ignores every choice
     bool slow = false;      // whether a line's replies come only once it is cut short or done
     bool speaking = false;
     std::string endsInto = "explore"; // the mode the conversation's end leaves the game in
@@ -60,7 +61,10 @@ struct Talker
             }
             else if (action == "choose")
             {
-                if (ignoreOne)
+                if (ignoreAll)
+                {
+                }
+                else if (ignoreOne)
                 {
                     ignoreOne = false;
                 }
@@ -197,6 +201,31 @@ TEST_CASE("a conversation that ends into a store is said ended, with the mode it
     CHECK(answer["done"] == true);
     CHECK(answer["ended"] == true);
     CHECK(answer["mode"] == "gui");
+}
+
+TEST_CASE("a conversation that ends into a cutscene says how to skip it", "[dialogue]")
+{
+    Talker talk;
+    Merchant(talk);
+    talk.endsInto = "cutscene";
+    talk.at = 2;
+    const auto answer =
+        talk.Dialogue(Json{{"action", "choose"}, {"place", 0}, {"until", "choice"}, {"budgetMs", 5000}});
+    CHECK(answer["ended"] == true);
+    CHECK(answer["mode"] == "cutscene");
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("skip_cutscene"));
+}
+
+TEST_CASE("a choice the game ignores every time is said, asked no more than three times", "[dialogue]")
+{
+    Talker talk;
+    Merchant(talk);
+    talk.ignoreAll = true;
+    const auto answer =
+        talk.Dialogue(Json{{"action", "choose"}, {"place", 0}, {"until", "choice"}, {"budgetMs", 10000}});
+    CHECK(answer["done"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("took no choice"));
+    CHECK(talk.steps == std::vector<std::string>{"choose 0", "choose 0", "choose 0"});
 }
 
 TEST_CASE("a continue refused because the conversation is gone is its end, not a failure", "[dialogue]")
