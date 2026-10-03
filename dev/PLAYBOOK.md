@@ -68,6 +68,8 @@ inspect {"kind": "plot", "plot": "bed000pt_main"}
                                                  text for those; "flag": "NAME" asks for one. A plot is named by its
                                                  resource (the game's plot files, or a mod's)
 inspect {"kind": "equipment", "id": "0x82"}      each slot's item in full: type, material, stats, properties
+equip {"item": "0x20c5"}                        put it on the selected character, in its first slot (`slot`
+                                                 to choose); {"action": "unequip", "item": ...} takes it off
 inspect {"kind": "inventory"}                    the party's backpack; {"kind": "item", "id": ...} is one item in full
 inspect {"kind": "placeables", "radius": 30}     doors, chests, levers: state, tooltip, lock
 inspect {"kind": "surroundings"}                 one look around, a line a thing: creatures, what can be used,

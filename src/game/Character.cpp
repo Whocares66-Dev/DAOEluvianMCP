@@ -6,6 +6,8 @@
 // item's properties (seen in play, 2026-10-01).
 #include "game/Shared.h"
 
+#include "dao/Data.h"
+
 #include <cctype>
 
 namespace eluvian::game
@@ -237,8 +239,11 @@ constexpr std::array<Named, 4> kPoints = {
 
 } // namespace
 
+static void AddEquip(Bench &bench, const Watch &watch);
+
 void AddCharacter(Bench &bench, const Watch &watch)
 {
+    AddEquip(bench, watch);
     bench.Tools().AddKind(
         "inspect",
         KindSpec{"character",
@@ -532,6 +537,134 @@ void AddCharacter(Bench &bench, const Watch &watch)
                                             FormatId(id)));
             }
             return ItemJson(id, true);
+        });
+}
+
+// `equip`: put an item of the pack on, or take one off, as the inventory
+// screen does, so the game's rules hold. A playthrough driven by MCP alone
+// had only `stage equip`, which makes a new item, and the scripts'
+// EquipItem, which checks nothing (turn-based-agent, 2026-10-03, #18).
+//
+// Read by disassembly from inventory.gfx, 2026-10-03: the paperdoll's
+// radial menu sends "GUI.SelectedChar.EquipItem <item> <slot>", the slot
+// one of the item's EquippableSlots (the base item table's mask: a
+// longsword's main or offhand, a ring's either finger), and
+// "GUI.SelectedChar.UnequipItem <item>"; both reach the creature the
+// interface has selected (the engine's EquipItemMessage and
+// UnequipItemMessage are CCCreature's). Not yet seen in play.
+static void AddEquip(Bench &bench, const Watch &watch)
+{
+    bench.Tools().Add(
+        ToolSpec{"equip",
+                 "Put on an item of the pack, or take one off, as the inventory screen's paperdoll does, so the "
+                 "game's rules hold (requirements, what a slot takes). `action`: equip (default) or unequip; "
+                 "`item`, an id from inspect kind=inventory or kind=equipment; `slot` for equip, by name (main, "
+                 "offhand, ring1, ring2, ...) or number, default the item's first. It acts on the character the "
+                 "interface has selected (`id`, if given, must be that one: input binding "
+                 "\"SelectPartyMemberIndexMessage <place in the party> 0\" selects another). Answers what the "
+                 "slot held `before` and holds `after`, and whether it took (`equipped`); the item a slot held "
+                 "goes back to the pack.",
+                 Json{{"type", "object"},
+                      {"properties",
+                       {{"action", {{"type", "string"}, {"enum", {"equip", "unequip"}}}},
+                        {"item", {{"type", "string"}, {"description", "The item's id"}}},
+                        {"slot", {{"description", "equip: the slot's name or number; default the item's first"}}},
+                        {"id", {{"type", "string"}, {"description", "The creature: the one selected"}}}}},
+                      {"required", {"item"}}},
+                 Thread::Frame},
+        [&bench, &watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "equip");
+            const Args args(raw, "equip");
+            const auto action = args.Choice("action", {"equip", "unequip"}, "equip");
+            const ObjectId item = args.Id("item", "an item, as inspect kind=inventory and kind=equipment list them");
+            if (api::GetObjectType(item) != k::OBJECT_TYPE_ITEM)
+            {
+                throw ToolError(
+                    std::format("equip: {} is not an item; inspect kind=inventory lists the pack", FormatId(item)));
+            }
+            const auto selected = static_cast<ObjectId>(
+                dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
+            const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
+            if (who != selected)
+            {
+                throw ToolError(std::format("equip: the inventory screen equips the character the interface has "
+                                            "selected, {} now; select {} first (input binding "
+                                            "\"SelectPartyMemberIndexMessage <its place in the party, from 0> 0\")",
+                                            FormatId(selected), FormatId(who)));
+            }
+            const auto set = api::GetActiveWeaponSet(who);
+            Json answer = {{"action", action},
+                           {"item", ItemJson(item, false)},
+                           {"creature", Brief(who)},
+                           {"cursor", bench.Events().Next()}};
+            if (action == "unequip")
+            {
+                const auto slot = api::GetItemEquipSlot(item);
+                if (SlotName(slot).empty())
+                {
+                    throw ToolError("equip: that item is not worn; inspect kind=equipment says what is");
+                }
+                if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.UnequipItem {}", item)))
+                {
+                    throw ToolError("equip: the game took no unequip");
+                }
+                answer["slot"] = std::string(SlotName(slot));
+                answer["unequipped"] = SlotName(api::GetItemEquipSlot(item)).empty();
+                return answer;
+            }
+            const auto mask = api::GetM2DAInt(k::TABLE_ITEMS, L"EquippableSlots", api::GetBaseItemType(item));
+            std::int32_t slot = -1;
+            if (const auto &wanted = args.Raw().value("slot", Json()); wanted.is_number_integer())
+            {
+                slot = wanted.get<std::int32_t>();
+            }
+            else if (wanted.is_string())
+            {
+                for (const auto &named : kSlots)
+                {
+                    if (named.name == wanted.get<std::string>())
+                    {
+                        slot = named.id;
+                    }
+                }
+            }
+            else
+            {
+                for (std::int32_t bit = 0; bit < 31 && slot < 0; ++bit)
+                {
+                    slot = (mask >> bit) & 1 ? bit : -1;
+                }
+            }
+            if (slot < 0 || slot > 30 || ((mask >> slot) & 1) == 0)
+            {
+                std::string fits;
+                for (const auto &named : kSlots)
+                {
+                    if ((mask >> named.id) & 1)
+                    {
+                        fits += (fits.empty() ? "" : ", ") + std::string(named.name);
+                    }
+                }
+                throw ToolError("equip: that item does not go there; it goes in: " +
+                                (fits.empty() ? std::string("nothing (it is not worn)") : fits));
+            }
+            const auto weaponSet = slot <= 2 ? set : -1;
+            const ObjectId before = ItemInSlot(who, slot, weaponSet);
+            if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.EquipItem {} {}", item, slot)))
+            {
+                throw ToolError("equip: the game took no equip");
+            }
+            const ObjectId after = ItemInSlot(who, slot, weaponSet);
+            answer["slot"] = std::string(SlotName(slot));
+            answer["before"] = ItemJson(before, false);
+            answer["after"] = ItemJson(after, false);
+            answer["equipped"] = after == item;
+            if (after != item)
+            {
+                answer["note"] = "the game did not put it on: its requirements (inspect kind=item), or the creature "
+                                 "cannot change equipment now (GUI.SelectedChar.CanChangeEquipment)";
+            }
+            return answer;
         });
 }
 
