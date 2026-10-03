@@ -358,3 +358,11 @@ The loot panel, the screens and the walk overhead, 2026-10-02 23:48 to 00:05 (DA
 - In turn-based-agent's play after the deploy (GH3 12 on): `loot` on a pile of bones walked 21 m, took Studded Leather Armor and closed the panel; the first such call after a load waited out its minute on a move the game cleared (#8). The overhead cocoon as above.
 - The level-up screen on GH3 06 (#5), never saved: `GUI.GoToLevelUp 130 0` opened it for Lyna; `GUILevelUp.AutoLevelUp 130` spent her 3 attribute points (Strength), her skill point (Improved Coercion) and her talent point (Dual-Weapon Finesse); `GUILevelUp.CharGenEnd 130 1 1` and `GUI.HideFullScreenGUI` closed it with all of it kept, and closing without the `CharGenEnd` kept it too.
 - The smoke test: 63 of 63 on Lyna's manual 4 (the forest). Her AutoSave_2, which the smoke test's usage named, holds the playthrough's ruins since 23:18, where a fight and a party member out of view fail three checks: a test save of its own is the one to name.
+
+The distance after a stop, the level-up and a shop, 2026-10-03 00:40 to 01:15 (DAOLib `10e0bcc`, in turn-based-agent's window, under a claim, its saves loaded, none written). #3, #5, #9:
+
+- `travel` stopped by a fight, in turn-based-agent's play in the Korcari Wilds: nine wolves stopped a walk at 52.35345 m, and a geometry read from the walker straight after gave 52.35345; a second, by a hurlock, at 33.28. Measure from the walker: the turn-based mod selects whoever's turn it is, so the default creature had changed.
+- `levelup {"id": "0x82", "auto": true}` on GH3 18: Lyna's two banked levels spent in one round (Strength +6, Dual-Weapon Finesse, Riposte, Improved Coercion), the game back in explore. The followers had no points: they level themselves.
+- Ilen's wares on GH3 13, the Store screen up after his first reply: `Store.ID` 6654 (the store object, whose stock `inspect kind=inventory` lists: 26 items), `Store.Name`, `Store.MarkUp` 100, `Store.MarkDown` 25, `Party.Money.Total` 78. `Store.SellItem 130 999 1` sold the Greenstone (value 400) for 100 copper, and `Store.BuyItem 130 1651 1` bought a Lesser Health Poultice (value 100) for 100, the stack in the store from 3 to 2. `GUI.HideFullScreenGUI` closed the Store.
+- `travel` to Ilen, a creature, answered "the walk ended COMMAND_FAILED_INVALID_PATH" with 0.45 m left.
+- The smoke test: 63 of 63.

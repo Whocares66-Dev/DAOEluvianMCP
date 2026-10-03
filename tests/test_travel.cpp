@@ -25,6 +25,7 @@ struct World
     bool named = true;  // whether the search names the door from afar
     bool stuck = false; // whether a move ends where it began: the walk's end is where none can stand
     double shortBy = 0; // how far from the goal a walk ends: the goal fills its own place
+    double partway = 0; // where a move stops, if not where it was sent
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn; // an order after which the mode turns to combat
@@ -86,7 +87,7 @@ struct World
                 }
                 else if (!stuck)
                 {
-                    at = to;
+                    at = partway > 0 ? partway : to;
                 }
             }
             else if (action == "use" && args.value("target", "") == "0x1f5")
@@ -202,6 +203,18 @@ TEST_CASE("a fight that begins takes the journey from it", "[travel]")
     CHECK(answer["reason"] == "a fight began");
     CHECK(answer["opened"].size() == 1);
     CHECK(world.orders.size() == 1); // no move was ordered into the fight
+}
+
+TEST_CASE("a walk a fight stops part way says what is left where it stopped", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.partway = 8.3;
+    world.fightOn = "move";
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["reason"] == "a fight began");
+    CHECK(answer["distance"] == 8.3); // not the 30 measured before the move
 }
 
 TEST_CASE("a paused game is said, not waited out", "[travel]")

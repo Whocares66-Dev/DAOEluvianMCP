@@ -130,6 +130,7 @@ class Journey
         const std::string exit = where_.at("target").get<std::string>();
         const std::string to = exitAt_.value(Json::json_pointer("/leadsTo/area"), std::string());
         auto since = bench_.Events().Next();
+        measured_ = false;
         bench_.Invoke("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}});
         steps_.push_back(Json{{"did", "use " + exit}, {"result", "asked"}});
         const auto loaded = EventFilter::FromArgs(Json{{"topic", "eluvian.script.area_loaded"}});
@@ -196,6 +197,7 @@ class Journey
             const Json walk = geometry.value("walk", Json::object());
             const double distance = geometry.value("distance", 0.0);
             answer_["distance"] = distance;
+            measured_ = true;
             if (distance <= within_)
             {
                 return End(true, "there");
@@ -331,6 +333,7 @@ class Journey
     // the journey was taken from it meanwhile, which `stopped_` then says.
     std::optional<std::string> Order(const Json &order, const char *type, std::string what)
     {
+        measured_ = false;
         const Json given = bench_.Invoke("order", order).data;
         auto since = given.value("cursor", bench_.Events().Next());
         const auto filter =
@@ -362,8 +365,31 @@ class Journey
         return std::nullopt;
     }
 
+    // Where a journey stops after an order that nothing has measured since,
+    // the distance is measured again: a fight that stopped a walk part way
+    // answered the measure from before the move, 43.78 m with about 8.3 m
+    // left (#3, 2026-10-02). With no frame to measure in (an area loading)
+    // no distance is said rather than a stale one.
+    void MeasureAgain()
+    {
+        try
+        {
+            Json ask = where_;
+            ask.update(Json{{"kind", "geometry"}, {"id", who_}});
+            answer_["distance"] = bench_.Invoke("inspect", ask).data.at("distance");
+        }
+        catch (const std::exception &)
+        {
+            answer_.erase("distance");
+        }
+    }
+
     Json End(bool arrived, std::string reason)
     {
+        if (!arrived && !measured_)
+        {
+            MeasureAgain();
+        }
         answer_["arrived"] = arrived;
         answer_["reason"] = std::move(reason);
         answer_["who"] = who_;
@@ -385,6 +411,7 @@ class Journey
     std::string who_;
     bool byClick_ = false;
     bool wentToReached_ = false;
+    bool measured_ = false; // whether `distance` was measured after the last order
     std::optional<std::string> stopped_;
     Json doors_ = Json::array();
     Json steps_ = Json::array();
