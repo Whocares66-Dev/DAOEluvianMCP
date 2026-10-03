@@ -1338,6 +1338,13 @@ MUTANTS = [
         "party.size() >= chosen)",
         "party.size() + chosen >= chosen)",
     ),
+    # #27: an exit the walk cannot reach is used from where the walk stopped.
+    Mutant(
+        "travel gives up on an exit with no ground under it",
+        TRAVEL,
+        'why.starts_with("no walk there"))',
+        "false)",
+    ),
 ]
 
 

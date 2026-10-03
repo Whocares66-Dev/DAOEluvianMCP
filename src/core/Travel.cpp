@@ -101,6 +101,19 @@ class Journey
             fromArea_ = game.value(Json::json_pointer("/area/tag"), std::string());
         }
         Json walked = Walk();
+        const std::string why = walked.value("reason", std::string());
+        if (leaving && !walked.value("arrived", false) && why.starts_with("no walk there"))
+        {
+            // An exit the search cannot walk to: one of the camp's two World
+            // Map exits answered "no walkable ground there", the other walked,
+            // and the windmill's door up from the Secret Passage answered
+            // "none" twice, where an order to use it walked there at once
+            // (turn-based-agent, 2026-10-03, #27). A click's use walks its
+            // user there as the game's own click does, so the exit is used
+            // from here.
+            steps_.push_back(Json{{"did", "walk to the exit"}, {"result", why + ": used from here"}});
+            return Cross();
+        }
         if (!leaving || !walked.value("arrived", false))
         {
             return walked;

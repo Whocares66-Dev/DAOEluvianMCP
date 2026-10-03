@@ -49,6 +49,7 @@ struct World
     int loadingFor = 0;         // health calls an area's loading is still said for
     int readsWhileLoading = 0;  // frame reads asked while it loads: each waits out the frame timeout in the game
     bool asks = false;          // whether the game asks first, with a message box
+    std::string exitNoWalk;     // the search's word for a walk to the exit it cannot make, if it cannot
     bool tooClose = false;      // whether the exit's use fails from closer than 2 m
     Json popup = nullptr;
 
@@ -85,7 +86,11 @@ struct World
                                                         {"active", exitActive}}})}};
             }
             Json walk;
-            if (!shut || at <= door || hidden)
+            if (!exitNoWalk.empty() && args.value("target", "") == "0x1f5")
+            {
+                walk = Json{{"found", false}, {"result", exitNoWalk}};
+            }
+            else if (!shut || at <= door || hidden)
             {
                 walk = Json{{"found", true}, {"length", at - shortBy}};
                 if (shortBy > 0)
@@ -602,6 +607,34 @@ TEST_CASE("an exit's use that fails again is said at once, not waited out", "[tr
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("ended COMMAND_FAILED"));
     CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(15));
+}
+
+TEST_CASE("an exit the walk cannot reach is used from where the walk could not start", "[travel]")
+{
+    for (const std::string word : {"no walkable ground there", "none"})
+    {
+        World world;
+        world.shut = false;
+        world.at = 5;
+        world.exitNoWalk = word; // the camp's exit; the windmill's door from below
+        const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 5000}}).data;
+        CHECK(answer["arrived"] == true);
+        CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("through to Forest Clearing"));
+        CHECK(answer["steps"][0]["result"] == "no walk there: " + word + ": used from here");
+        REQUIRE(world.orders.size() == 1);
+        CHECK(world.orders[0]["action"] == "use");
+    }
+}
+
+TEST_CASE("a target with no ground under it that is not an exit is no walk there", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.exitNoWalk = "no walkable ground there";
+    const auto answer = world.bench.Invoke("travel", Json{{"target", "0x1f5"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no walkable ground"));
+    CHECK(world.orders.empty());
 }
 
 TEST_CASE("an exit is named by its id too", "[travel]")
