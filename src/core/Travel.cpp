@@ -3,7 +3,9 @@
 #include "core/Args.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -26,6 +28,8 @@ constexpr double kNoNearer = 0.25;
 
 // A command's end when another cleared it from the walker's queue.
 constexpr const char *kCleared = "COMMAND_FAILED_COMMAND_CLEARED";
+// How far back from an exit a failed use is tried again from, in metres.
+constexpr double kStepBack = 4.0;
 
 // One journey: its arguments, its clock, and the transcript it answers with.
 class Journey
@@ -148,12 +152,45 @@ class Journey
         }
         steps_.push_back(Json{{"did", "use " + exit}, {"result", "asked"}});
         const auto loaded = EventFilter::FromArgs(Json{{"topic", "eluvian.script.area_loaded"}});
+        // The use's own end, watched: the Windmill door's use from 1 m ended
+        // COMMAND_FAILED at once and the crossing waited out its budget; from
+        // 8 m back it worked (turn-based-agent, 2026-10-03, #29). A use that
+        // fails is tried once more from a step back, then said.
+        const auto useEnded = EventFilter::FromArgs(
+            Json{{"topic", "eluvian.command.ended"}, {"match", {{"id", who_}, {"type", "UseObject"}}}});
+        auto useSince = since;
+        bool steppedBack = false;
         while (Left().count() > 0)
         {
             const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(2000)));
             if (event)
             {
                 since = event->seq + 1;
+            }
+            if (const auto ended = bench_.Events().WaitFor(useSince, useEnded, milliseconds(0)))
+            {
+                useSince = ended->seq + 1;
+                const std::string result = ended->payload.value("result", std::string());
+                if (result.starts_with("COMMAND_FAILED") && result != kCleared)
+                {
+                    steps_.push_back(Json{{"did", "use " + exit}, {"result", result}});
+                    if (steppedBack || !StepBack(exit))
+                    {
+                        std::string why = "the use of " + exit;
+                        why += " ended ";
+                        why += result;
+                        return End(false, std::move(why));
+                    }
+                    steppedBack = true;
+                    useSince = bench_.Events().Next();
+                    since = useSince;
+                    if (!Ask("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}}))
+                    {
+                        return End(false, *stopped_);
+                    }
+                    steps_.push_back(Json{{"did", "use " + exit + " again"}, {"result", "asked"}});
+                    continue;
+                }
             }
             const Json health = bench_.Invoke("health", Json::object()).data;
             const std::string mode = health.value("mode", std::string());
@@ -199,6 +236,52 @@ class Journey
             }
         }
         return End(false, "the party did not leave in the time given; the exit was used");
+    }
+
+    // A step back from the exit, along the line from it through the walker:
+    // a use from too close failed where one from a few metres back worked
+    // (#29). False if the walker's place could not be read or the move failed.
+    bool StepBack(const std::string &exit)
+    {
+        const auto read = Ask("inspect", Json{{"kind", "geometry"}, {"id", who_}, {"target", exit}});
+        if (!read)
+        {
+            return false;
+        }
+        const auto from = Point(read->value("position", Json()));
+        const auto to = Point(read->value("to", Json()));
+        if (!from || !to)
+        {
+            return false;
+        }
+        double dx = (*from)[0] - (*to)[0];
+        double dy = (*from)[1] - (*to)[1];
+        double length = std::hypot(dx, dy);
+        if (length < 0.01)
+        {
+            dx = 1;
+            dy = 0;
+            length = 1;
+        }
+        const Json point =
+            Json::array({(*from)[0] + dx / length * kStepBack, (*from)[1] + dy / length * kStepBack, (*from)[2]});
+        const auto result =
+            Order(Json{{"action", "move"}, {"id", who_}, {"point", point}}, "MoveToLocation", "step back from " + exit);
+        return result && *result == "success";
+    }
+
+    // A point as the game's tools write one, {x, y, z} or [x, y, z].
+    static std::optional<std::array<double, 3>> Point(const Json &json)
+    {
+        if (json.is_array() && json.size() == 3)
+        {
+            return std::array<double, 3>{json[0].get<double>(), json[1].get<double>(), json[2].get<double>()};
+        }
+        if (json.is_object() && json.contains("x") && json.contains("y") && json.contains("z"))
+        {
+            return std::array<double, 3>{json["x"].get<double>(), json["y"].get<double>(), json["z"].get<double>()};
+        }
+        return std::nullopt;
     }
 
     Json Walk()

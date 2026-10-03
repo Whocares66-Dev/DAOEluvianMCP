@@ -1279,6 +1279,19 @@ MUTANTS = [
         "constexpr int kMostTries = 3;",
         "constexpr int kMostTries = 5;",
     ),
+    # #29: an exit's use that fails is seen, and tried again from a step back.
+    Mutant(
+        "travel waits out an exit's use that failed",
+        TRAVEL,
+        'if (result.starts_with("COMMAND_FAILED") && result != kCleared)',
+        "if (false)",
+    ),
+    Mutant(
+        "travel tries a failed use again from where it failed",
+        TRAVEL,
+        "if (steppedBack || !StepBack(exit))",
+        "if (steppedBack)",
+    ),
 ]
 
 

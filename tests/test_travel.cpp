@@ -49,6 +49,7 @@ struct World
     int loadingFor = 0;         // health calls an area's loading is still said for
     int readsWhileLoading = 0;  // frame reads asked while it loads: each waits out the frame timeout in the game
     bool asks = false;          // whether the game asks first, with a message box
+    bool tooClose = false;      // whether the exit's use fails from closer than 2 m
     Json popup = nullptr;
 
     World()
@@ -102,7 +103,11 @@ struct World
             {
                 walk = Json{{"found", false}, {"result", "gave up part way"}, {"reached", {door + reach, 0, 0}}};
             }
-            return Json{{"from", {{"id", args.value("id", "")}}}, {"to", {0, 0, 0}}, {"distance", at}, {"walk", walk}};
+            return Json{{"from", {{"id", args.value("id", "")}}},
+                        {"position", {{"x", at}, {"y", 0}, {"z", 0}}},
+                        {"to", {0, 0, 0}},
+                        {"distance", at},
+                        {"walk", walk}};
         });
         bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             if (doorLoads && !shut)
@@ -145,7 +150,11 @@ struct World
             }
             else if (action == "use" && args.value("target", "") == "0x1f5")
             {
-                if (asks)
+                if (tooClose && at < 2)
+                {
+                    result = "COMMAND_FAILED";
+                }
+                else if (asks)
                 {
                     popup = Json{{"text", "Leave the area?"}};
                 }
@@ -565,6 +574,34 @@ TEST_CASE("an area is reached by the exit that leads there", "[travel]")
     CHECK(world.orders[0]["action"] == "move");
     CHECK(world.orders[1]["action"] == "use");
     CHECK(world.orders[1]["target"] == "0x1f5");
+}
+
+TEST_CASE("an exit's use that fails from too close is tried again from a step back", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.tooClose = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 10000}}).data;
+    CHECK(answer["arrived"] == true);
+    REQUIRE(world.orders.size() == 3); // the use, the step back, the use again
+    CHECK(world.orders[1]["action"] == "move");
+    CHECK(world.orders[1]["point"][0] == 5.0); // 4 m further from the exit than the walker stood
+    CHECK(world.orders[2]["action"] == "use");
+}
+
+TEST_CASE("an exit's use that fails again is said at once, not waited out", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.tooClose = true;
+    world.stuck = true; // the step back goes nowhere: the use fails again
+    const auto started = std::chrono::steady_clock::now();
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 30000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("ended COMMAND_FAILED"));
+    CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(15));
 }
 
 TEST_CASE("an exit is named by its id too", "[travel]")
