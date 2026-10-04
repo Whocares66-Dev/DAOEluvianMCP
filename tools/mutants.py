@@ -211,8 +211,8 @@ MUTANTS = [
     Mutant(
         "travel walks on into a fight",
         TRAVEL,
-        'if (mode == "combat")\n        {\n            return "a fight began";',
-        'if (false)\n        {\n            return "a fight began";',
+        "if (auto near = FightNear())",
+        "if (auto near = std::optional<std::string>())",
     ),
     Mutant(
         "travel walks on through a conversation",
@@ -1549,6 +1549,25 @@ MUTANTS = [
         LEVELUP,
         "if (AttributeIndex(name) == 0 ||",
         "if (",
+    ),
+    # #37: in combat mode a fight far off is walked on, one near stops it.
+    Mutant(
+        "travel stops for a fight far off",
+        TRAVEL,
+        "if (hostiles.empty())",
+        "if (false)",
+    ),
+    Mutant(
+        "travel walks into a fight at hand",
+        TRAVEL,
+        "if (hostiles.empty())",
+        "if (true)",
+    ),
+    Mutant(
+        "travel walks on in any fight though told to stop for every one",
+        TRAVEL,
+        "if (fightNear_ <= 0)",
+        "if (false)",
     ),
 ]
 

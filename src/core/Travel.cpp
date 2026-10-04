@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -47,7 +48,8 @@ class Journey
   public:
     Journey(Bench &bench, const Args &args)
         : bench_(bench), deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 600000))),
-          maxDoors_(static_cast<std::size_t>(args.Integer("maxDoors", 4, 0, 20))), within_(args.Number("within", 1.5))
+          maxDoors_(static_cast<std::size_t>(args.Integer("maxDoors", 4, 0, 20))), within_(args.Number("within", 1.5)),
+          fightNear_(args.Number("fightNear", 20))
     {
         // The bus's place as the journey begins, so that the events from it
         // are the journey's: a door's fight, a plot's step, the walk's
@@ -720,6 +722,37 @@ class Journey
         return std::max(milliseconds(0), std::chrono::duration_cast<milliseconds>(deadline_ - Clock::now()));
     }
 
+    // The fight near the walker in combat mode, if there is one: the nearest
+    // hostile within `fightNear`, said by name, id and distance. Nothing if
+    // none is that near; a fight said if the creatures cannot be read.
+    std::optional<std::string> FightNear()
+    {
+        if (fightNear_ <= 0)
+        {
+            return "a fight began";
+        }
+        const auto read = Ask("inspect", Json{{"kind", "creatures"},
+                                              {"side", "hostile"},
+                                              {"near", who_},
+                                              {"radius", fightNear_},
+                                              {"includeDead", false}});
+        if (!read)
+        {
+            return "a fight began";
+        }
+        const Json hostiles = read->value("creatures", Json::array());
+        if (hostiles.empty())
+        {
+            return std::nullopt;
+        }
+        const Json &nearest = hostiles.at(0);
+        std::string why =
+            "a fight began: " + nearest.value("name", std::string()) + " " + nearest.value("id", std::string());
+        why += std::format(" is {:.0f} m off", nearest.value("distance", 0.0));
+        answer_["fightNear"] = nearest;
+        return why;
+    }
+
     // Whether the walker still has a command current or queued; true if that
     // could not be read, so that a read refused is no reason to stop waiting.
     bool StillCommanded()
@@ -797,7 +830,15 @@ class Journey
         answer_["mode"] = mode;
         if (mode == "combat")
         {
-            return "a fight began";
+            // The game keeps its combat mode while any hostile that has seen
+            // the party lives, even 40 m off with no fight near, where a
+            // player walks freely; travel stopped "a fight began" nine times
+            // at one spot (turn-based-agent, 2026-10-03, #37). It walks on
+            // while no hostile is within `fightNear` of the walker.
+            if (auto near = FightNear())
+            {
+                return near;
+            }
         }
         if (mode == "dialog" || mode == "cutscene")
         {
@@ -955,6 +996,7 @@ class Journey
     Clock::time_point deadline_;
     std::size_t maxDoors_;
     double within_;
+    double fightNear_; // in combat mode, how near a hostile stops the journey
     Json where_ = Json::object();
     std::string exit_;      // `exit`: the exit's id
     std::string area_;      // `area`: the area to reach, by an exit that leads there
@@ -986,7 +1028,9 @@ void AddTravelTool(Bench &bench)
                  "thing that fills its own place or hangs overhead: a door, a chest, a cocoon; then use it from "
                  "there), `reason`, the `distance` left, what it "
                  "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
-                 "its to make: a fight began, a conversation or cutscene took the screen, the game is paused. "
+                 "its to make: a fight near (combat mode with a hostile within `fightNear`, default 20 m: a "
+                 "fight far off that keeps the mode is walked on; the stop names the hostile), a conversation or "
+                 "cutscene took the screen, the game is paused. "
                  "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say "
                  "what came of the journey. "
                  "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
@@ -1013,6 +1057,10 @@ void AddTravelTool(Bench &bench)
                          {{"description", "A world map pin: its name (any case), tag or index; alone with the map "
                                           "up, or with `exit`, the way to the map"}}},
                         {"within", {{"type", "number"}, {"description", "Metres that count as there; default 1.5"}}},
+                        {"fightNear",
+                         {{"type", "number"},
+                          {"description", "In combat mode, walk on unless a hostile is this near (metres, default "
+                                          "20; 0 stops for any fight)"}}},
                         {"maxDoors", {{"type", "integer"}, {"minimum", 0}, {"maximum", 20}}},
                         {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}}}}},
                  Thread::Listener},

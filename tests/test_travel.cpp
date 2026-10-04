@@ -44,6 +44,7 @@ struct World
     bool unlocksFirst = false; // whether a use with the key carried only unlocks the door, the key taken
     bool silentUse = false;    // whether a use's end is never said either
     std::string mode = "explore";
+    double hostileAt = -1; // how far the nearest hostile stands from the walker; -1 none
     bool paused = false;
     std::string fightOn;  // an order after which the mode turns to combat
     std::string loadOn;   // an order after which an area loads, and the frame tools have no frame
@@ -91,6 +92,16 @@ struct World
             {
                 ++readsWhileLoading;
                 throw FrameTimeout("no frame took the call within 2000 ms"); // as a frame tool's, while frames stop
+            }
+            if (args.value("kind", "") == "creatures")
+            {
+                // Hostiles within the radius asked for, nearest first.
+                Json near = Json::array();
+                if (hostileAt >= 0 && hostileAt <= args.value("radius", 1e9))
+                {
+                    near.push_back(Json{{"id", "0x5a1"}, {"name", "Shade"}, {"distance", hostileAt}});
+                }
+                return Json{{"creatures", near}};
             }
             if (args.value("kind", "") == "creature")
             {
@@ -258,6 +269,7 @@ struct World
             if (action == fightOn)
             {
                 mode = "combat";
+                hostileAt = 3; // the fight is at hand
             }
             if (action == loadOn)
             {
@@ -505,7 +517,7 @@ TEST_CASE("a fight that begins takes the journey from it", "[travel]")
     world.fightOn = "use"; // opening the door starts one
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == false);
-    CHECK(answer["reason"] == "a fight began");
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("a fight began")); // and who keeps it
     CHECK(answer["opened"].size() == 1);
     CHECK(world.orders.size() == 1); // no move was ordered into the fight
 }
@@ -518,7 +530,7 @@ TEST_CASE("a walk a fight stops part way says what is left where it stopped", "[
     world.fightOn = "move";
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == false);
-    CHECK(answer["reason"] == "a fight began");
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("a fight began")); // and who keeps it
     CHECK(answer["distance"] == 8.3); // not the 30 measured before the move
 }
 
@@ -622,9 +634,9 @@ TEST_CASE("a fight that takes a move's end with it is said, though the end never
     world.fightOn = "move";
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == false);
-    CHECK(answer["reason"] == "a fight began");
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("a fight began")); // and who keeps it
     REQUIRE(answer["steps"].size() == 1);
-    CHECK(answer["steps"][0]["result"] == "a fight began");
+    CHECK_THAT(answer["steps"][0]["result"].get<std::string>(), ContainsSubstring("a fight began"));
 }
 
 TEST_CASE("others' commands ending, and the walker's own cleared one, are not the end waited for", "[travel]")
@@ -1007,6 +1019,32 @@ TEST_CASE("a quiet move whose walker still has it is waited for, not cut short",
     const auto answer = world.bench.Invoke("travel", Json{{"target", "0x2ec"}, {"budgetMs", 3000}}).data;
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("time ran out"));
+}
+
+TEST_CASE("in combat mode with no hostile near, the journey walks on", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.mode = "combat";
+    world.hostileAt = 40; // a band far off that has seen the party keeps the mode
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+}
+
+TEST_CASE("in combat mode with a hostile near, the journey stops and names it", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.mode = "combat";
+    world.hostileAt = 5;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Shade 0x5a1 is 5 m off"));
+    CHECK(world.orders.empty());
+    world.hostileAt = 40;
+    CHECK(
+        world.bench.Invoke("travel", Json{{"target", "0x2ec"}, {"fightNear", 0}, {"budgetMs", 5000}}).data["arrived"] ==
+        false); // 0: any fight stops it, as before
 }
 
 TEST_CASE("an exit is named by its id too", "[travel]")
