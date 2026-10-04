@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,7 @@ struct World
     bool keyRequired = false;  // whether only the door's key opens it
     bool keyHeld = false;      // whether the party carries that key
     int doorState = 1;         // the door's state: 1 locked, 0 shut and unlocked
+    bool unlocksFirst = false; // whether a use with the key carried only unlocks the door, the key taken
     bool silentUse = false;    // whether a use's end is never said either
     std::string mode = "explore";
     bool paused = false;
@@ -243,7 +245,15 @@ struct World
             }
             else if (action == "use" && opens)
             {
-                shut = false;
+                if (unlocksFirst && doorState == 1 && keyHeld)
+                {
+                    doorState = 0; // unlocked, still shut; the key leaves the pack
+                    keyHeld = false;
+                }
+                else
+                {
+                    shut = false;
+                }
             }
             if (action == fightOn)
             {
@@ -932,6 +942,25 @@ TEST_CASE("a door whose key the party does not carry is said at once; carried, i
     holding.keyRequired = true;
     holding.keyHeld = true;
     CHECK(holding.Travel()["arrived"] == true); // the key opens it: used on the way
+}
+
+TEST_CASE("a door locked with its key carried is used twice: the first use only unlocks it", "[travel]")
+{
+    World world;
+    world.keyRequired = true;
+    world.keyHeld = true;
+    world.unlocksFirst = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    const auto uses = std::ranges::count_if(world.orders, [](const Json &order) { return order["action"] == "use"; });
+    CHECK(uses == 2);
+    CHECK(answer["opened"].size() == 1); // the one door, once
+    World stays;                         // carried, but the door never opens: used twice, then said
+    stays.keyRequired = true;
+    stays.keyHeld = true;
+    stays.opens = false;
+    CHECK_THAT(stays.Travel()["reason"].get<std::string>(), ContainsSubstring("did not open"));
+    CHECK(std::ranges::count_if(stays.orders, [](const Json &order) { return order["action"] == "use"; }) == 2);
 }
 
 TEST_CASE("a door shut but unlocked is used on the way, its key spent or its pick past reach", "[travel]")

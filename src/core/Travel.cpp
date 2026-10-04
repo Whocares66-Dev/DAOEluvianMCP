@@ -654,7 +654,21 @@ class Journey
                 }
                 if (blocker == lastBlocker)
                 {
-                    return End(false, "what is in the way did not open: " + blocker);
+                    // A door locked with its key carried: the key's first use
+                    // only unlocks it, the key taken from the pack, and a
+                    // second opens it; the Ruined Temple's south-east door
+                    // stood "did not open" after the first (turn-based-agent,
+                    // 2026-10-04, #47). Its state read straight after may
+                    // still say locked, a frame early: the key carried at the
+                    // first use is what says a second is due.
+                    const Json used = doors_.empty() ? Json::object() : doors_.back();
+                    const bool keyTurned = used.value(Json::json_pointer("/state"), kLocked) == kLocked &&
+                                           used.value(Json::json_pointer("/lock/keyHeld"), false);
+                    if (!keyTurned || keyTurned_ == blocker)
+                    {
+                        return End(false, "what is in the way did not open: " + blocker);
+                    }
+                    keyTurned_ = blocker;
                 }
                 lastBlocker = blocker;
                 lastWalk.reset(); // the way is another once it is open
@@ -674,7 +688,10 @@ class Journey
                     lastBlocker.clear(); // not a use made: it may be asked again
                     continue;
                 }
-                doors_.push_back(walk.at("blocker"));
+                if (doors_.empty() || doors_.back().value("id", std::string()) != blocker)
+                {
+                    doors_.push_back(walk.at("blocker")); // once, as it was at its first use
+                }
                 continue;
             }
             // No walk and nothing named in the way: go as far as the search
@@ -942,6 +959,7 @@ class Journey
     std::string exit_;      // `exit`: the exit's id
     std::string area_;      // `area`: the area to reach, by an exit that leads there
     Json exitAt_;           // the exit chosen, as inspect kind=exits gave it
+    std::string keyTurned_; // the door used a second time, its key's first use having unlocked it
     std::string fromArea_;  // the area's tag before the crossing
     std::string startArea_; // the area's tag as the journey began
     Json to_;               // `to`: a world map pin's name, tag or index

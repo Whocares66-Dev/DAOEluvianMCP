@@ -1505,6 +1505,25 @@ MUTANTS = [
         "if (distance > kNearOwnWay)",
         "if (distance > 0)",
     ),
+    # #47: a door locked with its key carried is used once more.
+    Mutant(
+        "travel gives up at a locked door after its key's first use",
+        TRAVEL,
+        "if (!keyTurned || keyTurned_ == blocker)",
+        "if (keyTurned || keyTurned_ == blocker)",
+    ),
+    Mutant(
+        "travel uses a door its key turned for ever",
+        TRAVEL,
+        "if (!keyTurned || keyTurned_ == blocker)",
+        'if (!keyTurned || keyTurned_ == "never")',
+    ),
+    Mutant(
+        "travel lists a door used twice twice",
+        TRAVEL,
+        'doors_.back().value("id", std::string()) != blocker',
+        'doors_.back().value("id", std::string()) != "never"',
+    ),
 ]
 
 
