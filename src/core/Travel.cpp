@@ -655,7 +655,15 @@ class Journey
             // travel stopped (turn-based-agent, 2026-10-04, #38). It is gone
             // round as nothing named: as far as the search got, then said.
             const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");
-            if (!blocker.empty() && !exitAhead)
+            // So too a thing that is not interactive, which no use opens: the
+            // East Brecilian Forest's heart has an Invisible Object across
+            // the path, removed by a trigger's script as the party walks in
+            // with the Grand Oak's branch; travel used it as a door and said
+            // "did not open" five times without walking up to it
+            // (turn-based-agent, 2026-10-04, #50). Gone round the same way,
+            // a trigger near it may remove it on the way there.
+            const bool inertAhead = !blocker.empty() && !walk.value(Json::json_pointer("/blocker/interactive"), true);
+            if (!blocker.empty() && !exitAhead && !inertAhead)
             {
                 if (doors_.size() >= maxDoors_)
                 {
@@ -727,6 +735,18 @@ class Journey
                 if (where_.contains("target"))
                 {
                     return End(true, "as near as the walk goes: " + why + " (order use on the target walks the rest)");
+                }
+                return End(false, "no walk there: " + why);
+            }
+            if (inertAhead)
+            {
+                answer_["inertAhead"] = walk.at("blocker");
+                std::string why = blocker + " " + walk.value(Json::json_pointer("/blocker/name"), std::string()) +
+                                  " stands in the way and is not interactive, so no use opens it: the story removes "
+                                  "it, a trigger near it perhaps (inspect kind=triggers)";
+                if (where_.contains("target"))
+                {
+                    return End(true, "as near as the walk goes: " + why);
                 }
                 return End(false, "no walk there: " + why);
             }

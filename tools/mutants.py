@@ -1579,8 +1579,21 @@ MUTANTS = [
     Mutant(
         "travel takes a target behind an exit ahead for unreached",
         TRAVEL,
-        'return End(true, "as near as the walk goes: " + why',
-        'return End(false, "as near as the walk goes: " + why',
+        'return End(true, "as near as the walk goes: " + why + " (order use',
+        'return End(false, "as near as the walk goes: " + why + " (order use',
+    ),
+    Mutant(
+        "travel takes a target behind a thing not interactive for unreached",
+        TRAVEL,
+        'return End(true, "as near as the walk goes: " + why);',
+        'return End(false, "as near as the walk goes: " + why);',
+    ),
+    # #50: a blocker that is not interactive is not used.
+    Mutant(
+        "travel uses a thing in the way that is not interactive",
+        TRAVEL,
+        "if (!blocker.empty() && !exitAhead && !inertAhead)",
+        "if (!blocker.empty() && !exitAhead)",
     ),
 ]
 

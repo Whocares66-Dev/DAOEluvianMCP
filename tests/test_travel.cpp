@@ -39,6 +39,8 @@ struct World
     bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
     int pickLevel = 1;         // the door's lock: 10000 is the game's "cannot be picked"
     bool exitAhead = false;    // whether what the search names ahead is an exit beside the target, not a door
+    bool inert = false;        // whether what stands in the way is not interactive: the story's to remove
+    bool inertStays = false;   // whether it stays when the walker comes up to it (no trigger there removes it)
     bool keyRequired = false;  // whether only the door's key opens it
     bool keyHeld = false;      // whether the party carries that key
     int doorState = 1;         // the door's state: 1 locked, 0 shut and unlocked
@@ -160,6 +162,15 @@ struct World
                     walk["waypoints"] = Json::array({Json::array({shortBy, 0, 0})});
                 }
             }
+            else if (inert && shut && at > door)
+            {
+                // A thing no use opens, across the way: as far as the search
+                // got, short of it.
+                walk = Json{{"found", false},
+                            {"result", "something is in the way"},
+                            {"reached", {door + reach, 0, 0}},
+                            {"blocker", {{"id", "0x2a1b4"}, {"name", "Invisible Object"}, {"interactive", false}}}};
+            }
             else if (exitAhead)
             {
                 // Where the search gives up, the placeable just ahead: here
@@ -275,6 +286,10 @@ struct World
                 {
                     shut = false;
                 }
+            }
+            if (action == "move" && inert && !inertStays && at <= door + reach + 0.01)
+            {
+                shut = false; // walked into the trigger beside it, whose script removes it
             }
             if (action == fightOn)
             {
@@ -1012,6 +1027,31 @@ TEST_CASE("an exit named ahead is not used as a door: as far as the search got, 
     const auto point = again.bench.Invoke("travel", Json{{"point", {0, 0, 0}}, {"budgetMs", 5000}}).data;
     CHECK(point["arrived"] == false); // a point is not reached
     CHECK_THAT(point["reason"].get<std::string>(), ContainsSubstring("no walk there: 0x240e9"));
+}
+
+TEST_CASE("a thing in the way that is not interactive is walked up to, not used", "[travel]")
+{
+    World world; // a trigger beside it removes it as the walker comes up
+    world.inert = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "there");
+    CHECK(std::ranges::none_of(world.orders, [](const Json &order) { return order["action"] == "use"; }));
+    World stays; // nothing removes it: said, naming it, after going as far as the search got
+    stays.inert = true;
+    stays.inertStays = true;
+    const auto point = stays.bench.Invoke("travel", Json{{"point", {0, 0, 0}}, {"budgetMs", 5000}}).data;
+    CHECK(point["arrived"] == false);
+    CHECK_THAT(point["reason"].get<std::string>(), ContainsSubstring("0x2a1b4 Invisible Object stands in the way"));
+    CHECK(point["inertAhead"]["id"] == "0x2a1b4");
+    REQUIRE(stays.orders.size() == 1);
+    CHECK(stays.orders[0]["action"] == "move");
+    World beside; // a thing as the target, behind it: used from as near as the walk goes
+    beside.inert = true;
+    beside.inertStays = true;
+    const auto target = beside.Travel();
+    CHECK(target["arrived"] == true);
+    CHECK_THAT(target["reason"].get<std::string>(), ContainsSubstring("as near as the walk goes: 0x2a1b4"));
 }
 
 TEST_CASE("a door the story keeps shut is said at once, neither used nor walked to", "[travel]")

@@ -192,6 +192,7 @@ Json BlockerJson(ObjectId id)
     {
         blocker["state"] = api::GetPlaceableState(id);
         blocker["stateName"] = PlaceableStateWord(id);
+        blocker["interactive"] = api::GetObjectInteractive(id) != 0; // nothing uses one that is not (#50)
         const std::wstring key = api::GetPlaceableKeyTag(id);
         blocker["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
                                {"keyTag", Narrow(key)},
