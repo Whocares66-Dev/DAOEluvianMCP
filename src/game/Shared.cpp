@@ -366,7 +366,20 @@ Json AbilityJson(std::int32_t ability)
     {
         answer["name"] = Narrow(*name);
     }
+    // How it is aimed, from the ability table (abi_base): its TargetType
+    // bits, its area (AOE_Type, 0 none), its range. Fireball's TargetType
+    // has every bit; its area with a range is what makes it aimed at a
+    // place (#35).
+    answer["targetType"] = api::GetM2DAInt(k::TABLE_ABILITIES_SPELLS, L"TargetType", ability);
+    answer["aoe"] = api::GetM2DAInt(k::TABLE_ABILITIES_SPELLS, L"AOE_Type", ability);
+    answer["range"] = api::GetM2DAInt(k::TABLE_ABILITIES_SPELLS, L"Range", ability);
     return answer;
+}
+
+bool AimedAtAPlace(std::int32_t ability)
+{
+    return ability > 0 && api::GetM2DAInt(k::TABLE_ABILITIES_SPELLS, L"AOE_Type", ability) != 0 &&
+           api::GetM2DAInt(k::TABLE_ABILITIES_SPELLS, L"Range", ability) > 0;
 }
 
 // The abilities a creature acts with, and each one's cooldown: those on its

@@ -130,6 +130,10 @@ Json DurationJson(dao::script::EffectDurationType type);
 // `ready`, `why` and `cost` of an ability for a creature, into its entry.
 void UseInto(Json &entry, ObjectId id, std::int32_t ability, bool fallback);
 Json AbilityJson(std::int32_t ability);
+// Whether an ability is an area aimed at a place (an area and a range):
+// Fireball ordered at a creature failed COMMAND_FAILED_PATH_ACTION_REQUIRED
+// 41 times, and at the creature's position cast (#35).
+bool AimedAtAPlace(std::int32_t ability);
 Json Abilities(ObjectId id);
 Json Effects(ObjectId id);
 

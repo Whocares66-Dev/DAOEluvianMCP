@@ -73,6 +73,17 @@ bool OrderByCommand(const Args &args, const std::string &action, ObjectId who, J
             answer["item"] = Brief(item);
         }
         answer["target"] = Brief(target);
+        // An area aimed at a place, ordered at a creature: at its feet, as a
+        // player's ground cursor on it. Ordered at the creature the caster
+        // set out to reach it, and a path that wanted an action failed the
+        // order every time (turn-based-agent, 2026-10-03, #35).
+        if (target != kInvalidObject && !args.Has("point") && !args.Bool("atCreature", false) &&
+            item == kInvalidObject && AimedAtAPlace(ability))
+        {
+            const auto at = api::GetPosition(target);
+            answer["aimedAt"] = Json{{"point", VectorJson(at)}, {"of", Brief(target)}};
+            return dao::orders::UseAbility(who, ability, kInvalidObject, item, at);
+        }
         return dao::orders::UseAbility(who, ability, target, item, point);
     }
     // The command carries one PLACEABLE_ACTION, and the object does nothing
@@ -175,13 +186,19 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "obeyed: the events from `cursor` do.) A use goes by click when the controlled creature is to "
                  "do it, since a click chooses what the object takes (a chest and a door wanted open, and did "
                  "nothing for use, their command ending COMMAND_FAILED); by command it does `objectAction`, "
-                 "default use. Answers whether the order was taken, and "
+                 "default use. An area ability with a range (Fireball; inspect kind=abilities says each one's "
+                 "`aoe` and `range`) given a creature `target` is aimed at its position, as a ground cursor on "
+                 "it (`aimedAt`; `atCreature`: true keeps the creature). Answers whether the order was taken, and "
                  "`cursor`: wait_for from it for what came of it (eluvian.command.started and ended, and a mod's "
                  "own events).",
                  Json{{"type", "object"},
                       {"properties",
                        {{"action", {{"type", "string"}, {"enum", {"attack", "move", "ability", "use", "control"}}}},
                         {"id", {{"description", "Who obeys: a creature id; default the one controlled"}}},
+                        {"atCreature",
+                         {{"type", "boolean"},
+                          {"description", "action=ability: keep a creature as an area ability's target, not its "
+                                          "position"}}},
                         {"target", {{"description", "A creature or object id"}}},
                         {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
                         {"ability", {{"type", "integer"}}},
