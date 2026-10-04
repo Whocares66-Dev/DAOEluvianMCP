@@ -210,6 +210,14 @@ void AddGame(Bench &bench, const Watch &watch)
             const auto cursor = bench.Events().Next();
             if (action == "load")
             {
+                // Asked during a conversation, the game took the load and did
+                // nothing, no loaded event, in the Fade (turn-based-agent,
+                // 2026-10-03, #36): refused, saying how to go on.
+                if (watch.Mode() == static_cast<int>(dao::GameMode::Dialog))
+                {
+                    throw ToolError("game: a load is not taken during a conversation: answer or end it first "
+                                    "(dialogue), or start the game in that save (game_launch with `load`)");
+                }
                 const dao::saves::Slot slot{Wide(args.String("character", "")),
                                             static_cast<std::int32_t>(args.Integer("number", 1, 0, 500)),
                                             KindArg(args, "manual")};
