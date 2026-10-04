@@ -36,8 +36,8 @@ struct World
     bool doorLoads = false;    // whether the door's use starts a load, refusing the orders after it
     int clears = 0;            // how many moves the game clears before they go, giving no other
     bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
-    int pickLevel = 1;          // the door's lock: 10000 is the game's "cannot be picked"
-    bool silentUse = false;     // whether a use's end is never said either
+    int pickLevel = 1;         // the door's lock: 10000 is the game's "cannot be picked"
+    bool silentUse = false;    // whether a use's end is never said either
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn;  // an order after which the mode turns to combat
@@ -117,9 +117,8 @@ struct World
             }
             if (args.value("kind", "") == "exits")
             {
-                Json exits = Json::array({Json{{"id", "0x1f5"},
-                                               {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
-                                               {"active", exitActive}}});
+                Json exits = Json::array({Json{
+                    {"id", "0x1f5"}, {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}}, {"active", exitActive}}});
                 if (blockerFirst)
                 {
                     // Nearer, to the same place, and only a line of text.
@@ -912,6 +911,16 @@ TEST_CASE("a door whose use ends unseen and stays shut is said not to open, not 
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not open"));
     CHECK(world.orders.size() == 1); // used once, then said, not used again
     CHECK(answer["steps"][0]["result"] == "ended unseen");
+}
+
+TEST_CASE("a quiet move whose walker still has it is waited for, not cut short", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.silent = true; // no end comes, but the command stays the walker's
+    const auto answer = world.bench.Invoke("travel", Json{{"target", "0x2ec"}, {"budgetMs", 3000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("time ran out"));
 }
 
 TEST_CASE("an exit is named by its id too", "[travel]")

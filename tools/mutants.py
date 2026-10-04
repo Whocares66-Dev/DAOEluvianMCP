@@ -186,8 +186,8 @@ MUTANTS = [
     Mutant(
         "travel takes an exit that is not active",
         TRAVEL,
-        '(exit_.empty() && area == area_ && exit.value("active", true))',
-        "(exit_.empty() && area == area_)",
+        '(exit_.empty() && area == area_ && exit.value("active", true) && !blocker))',
+        "(exit_.empty() && area == area_ && !blocker))",
     ),
     Mutant(
         "travel's crossing ends before the other area is in place",
