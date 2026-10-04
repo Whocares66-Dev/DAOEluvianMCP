@@ -31,10 +31,13 @@ struct World
     std::string moveFails;     // the result every move ends with instead of success, if any
     double failsAt = -1;       // where a failing move leaves the walker, from the goal; -1 where it stood
     bool silent = false;       // whether a move's end never comes: a fight takes the command with it
+    bool unseen = false;       // whether the walker is left with no command when a move's end never comes
     bool chatter = false;      // whether others' commands end around each order, and the walker's last is cleared
     bool doorLoads = false;    // whether the door's use starts a load, refusing the orders after it
     int clears = 0;            // how many moves the game clears before they go, giving no other
     bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
+    int pickLevel = 1;          // the door's lock: 10000 is the game's "cannot be picked"
+    bool silentUse = false;     // whether a use's end is never said either
     std::string mode = "explore";
     bool paused = false;
     std::string fightOn;  // an order after which the mode turns to combat
@@ -49,6 +52,7 @@ struct World
     int loadingFor = 0;         // health calls an area's loading is still said for
     int readsWhileLoading = 0;  // frame reads asked while it loads: each waits out the frame timeout in the game
     bool asks = false;          // whether the game asks first, with a message box
+    bool blockerFirst = false;  // whether a text blocker to the same place is nearer than the exit
     std::string exitNoWalk;     // the search's word for a walk to the exit it cannot make, if it cannot
     bool tooClose = false;      // whether the exit's use fails from closer than 2 m
     Json popup = nullptr;
@@ -83,6 +87,10 @@ struct World
                 ++readsWhileLoading;
                 throw FrameTimeout("no frame took the call within 2000 ms"); // as a frame tool's, while frames stop
             }
+            if (args.value("kind", "") == "creature")
+            {
+                return Json{{"command", {{"current", unseen ? Json(nullptr) : Json("MoveToLocation")}, {"queued", 0}}}};
+            }
             if (args.value("kind", "") == "game")
             {
                 return Json{{"controlled", {{"id", "0x82"}}},
@@ -109,9 +117,19 @@ struct World
             }
             if (args.value("kind", "") == "exits")
             {
-                return Json{{"exits", Json::array({Json{{"id", "0x1f5"},
-                                                        {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
-                                                        {"active", exitActive}}})}};
+                Json exits = Json::array({Json{{"id", "0x1f5"},
+                                               {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
+                                               {"active", exitActive}}});
+                if (blockerFirst)
+                {
+                    // Nearer, to the same place, and only a line of text.
+                    exits.insert(exits.begin(), Json{{"id", "0x1f9"},
+                                                     {"tag", "wmt_rand_enc_text_blocker"},
+                                                     {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
+                                                     {"active", true},
+                                                     {"blocker", true}});
+                }
+                return Json{{"exits", exits}};
             }
             Json walk;
             if (!exitNoWalk.empty() && args.value("target", "") == "0x1f5")
@@ -130,7 +148,10 @@ struct World
             {
                 walk = Json{{"found", false},
                             {"result", "something is in the way"},
-                            {"blocker", {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")}}}};
+                            {"blocker",
+                             {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")},
+                              {"name", "Metal Door"},
+                              {"lock", {{"pickLevel", pickLevel}}}}}};
             }
             else
             {
@@ -240,7 +261,7 @@ struct World
                     "eluvian.command.ended",
                     Json{{"id", args.value("id", "")}, {"type", type}, {"result", "COMMAND_FAILED_COMMAND_CLEARED"}});
             }
-            if (!silent || action != "move")
+            if ((!silent || action != "move") && !(silentUse && action == "use"))
             {
                 bench.Events().Emit("eluvian.command.ended",
                                     Json{{"id", args.value("id", "")}, {"type", type}, {"result", result}});
@@ -841,6 +862,56 @@ TEST_CASE("a target with no ground under it that is not an exit is no walk there
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no walkable ground"));
     CHECK(world.orders.empty());
+}
+
+TEST_CASE("a text blocker is passed over for an area, and refused by its id", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 5;
+    world.blockerFirst = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["exit"]["id"] == "0x1f5");
+    CHECK_THROWS_WITH(world.bench.Invoke("travel", Json{{"exit", "0x1f9"}, {"budgetMs", 5000}}),
+                      ContainsSubstring("text blocker"));
+}
+
+TEST_CASE("a move that ends unseen, the walker left with no command, is not waited out", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.silent = true; // no end comes
+    world.unseen = true; // and nothing is left to do
+    const auto started = std::chrono::steady_clock::now();
+    const auto answer = world.bench.Invoke("travel", Json{{"target", "0x2ec"}, {"budgetMs", 30000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["steps"][0]["result"] == "ended unseen");
+    CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(10));
+}
+
+TEST_CASE("a door the story keeps shut is said at once, neither used nor walked to", "[travel]")
+{
+    World world;
+    world.pickLevel = 10000;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("cannot be opened: 0x1f1 Metal Door"));
+    CHECK(answer["shutBy"]["id"] == "0x1f1");
+    CHECK(world.orders.empty());
+}
+
+TEST_CASE("a door whose use ends unseen and stays shut is said not to open, not used for ever", "[travel]")
+{
+    World world;
+    world.opens = false;    // the use does nothing
+    world.silentUse = true; // and its end is never said
+    world.unseen = true;    // the walker left with no command
+    const auto answer = world.bench.Invoke("travel", Json{{"target", "0x2ec"}, {"budgetMs", 30000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not open"));
+    CHECK(world.orders.size() == 1); // used once, then said, not used again
+    CHECK(answer["steps"][0]["result"] == "ended unseen");
 }
 
 TEST_CASE("an exit is named by its id too", "[travel]")

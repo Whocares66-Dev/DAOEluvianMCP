@@ -1411,6 +1411,39 @@ MUTANTS = [
         'if (map->value("map", std::string("world")) != "fade")',
         "if (true)",
     ),
+    # #32: a text blocker is never a way out.
+    Mutant(
+        "travel takes a text blocker for the way to an area",
+        TRAVEL,
+        'exit.value("active", true) && !blocker))',
+        'exit.value("active", true)))',
+    ),
+    Mutant(
+        "travel waits out a command that ended unseen",
+        TRAVEL,
+        "if (!StillCommanded())",
+        "if (false)",
+    ),
+    Mutant(
+        "travel cuts short a move still under way",
+        TRAVEL,
+        "if (!StillCommanded())",
+        "if (StillCommanded() || true)",
+    ),
+    # #33: a door the story keeps shut is said at once; a use that ends
+    # unseen is a use made.
+    Mutant(
+        "travel uses a door the story keeps shut",
+        TRAVEL,
+        'walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)',
+        'walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) < 0)',
+    ),
+    Mutant(
+        "travel forgives a use that ended unseen, and uses it again",
+        TRAVEL,
+        "return std::string(kUnseen);",
+        "return std::string(kCleared);",
+    ),
 ]
 
 

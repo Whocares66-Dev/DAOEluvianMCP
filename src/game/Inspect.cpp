@@ -166,11 +166,31 @@ std::string PlaceableLine(const Json &p)
     return line;
 }
 
+// What stands in a walk's way: a placeable with its state and its lock, as
+// kind=placeables reads them, so a door the story keeps shut (pick level
+// 10000) is told from one a use opens (#33).
+Json BlockerJson(ObjectId id)
+{
+    Json blocker = Brief(id);
+    if (id != kInvalidObject && api::GetObjectType(id) == k::OBJECT_TYPE_PLACEABLE)
+    {
+        blocker["state"] = api::GetPlaceableState(id);
+        blocker["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
+                               {"keyTag", Narrow(api::GetPlaceableKeyTag(id))},
+                               {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
+    }
+    return blocker;
+}
+
 std::string ExitLine(const Json &e)
 {
     std::string line = std::format(
         "{} {} [{}] {} to {}, {}", e.value("id", ""), e.value("name", ""), e.value("tag", ""), e.value("kind", ""),
         e.value(Json::json_pointer("/leadsTo/area"), std::string()), Metres(e.value("distance", 0.0)));
+    if (e.value("blocker", false))
+    {
+        line += ", a blocker: its use shows a line and leaves nothing";
+    }
     return e.value("active", true) ? line : line + ", inactive";
 }
 
@@ -658,6 +678,15 @@ void AddInspect(Bench &bench, const Watch &watch)
                 exit["position"] = VectorJson(position);
                 exit["distance"] = distance;
                 exit["active"] = api::GetObjectActive(id) != 0;
+                // A text blocker has a destination as an exit does, but its
+                // use shows a line instead of leaving: "Return Path"
+                // (wmt_rand_enc_text_blocker) in random encounters and at
+                // Lothering's south end, taken for the way to the world map
+                // (turn-based-agent, 2026-10-03, #32). Its tag says what it is.
+                if (exit.value("tag", std::string()).find("blocker") != std::string::npos)
+                {
+                    exit["blocker"] = true;
+                }
                 found.emplace_back(distance, std::move(exit));
             }
             std::ranges::sort(found, {}, &std::pair<float, Json>::first);
@@ -882,7 +911,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                 }
                 if (search.result == 6)
                 {
-                    walk["blocker"] = Brief(search.blocker);
+                    walk["blocker"] = BlockerJson(search.blocker);
                     walk["note"] = search.blocker == kInvalidObject
                                        ? "a door or the like stands in the way and was not found by name; inspect "
                                          "kind=placeables near `reached` lists what is there"
@@ -895,7 +924,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                     // part way, DAOLib names the placeable lying across the
                     // way just ahead of where it stopped (c8d7270). A strong
                     // hint, not a fact.
-                    walk["blocker"] = Brief(search.blocker);
+                    walk["blocker"] = BlockerJson(search.blocker);
                     walk["note"] = "the search gave up short of something lying across the way: likely `blocker`, "
                                    "a shut door perhaps. order action=use on it, then ask again or move";
                 }

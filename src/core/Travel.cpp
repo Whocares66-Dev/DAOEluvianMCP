@@ -28,6 +28,10 @@ constexpr double kNoNearer = 0.25;
 
 // A command's end when another cleared it from the walker's queue.
 constexpr const char *kCleared = "COMMAND_FAILED_COMMAND_CLEARED";
+// A command that ended with no end said: a move measured again, a use made.
+constexpr const char *kUnseen = "ended unseen";
+// The game's pick level for a lock no one picks: the story or a key opens it.
+constexpr int kCannotPick = 10000;
 // How far back from an exit a failed use is tried again from, in metres.
 constexpr double kStepBack = 4.0;
 
@@ -305,7 +309,17 @@ class Journey
         {
             const std::string id = exit.value("id", std::string());
             const std::string area = exit.value(Json::json_pointer("/leadsTo/area"), std::string());
-            if ((!exit_.empty() && id == exit_) || (exit_.empty() && area == area_ && exit.value("active", true)))
+            // A text blocker is never a way out (#32): asked for by id, it is
+            // refused, and for an area the next exit is taken.
+            const bool blocker = exit.value("blocker", false);
+            if (blocker && id == exit_)
+            {
+                throw ToolError("travel: " + exit_ +
+                                " is a text blocker: its use shows a line and leaves nothing; "
+                                "inspect kind=exits lists the ways out");
+            }
+            if ((!exit_.empty() && id == exit_) ||
+                (exit_.empty() && area == area_ && exit.value("active", true) && !blocker))
             {
                 exitAt_ = exit;
                 where_["target"] = id;
@@ -530,7 +544,7 @@ class Journey
                 {
                     return End(false, stopped_.value_or("the time ran out while walking"));
                 }
-                if (*result == "success")
+                if (*result == "success" || *result == kUnseen)
                 {
                     continue; // measured again above: there, or stopped short of it
                 }
@@ -566,6 +580,20 @@ class Journey
                 // not a door to open on the way (a chest in a narrow place was
                 // opened as one, #21).
                 return End(true, "as near as the walk goes: the target itself stands in the way");
+            }
+            // A door the story keeps shut, or its key: its pick level is the
+            // game's "cannot be picked", and using it does nothing. The
+            // Circle Tower's stairs stand behind such doors until the story
+            // opens them; travel used one three times and stood there
+            // (turn-based-agent, 2026-10-03, #33). Said at once, neither used
+            // nor walked towards.
+            if (!blocker.empty() && walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)
+            {
+                answer_["shutBy"] = walk.at("blocker");
+                std::string why = "the way is shut by a door that cannot be opened: " + blocker;
+                why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
+                why += " (the story opens it, or its key; inspect kind=placeables says more)";
+                return End(false, std::move(why));
             }
             if (!blocker.empty())
             {
@@ -622,6 +650,19 @@ class Journey
     [[nodiscard]] milliseconds Left() const
     {
         return std::max(milliseconds(0), std::chrono::duration_cast<milliseconds>(deadline_ - Clock::now()));
+    }
+
+    // Whether the walker still has a command current or queued; true if that
+    // could not be read, so that a read refused is no reason to stop waiting.
+    bool StillCommanded()
+    {
+        const auto read = Ask("inspect", Json{{"kind", "creature"}, {"id", who_}});
+        if (!read)
+        {
+            return true;
+        }
+        const Json command = read->value("command", Json::object());
+        return !command.value("current", Json()).is_null() || command.value("queued", 0) > 0;
     }
 
     // The game's loading mode, waited out: it shows it while it autosaves,
@@ -758,6 +799,19 @@ class Journey
                 {
                     steps_.push_back(Json{{"did", std::move(what)}, {"result", kCleared}});
                     return std::string(kCleared);
+                }
+                if (!StillCommanded())
+                {
+                    // Gone with no end said: a walk to an exit 115 m off
+                    // waited out its 240 s
+                    // with the walker 62 m short and no command current or
+                    // queued, a fight just over around her (turn-based-agent,
+                    // 2026-10-03, #32). No longer waited for: measured again.
+                    // Not a cleared command: a use that ends so is a use
+                    // made, or a door the story keeps shut is used for ever
+                    // (the Circle Tower's, three times, #33).
+                    steps_.push_back(Json{{"did", std::move(what)}, {"result", kUnseen}});
+                    return std::string(kUnseen);
                 }
                 continue;
             }
