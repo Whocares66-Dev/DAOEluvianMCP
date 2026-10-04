@@ -1444,6 +1444,32 @@ MUTANTS = [
         "return std::string(kUnseen);",
         "return std::string(kCleared);",
     ),
+    # #40: a door whose key is required and not carried ends it at once.
+    Mutant(
+        "travel uses a door whose key the party does not carry",
+        TRAVEL,
+        "if (!blocker.empty() && keyMissing)",
+        "if (blocker.empty() && keyMissing)",
+    ),
+    Mutant(
+        "travel takes a carried key for a missing one",
+        TRAVEL,
+        '!walk.value(Json::json_pointer("/blocker/lock/keyHeld"), true);',
+        "true;",
+    ),
+    # #45: only a locked door is shut for good.
+    Mutant(
+        "travel takes an unlocked door whose key is spent for shut for good",
+        TRAVEL,
+        "const bool keyMissing = locked && ",
+        "const bool keyMissing = ",
+    ),
+    Mutant(
+        "travel takes an unlocked story door for shut for good",
+        TRAVEL,
+        "if (!blocker.empty() && locked &&",
+        "if (!blocker.empty() &&",
+    ),
 ]
 
 

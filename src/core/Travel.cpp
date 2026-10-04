@@ -32,6 +32,9 @@ constexpr const char *kCleared = "COMMAND_FAILED_COMMAND_CLEARED";
 constexpr const char *kUnseen = "ended unseen";
 // The game's pick level for a lock no one picks: the story or a key opens it.
 constexpr int kCannotPick = 10000;
+// A door's locked state (PLC_STATE_DOOR_LOCKED; a container's is 1 too):
+// only a locked door needs its key or its pick (#45).
+constexpr int kLocked = 1;
 // How far back from an exit a failed use is tried again from, in metres.
 constexpr double kStepBack = 4.0;
 
@@ -587,7 +590,29 @@ class Journey
             // opens them; travel used one three times and stood there
             // (turn-based-agent, 2026-10-03, #33). Said at once, neither used
             // nor walked towards.
-            if (!blocker.empty() && walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)
+            // So too a door whose key is required and not carried: Redcliffe
+            // castle's Main Hall, its key "DoesNotExist" (turn-based-agent,
+            // 2026-10-04, #40).
+            // Only while it is locked: a door the party unlocked with its key,
+            // which the game took, fell shut behind them unlocked, and travel
+            // would not leave the room "the key the party does not carry"
+            // (turn-based-agent, 2026-10-04, #45). Read as locked where no
+            // state is read.
+            const bool locked = walk.value(Json::json_pointer("/blocker/state"), kLocked) == kLocked;
+            const bool keyMissing = locked && walk.value(Json::json_pointer("/blocker/lock/keyRequired"), false) &&
+                                    !walk.value(Json::json_pointer("/blocker/lock/keyHeld"), true);
+            if (!blocker.empty() && keyMissing)
+            {
+                answer_["shutBy"] = walk.at("blocker");
+                std::string why = "the way is shut by a door whose key the party does not carry (" +
+                                  walk.value(Json::json_pointer("/blocker/lock/keyTag"), std::string()) +
+                                  "): " + blocker;
+                why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
+                why += " (the story opens it, or its key; inspect kind=placeables says more)";
+                return End(false, std::move(why));
+            }
+            if (!blocker.empty() && locked &&
+                walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)
             {
                 answer_["shutBy"] = walk.at("blocker");
                 std::string why = "the way is shut by a door that cannot be opened: " + blocker;

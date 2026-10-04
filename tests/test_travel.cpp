@@ -37,6 +37,9 @@ struct World
     int clears = 0;            // how many moves the game clears before they go, giving no other
     bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
     int pickLevel = 1;         // the door's lock: 10000 is the game's "cannot be picked"
+    bool keyRequired = false;  // whether only the door's key opens it
+    bool keyHeld = false;      // whether the party carries that key
+    int doorState = 1;         // the door's state: 1 locked, 0 shut and unlocked
     bool silentUse = false;    // whether a use's end is never said either
     std::string mode = "explore";
     bool paused = false;
@@ -150,7 +153,12 @@ struct World
                             {"blocker",
                              {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")},
                               {"name", "Metal Door"},
-                              {"lock", {{"pickLevel", pickLevel}}}}}};
+                              {"state", doorState},
+                              {"lock",
+                               {{"pickLevel", pickLevel},
+                                {"keyRequired", keyRequired},
+                                {"keyTag", "DoesNotExist"},
+                                {"keyHeld", keyHeld}}}}}};
             }
             else
             {
@@ -887,6 +895,34 @@ TEST_CASE("a move that ends unseen, the walker left with no command, is not wait
     CHECK(answer["arrived"] == true);
     CHECK(answer["steps"][0]["result"] == "ended unseen");
     CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(10));
+}
+
+TEST_CASE("a door whose key the party does not carry is said at once; carried, it is used", "[travel]")
+{
+    World world;
+    world.keyRequired = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(),
+               ContainsSubstring("key the party does not carry (DoesNotExist): 0x1f1 Metal Door"));
+    CHECK(answer["shutBy"]["id"] == "0x1f1");
+    CHECK(world.orders.empty());
+    World holding;
+    holding.keyRequired = true;
+    holding.keyHeld = true;
+    CHECK(holding.Travel()["arrived"] == true); // the key opens it: used on the way
+}
+
+TEST_CASE("a door shut but unlocked is used on the way, its key spent or its pick past reach", "[travel]")
+{
+    World spent; // the key unlocked it and was taken; the door fell shut behind the party
+    spent.keyRequired = true;
+    spent.doorState = 0;
+    CHECK(spent.Travel()["arrived"] == true);
+    World story; // the story unlocked it; its pick level stays the game's "cannot be picked"
+    story.pickLevel = 10000;
+    story.doorState = 0;
+    CHECK(story.Travel()["arrived"] == true);
 }
 
 TEST_CASE("a door the story keeps shut is said at once, neither used nor walked to", "[travel]")

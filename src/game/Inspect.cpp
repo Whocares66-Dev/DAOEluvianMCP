@@ -175,9 +175,16 @@ Json BlockerJson(ObjectId id)
     if (id != kInvalidObject && api::GetObjectType(id) == k::OBJECT_TYPE_PLACEABLE)
     {
         blocker["state"] = api::GetPlaceableState(id);
+        const std::wstring key = api::GetPlaceableKeyTag(id);
         blocker["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
-                               {"keyTag", Narrow(api::GetPlaceableKeyTag(id))},
+                               {"keyTag", Narrow(key)},
                                {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
+        // Whether the party carries the key: a door whose key is required
+        // opens to nothing else (#40). The party's things are the hero's.
+        if (!key.empty())
+        {
+            blocker["lock"]["keyHeld"] = api::CountItemsByTag(api::GetHero(), key) > 0;
+        }
     }
     return blocker;
 }
