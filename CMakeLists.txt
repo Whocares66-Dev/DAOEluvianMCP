@@ -242,6 +242,7 @@ add_daolib_plugin(
         src/game/Shared.cpp
         src/game/Stage.cpp
         src/game/Store.cpp
+        src/game/WorldMap.cpp
         src/plugin/HostApi.cpp
         src/plugin/Plugin.cpp
 )

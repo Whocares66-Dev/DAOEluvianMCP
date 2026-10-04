@@ -1352,6 +1352,65 @@ MUTANTS = [
         '{"by", event->payload.value("by", Json())},',
         '{"by", Json()},',
     ),
+    # #24: a world map pin by name in any case, tag or index; refused when not
+    # active; the map waited for after its exit; an exit that opened no map
+    # keeps its reason; an encounter is not arrival.
+    Mutant(
+        "travel to names a pin only in its own case",
+        TRAVEL,
+        'return Lower(pin.value("name", std::string())) == Lower(wanted) ||',
+        'return pin.value("name", std::string()) == wanted ||',
+    ),
+    Mutant(
+        "travel to clicks a pin that is not active",
+        TRAVEL,
+        'if (state != "active")',
+        "if (false)",
+    ),
+    Mutant(
+        "travel to does not wait for the map its exit opens",
+        TRAVEL,
+        'while (opening && map && !map->value("up", false) && Clock::now() < until)',
+        "while (false)",
+    ),
+    Mutant(
+        "travel to says the map is not up for an exit that did something else",
+        TRAVEL,
+        'if (opening && (!map || !map->value("up", false)))',
+        "if (false)",
+    ),
+    Mutant(
+        "travel to takes an encounter for the pin",
+        TRAVEL,
+        'if (area == pin->value("area", std::string()))',
+        "if (true)",
+    ),
+    Mutant(
+        "travel to clicks from nowhere",
+        TRAVEL,
+        '"GameModeController.AreaTransition " + map->value("at", std::string()) + " " + std::to_string(index);',
+        '"GameModeController.AreaTransition " + std::string("x") + " " + std::to_string(index);',
+    ),
+    Mutant(
+        "travel to takes the last pin of a name, active or not",
+        TRAVEL,
+        'if (Names(candidate) && (pin == nullptr || (live && pin->value("state", std::string()) != "active")))',
+        "if (Names(candidate) && live == live)",
+    ),
+    # #30: the map marked closed by travel before the pin's transition.
+    Mutant(
+        "travel to sends the transition with the map not marked closed by travel",
+        TRAVEL,
+        '{"set", "WorldMap.m_bClosedByTravel"}, {"value", true}});',
+        '{"set", "WorldMap.m_bClosedByTravel"}, {"value", false}});',
+    ),
+    # #34: the Fade's own map is clicked as its pin does, with no mark.
+    Mutant(
+        "travel to marks the Fade's map as if it were the world's",
+        TRAVEL,
+        'if (map->value("map", std::string("world")) != "fade")',
+        "if (true)",
+    ),
 ]
 
 

@@ -52,6 +52,20 @@ struct World
     std::string exitNoWalk;     // the search's word for a walk to the exit it cannot make, if it cannot
     bool tooClose = false;      // whether the exit's use fails from closer than 2 m
     Json popup = nullptr;
+    bool mapExit = false;              // whether the exit opens the world map instead of leading somewhere
+    bool mapUp = false;                // whether the world map is on the screen
+    int mapLate = 0;                   // reads of the map before it is up, after its exit
+    std::string encounter;             // the area a pin's travel stops in on the way, if any
+    std::vector<std::string> messages; // what input sent
+    std::vector<Json> screenCalls;     // input's calls on a screen's movie
+    bool closedByTravel = false;       // the map movie's mark, as a pin's click sets it
+    bool partyKept = false;            // whether the party went with the hero
+    bool fadeMap = false;              // whether the map up is the Fade's own
+    Json pins = Json::array(
+        {Json{{"index", 0}, {"name", "Ostagar"}, {"tag", "wm_ostagar"}, {"area", "ost100ar"}, {"state", "completed"}},
+         Json{{"index", 1}, {"name", "Lothering"}, {"tag", "wm_lothering"}, {"area", "lot100ar"}, {"state", "active"}},
+         Json{
+             {"index", 2}, {"name", "Denerim"}, {"tag", "wm_denerim"}, {"area", "den100ar"}, {"state", "not active"}}});
 
     World()
     {
@@ -72,12 +86,26 @@ struct World
             if (args.value("kind", "") == "game")
             {
                 return Json{{"controlled", {{"id", "0x82"}}},
-                            {"area", {{"tag", area}, {"name", area == "forest" ? "Forest Clearing" : "Ruins"}}},
+                            {"area",
+                             {{"tag", area},
+                              {"name", area == "forest" ? "Forest Clearing" : (area == "ruins" ? "Ruins" : area)}}},
                             {"popup", popup}};
             }
             if (args.value("kind", "") == "gui")
             {
                 return Json{{"popup", popup}};
+            }
+            if (args.value("kind", "") == "worldmap")
+            {
+                if (mapExit && !mapUp && mapLate-- == 0)
+                {
+                    mapUp = true;
+                }
+                return Json{{"up", mapUp},
+                            {"screen", fadeMap ? "FadeMap" : "WorldMap"},
+                            {"map", fadeMap ? "fade" : "world"},
+                            {"at", area},
+                            {"pins", pins}};
             }
             if (args.value("kind", "") == "exits")
             {
@@ -163,6 +191,10 @@ struct World
                 {
                     popup = Json{{"text", "Leave the area?"}};
                 }
+                else if (mapExit)
+                {
+                    mode = "gui"; // the map comes up a moment later, read by its reads
+                }
                 else if (loads)
                 {
                     // The other area loads: its scripts are told it is in
@@ -214,6 +246,41 @@ struct World
                                     Json{{"id", args.value("id", "")}, {"type", type}, {"result", result}});
             }
             return Json{{"given", true}, {"cursor", cursor}};
+        });
+        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
+            if (args.contains("screen"))
+            {
+                // The map movie's own calls: its closed-by-travel mark and
+                // the pin's index, as the pin's click sets them.
+                screenCalls.push_back(args);
+                if (args.value("set", "") == "WorldMap.m_bClosedByTravel")
+                {
+                    closedByTravel = args.value("value", false);
+                    return Json{{"screen", "WorldMap"}, {"set", args.value("set", "")}, {"done", true}};
+                }
+                return Json{{"screen", "WorldMap"}, {"call", args.value("call", "")}, {"ran", true}};
+            }
+            const std::string message = args.value("message", "");
+            messages.push_back(message);
+            // A pin's click: the party goes there, or into an encounter on
+            // the way, over a load.
+            const std::string click = "GameModeController.AreaTransition " + area + " ";
+            if (mapUp && message.starts_with(click))
+            {
+                const Json &pin = pins.at(std::stoi(message.substr(click.size())));
+                if (pin.value("state", "") == "active")
+                {
+                    // At camp, a map closed not by travel sends the
+                    // followers home and the hero goes alone.
+                    partyKept = closedByTravel;
+                    mapUp = false;
+                    area = encounter.empty() ? pin.value("area", "") : encounter;
+                    mode = "loading";
+                    loadingFor = 1;
+                    bench.Events().Emit("eluvian.script.area_loaded", Json::object());
+                }
+            }
+            return Json{{"message", message}, {"sent", true}};
         });
         AddTravelTool(bench);
     }
@@ -579,6 +646,145 @@ TEST_CASE("an area is reached by the exit that leads there", "[travel]")
     CHECK(world.orders[0]["action"] == "move");
     CHECK(world.orders[1]["action"] == "use");
     CHECK(world.orders[1]["target"] == "0x1f5");
+}
+
+TEST_CASE("a pin of the world map, the map up, is travelled to by its name in any case", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "through to Lothering");
+    CHECK(answer["area"]["tag"] == "lot100ar");
+    REQUIRE(world.messages.size() == 1);
+    CHECK(world.messages[0] == "GameModeController.AreaTransition ruins 1"); // where the party is, the pin
+    // As the pin's own click: marked closed by travel, the index set, then
+    // the transition; the party goes with the hero.
+    REQUIRE(world.screenCalls.size() == 2);
+    CHECK(world.screenCalls[1]["args"] == Json::array({"WorldMap.LastClickedPinIndex", 1}));
+    CHECK(world.partyKept);
+    CHECK(world.orders.empty());
+}
+
+TEST_CASE("of two pins of one name the active one is taken", "[travel]")
+{
+    for (const bool activeFirst : {true, false})
+    {
+        World world;
+        world.mapUp = true;
+        Json other = {{"index", 3},
+                      {"name", "Lothering"},
+                      {"tag", "wm_lothering_later"},
+                      {"area", "lot900ar"},
+                      {"state", "not active"}};
+        if (activeFirst)
+        {
+            world.pins.push_back(other);
+        }
+        else
+        {
+            world.pins.insert(world.pins.begin() + 1, other);
+            world.pins[1]["index"] = 1;
+            world.pins[2]["index"] = 2;
+            world.pins[3]["index"] = 3;
+        }
+        const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+        CHECK(answer["arrived"] == true);
+        CHECK(answer["pin"]["tag"] == "wm_lothering");
+    }
+}
+
+TEST_CASE("on the Fade's own map a pin is clicked as its pin does, with no mark", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.fadeMap = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    REQUIRE(world.screenCalls.size() == 1); // the index only: the Fade's map has no closed-by-travel mark
+    CHECK(world.screenCalls[0]["screen"] == "FadeMap");
+    CHECK(world.screenCalls[0]["call"] == "ExternalCommands.SetValue");
+}
+
+TEST_CASE("a pin is named by its tag or its index too", "[travel]")
+{
+    for (const Json &to : {Json("wm_lothering"), Json(1)})
+    {
+        World world;
+        world.mapUp = true;
+        const auto answer = world.bench.Invoke("travel", Json{{"to", to}, {"budgetMs", 5000}}).data;
+        CHECK(answer["arrived"] == true);
+    }
+}
+
+TEST_CASE("the exit to the world map, the map waited for, then the pin", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.mapExit = true;
+    world.mapLate = 2; // up on the third read
+    const auto answer =
+        world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["area"]["tag"] == "lot100ar");
+    REQUIRE(world.orders.size() == 1);
+    CHECK(world.orders[0]["action"] == "use");
+    CHECK(world.messages.size() == 1);
+}
+
+TEST_CASE("an exit with `to` that opens no map keeps its own reason", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.crosses = false;
+    const auto answer =
+        world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"to", "Lothering"}, {"budgetMs", 1000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not leave"));
+    CHECK(world.messages.empty());
+}
+
+TEST_CASE("a random encounter on the way is said, not taken for the pin", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.encounter = "ran405ar_highway_dog";
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["encounter"] == true);
+    CHECK(answer["area"]["tag"] == "ran405ar_highway_dog");
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("random encounter"));
+}
+
+TEST_CASE("a pin not active, or none of the name, is refused, saying the active ones", "[travel]")
+{
+    for (const std::string to : {"Denerim", "Orzammar"})
+    {
+        World world;
+        world.mapUp = true;
+        const auto answer = world.bench.Invoke("travel", Json{{"to", to}, {"budgetMs", 5000}}).data;
+        CHECK(answer["arrived"] == false);
+        CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the active ones: Lothering"));
+        CHECK(world.messages.empty());
+    }
+}
+
+TEST_CASE("a pin with the map not up and no exit says how to open it", "[travel]")
+{
+    World world;
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no map is up"));
+    CHECK(world.messages.empty());
+}
+
+TEST_CASE("`to` goes with `exit` only", "[travel]")
+{
+    World world;
+    CHECK_THROWS_AS(world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"target", "0x2ec"}}), ToolError);
+    CHECK_THROWS_AS(world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"area", "forest"}}), ToolError);
 }
 
 TEST_CASE("an exit's use that fails from too close is tried again from a step back", "[travel]")

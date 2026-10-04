@@ -218,5 +218,6 @@ void AddResources(Bench &bench);
 void AddCharacter(Bench &bench, const Watch &watch); // inspect's character, equipment, inventory and item
 void AddGui(Bench &bench, const Watch &watch);       // inspect's gui
 void AddStore(Bench &bench, const Watch &watch);
+void AddWorldMap(Bench &bench, const Watch &watch); // inspect's worldmap
 
 } // namespace eluvian::game

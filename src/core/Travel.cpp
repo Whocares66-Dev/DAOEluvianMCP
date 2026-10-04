@@ -46,10 +46,18 @@ class Journey
         answer_["cursor"] = bench_.Events().Next();
         const int given = (args.Has("target") ? 1 : 0) + (args.Has("point") ? 1 : 0) + (args.Has("exit") ? 1 : 0) +
                           (args.Has("area") ? 1 : 0);
-        if (given != 1)
+        if (args.Has("to"))
+        {
+            to_ = args.Raw().at("to");
+        }
+        // `to`, a pin of the world map: alone with the map up, or with the
+        // `exit` that opens it (#24).
+        const bool fits = to_.is_null() ? given == 1 : given == 0 || (given == 1 && args.Has("exit"));
+        if (!fits)
         {
             throw ToolError("travel: give one of `target` (a creature or object id), `point`, `exit` (an id "
-                            "from inspect kind=exits) or `area` (an area's tag)");
+                            "from inspect kind=exits) or `area` (an area's tag); or `to`, a pin of the world map "
+                            "(inspect kind=worldmap), with `exit` (the area's way to the map) if the map is not up");
         }
         if (args.Has("target"))
         {
@@ -63,7 +71,7 @@ class Journey
         {
             exit_ = args.String("exit");
         }
-        else
+        else if (args.Has("area"))
         {
             area_ = args.String("area");
         }
@@ -100,6 +108,10 @@ class Journey
             ChooseExit();
             fromArea_ = game.value(Json::json_pointer("/area/tag"), std::string());
         }
+        if (!to_.is_null() && exit_.empty())
+        {
+            return Map(false);
+        }
         Json walked = Walk();
         const std::string why = walked.value("reason", std::string());
         if (leaving && !walked.value("arrived", false) && why.starts_with("no walk there"))
@@ -118,10 +130,170 @@ class Journey
         {
             return walked;
         }
-        return Cross();
+        Json crossed = Cross();
+        if (to_.is_null() || crossed.value("arrived", false))
+        {
+            return crossed;
+        }
+        return Map(true); // the exit opened the world map, if it did: on to the pin
     }
 
   private:
+    // Across the world map to a pin, as a click on it: the map's script
+    // sends "GameModeController.AreaTransition <where the party is> <the
+    // pin's index>" (worldmap.gfx, read and tried in play by
+    // turn-based-agent, 2026-10-03, #24), and the party goes, at times
+    // through a random encounter on the way. Waited for until another area
+    // is in place; an encounter's area is said as such.
+    Json Map(bool opening)
+    {
+        auto map = Ask("inspect", Json{{"kind", "worldmap"}});
+        // After its exit the map is waited for a little: it opens a moment
+        // after the exit is used.
+        const auto until = Clock::now() + std::min(Left(), milliseconds(5000));
+        while (opening && map && !map->value("up", false) && Clock::now() < until)
+        {
+            std::this_thread::sleep_for(milliseconds(250));
+            map = Ask("inspect", Json{{"kind", "worldmap"}});
+        }
+        if (opening && (!map || !map->value("up", false)))
+        {
+            return answer_; // the exit did something else, said by its crossing
+        }
+        if (!map)
+        {
+            return End(false, "the world map could not be read: " + stopped_.value_or(""));
+        }
+        if (!map->value("up", false))
+        {
+            return End(false, "no map is up, the world's or the Fade's: travel with `exit` (the area's way to "
+                              "the world map, inspect kind=exits) and `to` goes there and on; in the Fade, a "
+                              "Fade Pedestal's use opens its map");
+        }
+        const Json pins = map->value("pins", Json::array());
+        const Json *pin = nullptr;
+        std::string active;
+        for (const auto &candidate : pins)
+        {
+            // Two pins may share a name: Redcliffe Village is pin 6 and, not
+            // active, the climax's pin 14; by name the active one is meant
+            // (turn-based-agent, 2026-10-03).
+            const bool live = candidate.value("state", std::string()) == "active";
+            if (Names(candidate) && (pin == nullptr || (live && pin->value("state", std::string()) != "active")))
+            {
+                pin = &candidate;
+            }
+            if (candidate.value("state", std::string()) == "active")
+            {
+                active += (active.empty() ? "" : ", ") + candidate.value("name", std::string());
+            }
+        }
+        const std::string others = active.empty() ? std::string("none") : active;
+        if (pin == nullptr)
+        {
+            return End(false, "no pin " + to_.dump() + " on the world map; the active ones: " + others);
+        }
+        answer_["pin"] = *pin;
+        const std::string name = pin->value("name", std::string());
+        const std::string state = pin->value("state", std::string());
+        if (state != "active")
+        {
+            return End(false,
+                       name + " is " + state + " on the world map, not a place to go now; the active ones: " + others);
+        }
+        auto since = bench_.Events().Next();
+        // What the pin's own click does before the transition (worldmap.gfx,
+        // MapPinIcon.PinClicked): the map marks itself closed by travel, and
+        // the pin's index goes in the data tree. Without the mark the map
+        // closed saying "not by travel", which at camp is the player backing
+        // out: the followers went back to their places and the hero arrived
+        // alone, four times of four from camp to the area it was entered
+        // from; with it, all four arrived (turn-based-agent's reading and
+        // trial, 2026-10-03, #30).
+        const int index = pin->value("index", 0);
+        // The map shown: the world's, or the Fade's own (fademap.gfx), whose
+        // pin sets the index and sends the transition with no mark (#34).
+        const std::string screen = map->value("screen", Json("WorldMap")).is_string()
+                                       ? map->value("screen", std::string("WorldMap"))
+                                       : std::string("WorldMap");
+        if (map->value("map", std::string("world")) != "fade")
+        {
+            const auto marked =
+                Ask("input", Json{{"screen", screen}, {"set", "WorldMap.m_bClosedByTravel"}, {"value", true}});
+            steps_.push_back(
+                Json{{"did", "mark the map closed by travel"},
+                     {"result", marked && marked->value("done", false) ? "done" : stopped_.value_or("not done")}});
+        }
+        Ask("input", Json{{"screen", screen},
+                          {"call", "ExternalCommands.SetValue"},
+                          {"args", Json::array({"WorldMap.LastClickedPinIndex", index})}});
+        const std::string click =
+            "GameModeController.AreaTransition " + map->value("at", std::string()) + " " + std::to_string(index);
+        const auto sent = Ask("input", Json{{"message", click}});
+        if (!sent || !sent->value("sent", false))
+        {
+            return End(false, "the game took no " + click + (stopped_ ? ": " + *stopped_ : std::string()));
+        }
+        steps_.push_back(Json{{"did", "the world map's pin " + name}, {"result", "asked"}});
+        const auto loaded = EventFilter::FromArgs(Json{{"topic", "eluvian.script.area_loaded"}});
+        while (Left() > milliseconds(0))
+        {
+            if (const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(2000))))
+            {
+                since = event->seq + 1;
+            }
+            const Json health = bench_.Invoke("health", Json::object()).data;
+            if (health.value("mode", std::string()) == "loading")
+            {
+                continue;
+            }
+            const auto read = Ask("inspect", Json{{"kind", "game"}});
+            if (!read)
+            {
+                continue;
+            }
+            const Json &game = *read;
+            const std::string area = game.value(Json::json_pointer("/area/tag"), std::string());
+            if (area.empty() || area == startArea_ || area == fromArea_)
+            {
+                continue;
+            }
+            answer_["area"] = game.at("area");
+            if (area == pin->value("area", std::string()))
+            {
+                return End(true, "through to " + name);
+            }
+            answer_["encounter"] = true;
+            return End(false, "on the way to " + name + ", the party is in " +
+                                  game.value(Json::json_pointer("/area/name"), area) +
+                                  " (a random encounter, or the way in): travel with `to` again from its way "
+                                  "to the world map, or with `area`");
+        }
+        return End(false, "the party did not reach " + name + " in the time given; the pin was asked");
+    }
+
+    // Whether a pin is the one `to` names: by index, or by name (any case)
+    // or tag.
+    bool Names(const Json &pin) const
+    {
+        if (to_.is_number_integer())
+        {
+            return pin.value("index", -1) == to_.get<int>();
+        }
+        if (!to_.is_string())
+        {
+            return false;
+        }
+        const std::string wanted = to_.get<std::string>();
+        return Lower(pin.value("name", std::string())) == Lower(wanted) || pin.value("tag", std::string()) == wanted;
+    }
+
+    static std::string Lower(std::string text)
+    {
+        std::ranges::transform(text, text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    }
+
     // The exit to go by: the one named, or the nearest active one that
     // leads to the area named, from inspect kind=exits.
     void ChooseExit()
@@ -667,6 +839,7 @@ class Journey
     Json exitAt_;           // the exit chosen, as inspect kind=exits gave it
     std::string fromArea_;  // the area's tag before the crossing
     std::string startArea_; // the area's tag as the journey began
+    Json to_;               // `to`: a world map pin's name, tag or index
     std::string who_;
     bool byClick_ = false;
     bool wentToReached_ = false;
@@ -696,8 +869,14 @@ void AddTravelTool(Bench &bench)
                  "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
                  "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
                  "comes once the other `area` is in place; it stops and says so if the game asks first (a "
-                 "message box), opens the world map, or starts a fight or a conversation. The game may "
-                 "autosave on the way.",
+                 "message box), opens the world map, or starts a fight or a conversation. Answering the box "
+                 "(game action=press) lets the game go on by that exit to where it leads, a random "
+                 "encounter's exit to its journey's first destination: travel again from where it arrives. "
+                 "The game may autosave on the way. "
+                 "Across the world map: `to`, a pin's name, tag or index (inspect kind=worldmap lists them), "
+                 "alone with the map up, or with the `exit` that opens it; the pin is clicked and the answer "
+                 "comes once its area is in place. A random encounter on the way is said (`encounter`, the "
+                 "`area` it is in) and is not arrival: fight or talk it out, then travel `to` again.",
                  Json{{"type", "object"},
                       {"properties",
                        {{"id", {{"description", "Who walks: a creature id; default the one controlled"}}},
@@ -707,6 +886,9 @@ void AddTravelTool(Bench &bench)
                         {"area",
                          {{"type", "string"},
                           {"description", "An area's tag, to go to by the nearest exit that leads there"}}},
+                        {"to",
+                         {{"description", "A world map pin: its name (any case), tag or index; alone with the map "
+                                          "up, or with `exit`, the way to the map"}}},
                         {"within", {{"type", "number"}, {"description", "Metres that count as there; default 1.5"}}},
                         {"maxDoors", {{"type", "integer"}, {"minimum", 0}, {"maximum", 20}}},
                         {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}}}}},
