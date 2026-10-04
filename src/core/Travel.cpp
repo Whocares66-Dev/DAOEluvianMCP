@@ -29,6 +29,11 @@ constexpr double kNoNearer = 0.25;
 // How near the walker must be for the target named in its own way to count
 // as reached (#46): a thing is used from a few metres.
 constexpr double kNearOwnWay = 4.0;
+// Where the search finds no walk and names nothing, steps this long toward
+// the goal, at most this many, each at least kStraightGain nearer (#53).
+constexpr double kStraightStep = 0.5;
+constexpr int kStraightSteps = 16;
+constexpr double kStraightGain = 0.1;
 
 // A command's end when another cleared it from the walker's queue.
 constexpr const char *kCleared = "COMMAND_FAILED_COMMAND_CLEARED";
@@ -750,6 +755,22 @@ class Journey
                 }
                 return End(false, "no walk there: " + why);
             }
+            // The search found none and named nothing: a strip on an open
+            // doorway's line in the Lair of the Werewolves that it takes for
+            // no ground, which the engine's own straight steps cross; the
+            // walk stopped dead where a player walks through
+            // (turn-based-agent, 2026-10-04, #53). Short straight steps
+            // toward the goal, the walk asked again after each, once.
+            if (walk.value("result", std::string()) == "none" && !straightTried_ && exit_.empty() && area_.empty())
+            {
+                straightTried_ = true;
+                if (const auto why = StraightSteps())
+                {
+                    return End(false, *why);
+                }
+                lastWalk.reset();
+                continue;
+            }
             return End(false, "no walk there: " + walk.value("result", std::string("the search found none")));
         }
         return End(false, "too many steps without arriving");
@@ -789,6 +810,55 @@ class Journey
         why += std::format(" is {:.0f} m off", nearest.value("distance", 0.0));
         answer_["fightNear"] = nearest;
         return why;
+    }
+
+    // Steps straight toward the goal, each kStraightStep, until the walk
+    // finds a path again or the goal is within reach (nothing: the journey
+    // goes on), or a step brings it no nearer or the steps run out (why).
+    std::optional<std::string> StraightSteps()
+    {
+        Json ask = where_;
+        ask.update(Json{{"kind", "geometry"}, {"id", who_}, {"walk", true}});
+        for (int step = 0; step < kStraightSteps; ++step)
+        {
+            const auto read = Ask("inspect", ask);
+            if (!read)
+            {
+                return stopped_.value_or("the walk could not be measured");
+            }
+            const double before = read->value("distance", 0.0);
+            if (before <= within_ || (step > 0 && read->value(Json::json_pointer("/walk/found"), false)))
+            {
+                return std::nullopt;
+            }
+            const auto from = Point(read->value("position", Json()));
+            const auto to = Point(read->value("to", Json()));
+            if (!from || !to)
+            {
+                return "no walk there: none, and the way straight on could not be read";
+            }
+            const double dx = (*to)[0] - (*from)[0];
+            const double dy = (*to)[1] - (*from)[1];
+            const double length = std::hypot(dx, dy);
+            const double reach = std::min(kStraightStep, length);
+            const Json point = Json::array({(*from)[0] + dx / length * reach, (*from)[1] + dy / length * reach,
+                                            (*from)[2] + ((*to)[2] - (*from)[2]) * reach / length});
+            const auto result =
+                Order(Json{{"action", "move"}, {"id", who_}, {"point", point}}, "MoveToLocation", "straight step");
+            if (!result)
+            {
+                return stopped_.value_or("the time ran out stepping straight on");
+            }
+            Json again = where_;
+            again.update(Json{{"kind", "geometry"}, {"id", who_}});
+            const auto after = Ask("inspect", again);
+            if (!after || after->value("distance", before) > before - kStraightGain)
+            {
+                return "no walk there: none, and a straight step toward it got no nearer";
+            }
+        }
+        return "no walk there: none, and straight steps did not find the way within " +
+               std::to_string(static_cast<int>(kStraightStep * kStraightSteps)) + " m";
     }
 
     // Whether the walker still has a command current or queued; true if that
@@ -1046,7 +1116,8 @@ class Journey
     std::string who_;
     bool byClick_ = false;
     bool wentToReached_ = false;
-    bool measured_ = false; // whether `distance` was measured after the last order
+    bool straightTried_ = false; // whether straight steps were tried where the walk found none (#53)
+    bool measured_ = false;      // whether `distance` was measured after the last order
     std::optional<std::string> stopped_;
     Json doors_ = Json::array();
     Json steps_ = Json::array();

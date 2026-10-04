@@ -1595,6 +1595,31 @@ MUTANTS = [
         "if (!blocker.empty() && !exitAhead && !inertAhead)",
         "if (!blocker.empty() && !exitAhead)",
     ),
+    # #53: where the walk finds none, short straight steps.
+    Mutant(
+        "travel stops dead where the walk finds none",
+        TRAVEL,
+        'walk.value("result", std::string()) == "none" && !straightTried_',
+        'walk.value("result", std::string()) == "never" && !straightTried_',
+    ),
+    Mutant(
+        "travel steps straight at an exit it cannot walk to",
+        TRAVEL,
+        "!straightTried_ && exit_.empty() && area_.empty())",
+        "!straightTried_)",
+    ),
+    Mutant(
+        "travel steps straight on though a step got no nearer",
+        TRAVEL,
+        "> before - kStraightGain",
+        "> before + 1e9",
+    ),
+    Mutant(
+        "travel stops stepping straight before the walk is found",
+        TRAVEL,
+        'step > 0 && read->value(Json::json_pointer("/walk/found"), false)',
+        "step > 0",
+    ),
 ]
 
 

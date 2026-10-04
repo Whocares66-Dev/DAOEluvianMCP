@@ -63,6 +63,7 @@ struct World
     bool asks = false;          // whether the game asks first, with a message box
     bool blockerFirst = false;  // whether a text blocker to the same place is nearer than the exit
     std::string exitNoWalk;     // the search's word for a walk to the exit it cannot make, if it cannot
+    double strip = -1;          // beyond this distance the search finds none, though straight steps cross
     bool tooClose = false;      // whether the exit's use fails from closer than 2 m
     Json popup = nullptr;
     bool mapExit = false;              // whether the exit opens the world map instead of leading somewhere
@@ -153,6 +154,10 @@ struct World
             if (!exitNoWalk.empty() && args.value("target", "") == "0x1f5")
             {
                 walk = Json{{"found", false}, {"result", exitNoWalk}};
+            }
+            else if (strip >= 0 && at > strip)
+            {
+                walk = Json{{"found", false}, {"result", "none"}};
             }
             else if (!shut || at <= door || hidden)
             {
@@ -462,6 +467,26 @@ TEST_CASE("a move the game refuses ends the journey with the game's word for it"
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
     CHECK(world.orders.size() == 1);
+}
+
+TEST_CASE("where the search finds none, straight steps cross and the walk goes on", "[travel]")
+{
+    World world; // a doorway's strip the search takes for no ground, 2 m deep
+    world.shut = false;
+    world.strip = 28;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    const auto steps = std::ranges::count_if(
+        answer["steps"], [](const Json &step) { return step.value("did", std::string()) == "straight step"; });
+    CHECK(steps == 4); // 30 to 28 in half metres, then the walk
+    World stuck;       // the straight step goes nowhere either
+    stuck.shut = false;
+    stuck.strip = 28;
+    stuck.stuck = true;
+    const auto stopped = stuck.Travel();
+    CHECK(stopped["arrived"] == false);
+    CHECK_THAT(stopped["reason"].get<std::string>(), ContainsSubstring("a straight step toward it got no nearer"));
+    CHECK(stuck.orders.size() == 1);
 }
 
 TEST_CASE("a move that fails beside its target, where the target stands, is there", "[travel]")
