@@ -4,6 +4,8 @@
 // kinds of their own through the C ABI.
 #include "game/Shared.h"
 
+#include "core/Placeables.h"
+
 #include "game/Capture.h"
 
 #include "dao/Data.h"
@@ -166,6 +168,19 @@ std::string PlaceableLine(const Json &p)
     return line;
 }
 
+// A placeable's state in a word, as its state controller names it (#44):
+// the controller read as the scripts read it (core_h.nss,
+// GetPlaceableStateCntTable). Null where the controller names none.
+constexpr std::int32_t kTablePlaceableTypes = 93;
+
+Json PlaceableStateWord(ObjectId id)
+{
+    const std::string controller =
+        Narrow(api::GetM2DAString(kTablePlaceableTypes, L"StateController", api::GetAppearanceType(id)));
+    const auto word = PlaceableStateName(controller, api::GetPlaceableState(id));
+    return word.empty() ? Json(nullptr) : Json(std::string(word));
+}
+
 // What stands in a walk's way: a placeable with its state and its lock, as
 // kind=placeables reads them, so a door the story keeps shut (pick level
 // 10000) is told from one a use opens (#33).
@@ -175,6 +190,7 @@ Json BlockerJson(ObjectId id)
     if (id != kInvalidObject && api::GetObjectType(id) == k::OBJECT_TYPE_PLACEABLE)
     {
         blocker["state"] = api::GetPlaceableState(id);
+        blocker["stateName"] = PlaceableStateWord(id);
         const std::wstring key = api::GetPlaceableKeyTag(id);
         blocker["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
                                {"keyTag", Narrow(key)},
@@ -581,6 +597,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                 placeable["position"] = VectorJson(position);
                 placeable["distance"] = distance;
                 placeable["state"] = api::GetPlaceableState(id);
+                placeable["stateName"] = PlaceableStateWord(id);
                 placeable["active"] = active;
                 placeable["interactive"] = api::GetObjectInteractive(id) != 0;
                 placeable["popup"] = Narrow(api::GetPlaceablePopupText(id));

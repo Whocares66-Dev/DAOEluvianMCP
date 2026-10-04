@@ -141,6 +141,7 @@ add_library(
     src/core/Mcp.cpp
     src/core/Origin.cpp
     src/core/Party.cpp
+    src/core/Placeables.cpp
     src/core/Rest.cpp
     src/core/Scenario.cpp
     src/core/ToolRegistry.cpp

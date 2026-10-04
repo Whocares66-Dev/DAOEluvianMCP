@@ -109,6 +109,7 @@ ARGS = "src/core/Args.cpp"
 REGISTRY = "src/core/ToolRegistry.cpp"
 LEVELUP = "src/core/LevelUp.cpp"
 CONVERSATION = "src/core/Conversation.cpp"
+PLACEABLES = "src/core/Placeables.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
 # characters here: "\\r\\n" is the source's "\r\n". An edit that leaves a
@@ -1469,6 +1470,19 @@ MUTANTS = [
         TRAVEL,
         "if (!blocker.empty() && locked &&",
         "if (!blocker.empty() &&",
+    ),
+    # #44: a placeable's state named as its controller names it.
+    Mutant(
+        "a door's locked state is named shut",
+        PLACEABLES,
+        '"shut",      "locked", "open",',
+        '"shut",      "shut", "open",',
+    ),
+    Mutant(
+        "a static container's states are named as a container's",
+        PLACEABLES,
+        'kStatic = {"shut", "locked", "destroyed"}',
+        'kStatic = {"shut", "locked", "open"}',
     ),
 ]
 
