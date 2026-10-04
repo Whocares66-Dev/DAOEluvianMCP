@@ -25,6 +25,9 @@ using std::chrono::milliseconds;
 // How much shorter a move must leave the walk to have brought its walker
 // nearer, in metres.
 constexpr double kNoNearer = 0.25;
+// How near the walker must be for the target named in its own way to count
+// as reached (#46): a thing is used from a few metres.
+constexpr double kNearOwnWay = 4.0;
 
 // A command's end when another cleared it from the walker's queue.
 constexpr const char *kCleared = "COMMAND_FAILED_COMMAND_CLEARED";
@@ -581,7 +584,30 @@ class Journey
             {
                 // The target itself is what stands in the way: it is reached,
                 // not a door to open on the way (a chest in a narrow place was
-                // opened as one, #21).
+                // opened as one, #21). Only near it: from afar the search names
+                // the target as soon as the way ends at it, and a locked door
+                // 62 m off answered "as near as the walk goes" with no step
+                // taken (turn-based-agent, 2026-10-04, #46). It is walked up
+                // to first, as far as the search got.
+                if (distance > kNearOwnWay)
+                {
+                    if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)
+                    {
+                        wentToReached_ = true;
+                        lastWalk.reset();
+                        const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", walk.at("reached")}},
+                                                  "MoveToLocation", "move as far as the search got");
+                        if (!result)
+                        {
+                            return End(false, stopped_.value_or("the time ran out while walking"));
+                        }
+                        wentToReached_ = *result != kCleared;
+                        continue;
+                    }
+                    return End(false, "the target itself stands in the way of the walk, " +
+                                          std::to_string(std::lround(distance)) +
+                                          " m off, and the walk gets no nearer: order use on it walks up to it");
+                }
                 return End(true, "as near as the walk goes: the target itself stands in the way");
             }
             // A door the story keeps shut, or its key: its pick level is the

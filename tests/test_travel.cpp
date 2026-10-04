@@ -150,6 +150,7 @@ struct World
             {
                 walk = Json{{"found", false},
                             {"result", "something is in the way"},
+                            {"reached", blocksItself ? Json::array({door + reach, 0, 0}) : Json(nullptr)},
                             {"blocker",
                              {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")},
                               {"name", "Metal Door"},
@@ -441,12 +442,32 @@ TEST_CASE("a search that gets no nearer from as far as it got says there is no w
 
 TEST_CASE("a target that is itself in the way is reached, not opened as a door", "[travel]")
 {
-    World world;
+    World near; // a chest in a narrow place, the walker at it
+    near.blocksItself = true;
+    near.door = 1;
+    near.at = 3;
+    const auto answer = near.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the target itself"));
+    CHECK(near.orders.empty());
+}
+
+TEST_CASE("a target in its own way far off is walked up to first, as far as the search got", "[travel]")
+{
+    World world; // a locked door 30 m off, the search's way ending at it
     world.blocksItself = true;
+    world.door = 1;
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == true);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the target itself"));
-    CHECK(world.orders.empty());
+    REQUIRE(world.orders.size() == 1);
+    CHECK(world.orders[0]["action"] == "move"); // walked up to it, not used
+    World short_;                               // the search's way ends 11 m short of it: no nearer
+    short_.blocksItself = true;
+    const auto stopped = short_.Travel();
+    CHECK(stopped["arrived"] == false);
+    CHECK_THAT(stopped["reason"].get<std::string>(), ContainsSubstring("11 m off, and the walk gets no nearer"));
+    CHECK(short_.orders.size() == 1);
 }
 
 TEST_CASE("the cursor is taken as the journey begins, so its events are read from it", "[travel]")

@@ -271,8 +271,16 @@ MUTANTS = [
     Mutant(
         "travel goes to the search's furthest point again and again",
         TRAVEL,
-        "&& !wentToReached_)",
-        ")",
+        'own word for it.\n            if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
+        'own word for it.\n            if (walk.contains("reached") && !walk.at("reached").is_null())',
+    ),
+    Mutant(
+        "travel walks up to its target in its own way again and again",
+        TRAVEL,
+        "if (distance > kNearOwnWay)\n                {\n"
+        '                    if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
+        "if (distance > kNearOwnWay)\n                {\n"
+        '                    if (walk.contains("reached") && !walk.at("reached").is_null())',
     ),
     Mutant(
         "travel moves to the target's own place, not the walk's end",
@@ -1483,6 +1491,19 @@ MUTANTS = [
         PLACEABLES,
         'kStatic = {"shut", "locked", "destroyed"}',
         'kStatic = {"shut", "locked", "open"}',
+    ),
+    # #46: the target in its own way is reached only near it.
+    Mutant(
+        "travel takes its target in its own way for reached from afar",
+        TRAVEL,
+        "if (distance > kNearOwnWay)",
+        "if (distance > 1e9)",
+    ),
+    Mutant(
+        "travel walks no nearer to its target in its own way",
+        TRAVEL,
+        "if (distance > kNearOwnWay)",
+        "if (distance > 0)",
     ),
 ]
 
