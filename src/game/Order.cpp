@@ -168,7 +168,10 @@ void AddOrder(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"order",
-                 "Give an order as the player does, by id. `action`: attack `target`; move to `point`; ability "
+                 "Give an order as the player does, by id. `action`: attack `target`; move to `point` (a move is "
+                 "the player's move click, which moves whom the player controls: another party member is given "
+                 "control first, and keeps it, said in `controlled`; a creature outside the party is not moved); "
+                 "ability "
                  "`ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable: a "
                  "door, a chest, a lever); control, make `id`, a party member, the creature controlled, as a "
                  "click on its portrait does (out of combat a follower takes an order by command poorly; "
@@ -262,8 +265,46 @@ void AddOrder(Bench &bench, const Watch &watch)
                                             "orders any creature",
                                             controlled == kInvalidObject ? "nobody" : FormatId(controlled)));
             }
+            // A move goes to the controlled creature, whatever `id` says:
+            // it is explore mode's own move click (GameModeExplore::MoveTo),
+            // which moves whom the player controls. Ordered for a follower
+            // in the Gauntlet, the hero walked there instead, and the answer
+            // named the follower (turn-based-agent, 2026-10-04, #48). A
+            // script's move would reach it, but the party's following takes
+            // a follower back to the leader once it ends. So another party
+            // member is given control first, as a click on its portrait,
+            // and keeps it; judged at the moment of the order, so a fight's
+            // member on its turn, controlled already, is moved as before.
+            Json handedOver;
+            if (action == "move" && who != controlled)
+            {
+                if (!PartyOf(api::GetHero()).contains(who))
+                {
+                    throw ToolError(std::format("order: a move goes to the controlled creature ({}), not {}: the "
+                                                "game's move click moves whom the player controls, and a creature "
+                                                "outside the party is not moved by order",
+                                                controlled == kInvalidObject ? "nobody" : FormatId(controlled),
+                                                FormatId(who)));
+                }
+                api::SetPrimaryControlled(who);
+                if (api::GetMainControlled() != who)
+                {
+                    throw ToolError(std::format("order: {} would not take control, and a move goes to the "
+                                                "controlled creature; nobody moved",
+                                                FormatId(who)));
+                }
+                handedOver = Brief(controlled);
+            }
             const auto cursor = bench.Events().Next();
             Json answer = {{"action", action}, {"via", via}, {"creature", Brief(who)}};
+            if (!handedOver.is_null())
+            {
+                answer["controlled"] = Brief(who);
+                answer["before"] = handedOver;
+                answer["note"] = "a move is the player's move click, which moves whom the player controls: control "
+                                 "passed to the creature first, and stays with it (order action=control gives it "
+                                 "back)";
+            }
             const bool taken =
                 via == "click" ? OrderByClick(args, action, who, answer) : OrderByCommand(args, action, who, answer);
             if (!taken)
