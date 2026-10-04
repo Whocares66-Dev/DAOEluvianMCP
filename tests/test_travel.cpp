@@ -38,6 +38,7 @@ struct World
     int clears = 0;            // how many moves the game clears before they go, giving no other
     bool blocksItself = false; // whether the thing in the way is the target itself: a chest in a narrow place
     int pickLevel = 1;         // the door's lock: 10000 is the game's "cannot be picked"
+    bool exitAhead = false;    // whether what the search names ahead is an exit beside the target, not a door
     bool keyRequired = false;  // whether only the door's key opens it
     bool keyHeld = false;      // whether the party carries that key
     int doorState = 1;         // the door's state: 1 locked, 0 shut and unlocked
@@ -158,6 +159,15 @@ struct World
                 {
                     walk["waypoints"] = Json::array({Json::array({shortBy, 0, 0})});
                 }
+            }
+            else if (exitAhead)
+            {
+                // Where the search gives up, the placeable just ahead: here
+                // the World Map exit beside the door.
+                walk = Json{{"found", false},
+                            {"result", "gave up part way"},
+                            {"reached", {door + reach, 0, 0}},
+                            {"blocker", {{"id", "0x240e9"}, {"name", "World Map"}, {"leadsTo", {{"area", ""}}}}}};
             }
             else if (named || at - door < 1.5)
             {
@@ -985,6 +995,23 @@ TEST_CASE("a door shut but unlocked is used on the way, its key spent or its pic
     story.pickLevel = 10000;
     story.doorState = 0;
     CHECK(story.Travel()["arrived"] == true);
+}
+
+TEST_CASE("an exit named ahead is not used as a door: as far as the search got, then said", "[travel]")
+{
+    World world;
+    world.exitAhead = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true); // a thing is used from as near as the walk goes
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("0x240e9 World Map, an exit"));
+    CHECK(answer["exitAhead"]["id"] == "0x240e9");
+    REQUIRE(world.orders.size() == 1);
+    CHECK(world.orders[0]["action"] == "move"); // as far as the search got; nothing used
+    World again;
+    again.exitAhead = true;
+    const auto point = again.bench.Invoke("travel", Json{{"point", {0, 0, 0}}, {"budgetMs", 5000}}).data;
+    CHECK(point["arrived"] == false); // a point is not reached
+    CHECK_THAT(point["reason"].get<std::string>(), ContainsSubstring("no walk there: 0x240e9"));
 }
 
 TEST_CASE("a door the story keeps shut is said at once, neither used nor walked to", "[travel]")

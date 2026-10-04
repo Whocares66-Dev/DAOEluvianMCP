@@ -648,7 +648,14 @@ class Journey
                 why += " (the story opens it, or its key; inspect kind=placeables says more)";
                 return End(false, std::move(why));
             }
-            if (!blocker.empty())
+            // An exit lying ahead is no door on the way: its use leaves the
+            // area or brings the map up. Where the search gives up, the
+            // placeable just ahead is named, and beside Redcliffe castle's
+            // village door that was the World Map exit, used twice before
+            // travel stopped (turn-based-agent, 2026-10-04, #38). It is gone
+            // round as nothing named: as far as the search got, then said.
+            const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");
+            if (!blocker.empty() && !exitAhead)
             {
                 if (doors_.size() >= maxDoors_)
                 {
@@ -711,6 +718,17 @@ class Journey
                 }
                 wentToReached_ = *result != kCleared;
                 continue;
+            }
+            if (exitAhead)
+            {
+                answer_["exitAhead"] = walk.at("blocker");
+                std::string why = blocker + " " + walk.value(Json::json_pointer("/blocker/name"), std::string()) +
+                                  ", an exit, stands in the way; it is not used on the way, as it leaves the area";
+                if (where_.contains("target"))
+                {
+                    return End(true, "as near as the walk goes: " + why + " (order use on the target walks the rest)");
+                }
+                return End(false, "no walk there: " + why);
             }
             return End(false, "no walk there: " + walk.value("result", std::string("the search found none")));
         }

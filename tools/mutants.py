@@ -1569,6 +1569,19 @@ MUTANTS = [
         "if (fightNear_ <= 0)",
         "if (false)",
     ),
+    # #38: an exit named ahead is no door on the way.
+    Mutant(
+        "travel uses an exit ahead as a door",
+        TRAVEL,
+        'const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");',
+        "const bool exitAhead = false;",
+    ),
+    Mutant(
+        "travel takes a target behind an exit ahead for unreached",
+        TRAVEL,
+        'return End(true, "as near as the walk goes: " + why',
+        'return End(false, "as near as the walk goes: " + why',
+    ),
 ]
 
 

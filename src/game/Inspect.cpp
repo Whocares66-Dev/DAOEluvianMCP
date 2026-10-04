@@ -183,7 +183,8 @@ Json PlaceableStateWord(ObjectId id)
 
 // What stands in a walk's way: a placeable with its state and its lock, as
 // kind=placeables reads them, so a door the story keeps shut (pick level
-// 10000) is told from one a use opens (#33).
+// 10000) is told from one a use opens (#33), and where it leads if it is an
+// exit, which no use on the way opens (#38).
 Json BlockerJson(ObjectId id)
 {
     Json blocker = Brief(id);
@@ -200,6 +201,10 @@ Json BlockerJson(ObjectId id)
         if (!key.empty())
         {
             blocker["lock"]["keyHeld"] = api::CountItemsByTag(api::GetHero(), key) > 0;
+        }
+        if (Json leads = LeadsTo(id, false); !leads.is_null())
+        {
+            blocker["leadsTo"] = std::move(leads);
         }
     }
     return blocker;
