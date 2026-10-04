@@ -189,7 +189,9 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "obeyed: the events from `cursor` do.) A use goes by click when the controlled creature is to "
                  "do it, since a click chooses what the object takes (a chest and a door wanted open, and did "
                  "nothing for use, their command ending COMMAND_FAILED); by command it does `objectAction`, "
-                 "default use. An area ability with a range (Fireball; inspect kind=abilities says each one's "
+                 "default use. So does an item's ability (`item` or `itemTag`) by the controlled creature out "
+                 "of combat, which by command takes nothing there; in combat it goes by command. "
+                 "An area ability with a range (Fireball; inspect kind=abilities says each one's "
                  "`aoe` and `range`) given a creature `target` is aimed at its position, as a ground cursor on "
                  "it (`aimedAt`; `atCreature`: true keeps the creature). Answers whether the order was taken, and "
                  "`cursor`: wait_for from it for what came of it (eluvian.command.started and ended, and a mod's "
@@ -258,7 +260,16 @@ void AddOrder(Bench &bench, const Watch &watch)
                 throw ToolError("order: nobody is controlled and no `id` was given");
             }
             const bool useByClick = action == "use" && who == controlled && !args.Has("objectAction");
-            const auto via = args.Choice("via", {"command", "click"}, useByClick ? "click" : "command");
+            // An item's ability out of combat by command takes nothing:
+            // Kolgrim's Horn ordered so three times on the mountain top
+            // answered given and stayed in the pack, its script never run;
+            // by click it was used at once (turn-based-agent, 2026-10-04,
+            // #51). In fights the command path works (poultices, the
+            // Litany), and stays.
+            const bool itemByClick = action == "ability" && who == controlled &&
+                                     (args.Has("item") || args.Has("itemTag")) &&
+                                     watch.Mode() == static_cast<std::int32_t>(dao::GameMode::Explore);
+            const auto via = args.Choice("via", {"command", "click"}, useByClick || itemByClick ? "click" : "command");
             if (via == "click" && who != controlled)
             {
                 throw ToolError(std::format("order: a click is the controlled creature's ({}); via \"command\" "
@@ -313,6 +324,10 @@ void AddOrder(Bench &bench, const Watch &watch)
                                     ? "order: explore mode did not take the ability's click"
                                     : "order: the game took no order: the creature is not there, or (for move) "
                                       "the game is not in explore or combat mode");
+            }
+            if (itemByClick && !args.Has("via"))
+            {
+                answer["note"] = "an item's ability out of combat goes by click: by command it takes nothing there";
             }
             answer["given"] = true;
             answer["cursor"] = cursor;
