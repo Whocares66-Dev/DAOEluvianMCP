@@ -273,7 +273,13 @@ void AddInspect(Bench &bench, const Watch &watch)
                 {{"type", "boolean"},
                  {"description", "kind=creatures, placeables, exits: a thing a line (`lines`) instead of in full"}}},
                {"interactive",
-                {{"type", "boolean"}, {"description", "kind=placeables: only those that can be used (true)"}}}}}},
+                {{"type", "boolean"}, {"description", "kind=placeables: only those that can be used (true)"}}},
+               {"tag",
+                {{"type", "string"}, {"description", "kind=triggers: only those whose tag holds this (any case)"}}},
+               {"ints",
+                {{"type", "array"},
+                 {"description", "kind=triggers: local int names to read on each trigger, as its scripts set "
+                                 "them (GetLocalInt)"}}}}}},
         Thread::Frame, true});
 
     bench.Tools().AddKind(
@@ -725,6 +731,101 @@ void AddInspect(Bench &bench, const Watch &watch)
                     {"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"lines", Lines(exits, ExitLine)}};
             }
             return Json{{"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"exits", std::move(exits)}};
+        });
+
+    // The area's triggers, which no other kind lists: the Gauntlet's bridge
+    // turns on twelve tile triggers, found by script GetNearestObject and
+    // read one GetLocalInt at a time (turn-based-agent, 2026-10-04, #49). A
+    // puzzle's state lives in a trigger's locals, under names its scripts
+    // choose, so the names are asked for.
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"triggers",
+                 "The area's triggers, nearest first: each one's `id`, `tag`, `name`, `position`, `distance`, "
+                 "whether it is `active`, and `leadsTo` for one that takes the party elsewhere (kind=exits lists "
+                 "those alone). A trigger is walked into, not used: travel or order move to its position. "
+                 "`radius` and `near` keep those within reach of a creature, `tag` those whose tag holds it; "
+                 "`ints` (names) reads those local ints on each, as its scripts set them (a puzzle's state, a "
+                 "switch's number)."},
+        [&watch](const Json &raw) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            const Args args(raw, "inspect");
+            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+            if (around == kInvalidObject)
+            {
+                throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+            }
+            std::vector<std::wstring> ints;
+            if (args.Has("ints"))
+            {
+                const Json &names = args.Raw().at("ints");
+                if (!names.is_array() || names.size() > 32)
+                {
+                    throw ToolError("inspect: `ints` is a list of up to 32 local int names");
+                }
+                for (const auto &name : names)
+                {
+                    if (!name.is_string())
+                    {
+                        throw ToolError("inspect: each of `ints` is a local's name, a string");
+                    }
+                    ints.push_back(Wide(name.get<std::string>()));
+                }
+            }
+            std::string want = args.Has("tag") ? args.String("tag") : std::string();
+            std::ranges::transform(want, want.begin(), [](char c) {
+                return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            });
+            const auto from = api::GetPosition(around);
+            const double radius = args.Number("radius", -1);
+            std::vector<std::pair<float, Json>> found;
+            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
+            {
+                if (api::GetObjectType(id) != k::OBJECT_TYPE_TRIGGER)
+                {
+                    continue;
+                }
+                const auto position = api::GetPosition(id);
+                const float distance = Distance(from, position);
+                if (radius >= 0 && distance > radius)
+                {
+                    continue;
+                }
+                Json trigger = Brief(id);
+                std::string tag = trigger.value("tag", std::string());
+                std::ranges::transform(tag, tag.begin(), [](char c) {
+                    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                });
+                if (!want.empty() && tag.find(want) == std::string::npos)
+                {
+                    continue;
+                }
+                trigger["position"] = VectorJson(position);
+                trigger["distance"] = distance;
+                trigger["active"] = api::GetObjectActive(id) != 0;
+                if (Json leads = LeadsTo(id, true); !leads.is_null())
+                {
+                    trigger["leadsTo"] = std::move(leads);
+                }
+                if (!ints.empty())
+                {
+                    Json locals = Json::object();
+                    for (const auto &name : ints)
+                    {
+                        locals[Narrow(name)] = api::GetLocalInt(id, name);
+                    }
+                    trigger["ints"] = std::move(locals);
+                }
+                found.emplace_back(distance, std::move(trigger));
+            }
+            std::ranges::sort(found, {}, &std::pair<float, Json>::first);
+            Json triggers = Json::array();
+            for (auto &[distance, trigger] : found)
+            {
+                triggers.push_back(std::move(trigger));
+            }
+            return Json{
+                {"area", Brief(api::GetArea(around))}, {"count", triggers.size()}, {"triggers", std::move(triggers)}};
         });
 
     bench.Tools().AddKind(
