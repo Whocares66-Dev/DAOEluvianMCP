@@ -89,7 +89,9 @@ void AddWorldMap(Bench &bench, const Watch &watch)
                  "be travelled to; not active, greyed, unlockable, completed, destroyed). travel with `to` (a "
                  "pin's name, tag or index) crosses to one, with the map up (a travel to the area's world-map "
                  "exit opens it). The pins are read as the map screen reads them; with the map never opened "
-                 "this game, there may be none."},
+                 "this game, there may be none. The map is closed as its Close button closes it: input "
+                 "{\"message\": \"GUI.HideFullScreenGUI\"} (WorldMap.WorldMapClosed is the screen's report "
+                 "that it closed, not the close)."},
         [&watch](const Json &) -> ToolResult {
             RequireWorld(watch, "inspect");
             const auto screen = MapScreen();

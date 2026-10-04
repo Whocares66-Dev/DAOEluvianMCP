@@ -6,6 +6,7 @@
 
 #include "dao/Data.h"
 
+#include <algorithm>
 #include <charconv>
 
 namespace eluvian::game
@@ -216,7 +217,10 @@ void AddGui(Bench &bench, const Watch &watch)
                         "`screens`, the game's screens on the screen now, the top first, each by `name` (Inventory, "
                         "Store, WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options, Main the HUD), "
                         "its `movie` and `layer`; `fullScreen`, the name of the full-screen one up (the inventory, "
-                        "the map, the journal...), null with none; `popup`, the game's message box with "
+                        "the map, the journal...), null with none; `fullScreenHidden`, a full-screen one left on "
+                        "the game's stack of them but not on the screen (a screen closed by its report alone, "
+                        "WorldMap.WorldMapClosed): input {\"message\": \"GUI.HideFullScreenGUI\"} clears it, as a "
+                        "screen's Close button does; `popup`, the game's message box with "
                         "its text and each button's label and what pressing it sends (a box holds the game until "
                         "it is answered, and nothing else says it is there: ask when a load or an order was taken "
                         "and nothing followed); and `loot`, the loot panel a container opens (a chest, a body's "
@@ -233,18 +237,32 @@ void AddGui(Bench &bench, const Watch &watch)
             // one is the last the GUI system pushed. The loot panel is the
             // Inventory screen; GUIInventory.ShowContainer tells them apart.
             Json screens = Json::array();
+            std::vector<std::wstring> shown;
             for (const auto &screen : dao::gui::ShownScreens())
             {
+                shown.push_back(screen.name);
                 screens.push_back(Json{{"name", Narrow(screen.name)},
                                        {"movie", Narrow(screen.movie)},
                                        {"layer", screen.layer},
                                        {"id", screen.id}});
             }
+            // The stack's top is the full-screen one only while it is on
+            // the screen: the world map closed by WorldMap.WorldMapClosed
+            // alone, which is the screen's report that it closed and not
+            // the close (worldmap.gfx: its Close button sends
+            // GUI.HideFullScreenGUI, and FinishScene the report), stayed
+            // on the stack, and fullScreen went on saying WorldMap with no
+            // map drawn (turn-based-agent, 2026-10-04, #39).
             const auto full = dao::gui::CurrentFullScreen();
+            const bool fullShown = full && std::ranges::find(shown, full->name) != shown.end();
             Json answer = {{"mode", ModeName(watch.Mode())},
                            {"screens", std::move(screens)},
-                           {"fullScreen", full ? Json(Narrow(full->name)) : Json(nullptr)},
+                           {"fullScreen", fullShown ? Json(Narrow(full->name)) : Json(nullptr)},
                            {"popup", PopupJson()}};
+            if (full && !fullShown)
+            {
+                answer["fullScreenHidden"] = Narrow(full->name);
+            }
             const auto mode = watch.Mode();
             const bool world = mode >= 0 && mode != static_cast<std::int32_t>(dao::GameMode::Loading);
             answer["loot"] = world ? LootPanelJson() : Json(nullptr);
