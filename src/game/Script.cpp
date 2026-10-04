@@ -38,6 +38,38 @@ std::string Lower(std::string_view text)
 
 } // namespace
 
+namespace
+{
+
+// A command name's longest word, split where a capital follows a small
+// letter: "SetImmortal" gives "Immortal".
+std::string LongestWord(std::string_view name)
+{
+    std::string best;
+    std::string word;
+    for (const char c : name)
+    {
+        if (std::isupper(static_cast<unsigned char>(c)) != 0 && !word.empty() &&
+            std::islower(static_cast<unsigned char>(word.back())) != 0)
+        {
+            best = word.size() > best.size() ? word : best;
+            word.clear();
+        }
+        if (std::isalnum(static_cast<unsigned char>(c)) != 0)
+        {
+            word += c;
+        }
+        else
+        {
+            best = word.size() > best.size() ? word : best;
+            word.clear();
+        }
+    }
+    return word.size() > best.size() ? word : best;
+}
+
+} // namespace
+
 void AddScript(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
@@ -60,6 +92,14 @@ void AddScript(Bench &bench, const Watch &watch)
         [&watch](const Json &raw) -> ToolResult {
             const Args args(raw, "script");
             const auto action = args.Choice("action", {"call", "find", "describe"}, "call");
+            // find's search is `command`, as is any action's name; a caller
+            // who tried `name` and `match` was told only that `command` must
+            // be given (turn-based-agent's driver, 2026-10-04, #52).
+            if (action == "find" && !args.Has("command"))
+            {
+                throw ToolError("script: action find searches for the part of a name given in `command`: "
+                                "{\"action\": \"find\", \"command\": \"Immortal\"}");
+            }
             const auto name = args.String("command");
             if (action == "find")
             {
@@ -79,8 +119,22 @@ void AddScript(Bench &bench, const Watch &watch)
             const auto *command = dao::script::table::Find(name);
             if (command == nullptr)
             {
-                throw ToolError(
-                    std::format("script: no command \"{}\"; action \"find\" searches by part of the name", name));
+                // The near names at once: those holding the name's longest
+                // word, SetImmortal's "Immortal" (#52).
+                const std::string word = LongestWord(name);
+                std::string near;
+                int shown = 0;
+                for (const auto &candidate : dao::script::table::kCommands)
+                {
+                    if (!word.empty() && Lower(candidate.name).find(Lower(word)) != std::string::npos && shown < 8)
+                    {
+                        near += (shown++ == 0 ? "" : ", ") + std::string(candidate.name);
+                    }
+                }
+                throw ToolError(std::format(
+                    "script: no command \"{}\"{}; {{\"action\": \"find\", \"command\": \"{}\"}} lists those "
+                    "whose name holds a part",
+                    name, near.empty() ? std::string() : "; near it: " + near, word.empty() ? name : word));
             }
             if (action == "describe")
             {
