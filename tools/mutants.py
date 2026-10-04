@@ -1086,28 +1086,16 @@ MUTANTS = [
         "value, 10);",
     ),
     Mutant(
-        "levelup goes on without auto",
-        LEVELUP,
-        'if (!args.Bool("auto", false))',
-        "if (false)",
-    ),
-    Mutant(
         "levelup levels a creature with no points",
         LEVELUP,
-        'if (!first.value("canLevelUp", false))',
+        'if (!offers_ && !first.value("canLevelUp", false))',
         "if (false)",
-    ),
-    Mutant(
-        "levelup ends the screen with no CharGenEnd",
-        LEVELUP,
-        '!Send("GUILevelUp.CharGenEnd " + n + " 1 1")',
-        "false",
     ),
     Mutant(
         "levelup counts no rounds",
         LEVELUP,
-        "++rounds_;",
-        "",
+        "last = *read;\n            ++rounds_;",
+        "last = *read;",
     ),
     Mutant(
         "levelup stops after one round with points left",
@@ -1523,6 +1511,44 @@ MUTANTS = [
         TRAVEL,
         'doors_.back().value("id", std::string()) != blocker',
         'doors_.back().value("id", std::string()) != "never"',
+    ),
+    Mutant(
+        "levelup goes on with no way to level given",
+        LEVELUP,
+        "if ((auto_ ? 1 : 0) + (offers_ ? 1 : 0) + (chosen ? 1 : 0) != 1)",
+        "if ((auto_ ? 1 : 0) + (offers_ ? 1 : 0) + (chosen ? 1 : 0) > 1)",
+    ),
+    Mutant(
+        "levelup abandons the screen where it should keep what was spent",
+        LEVELUP,
+        '(complete ? "1" : "0")',
+        '(complete ? "0" : "0")',
+    ),
+    # #5's choices: offers read with nothing spent; an ability not learnable
+    # now refuses the lot; attributes spent as the screen's buttons do.
+    Mutant(
+        "levelup keeps what a look at the offers spent",
+        LEVELUP,
+        "Close(false); // abandoned: a look spends nothing",
+        "Close(true); // abandoned: a look spends nothing",
+    ),
+    Mutant(
+        "levelup spends an ability the screen does not offer now",
+        LEVELUP,
+        'if (state != "learnable")',
+        "if (false)",
+    ),
+    Mutant(
+        "levelup tells only the paperdoll of an attribute",
+        LEVELUP,
+        'if (!Send("GUICharGen.CharGenAssignAttribute " + spend) ||',
+        "if (",
+    ),
+    Mutant(
+        "levelup takes an attribute it does not know",
+        LEVELUP,
+        "if (AttributeIndex(name) == 0 ||",
+        "if (",
     ),
 ]
 

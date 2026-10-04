@@ -243,6 +243,9 @@ void AddInspect(Bench &bench, const Watch &watch)
                {"point", {{"description", "kind=geometry: the point to measure to, {x, y, z} or [x, y, z]"}}},
                {"path", {{"type", "string"}, {"description", "kind=data: a dotted path in the data tree"}}},
                {"paths", {{"type", "array"}, {"description", "kind=data: several paths, answered together"}}},
+               {"members",
+                {{"type", "boolean"},
+                 {"description", "kind=data: the list at `path`: its members' paths and how many"}}},
                {"full", {{"type", "boolean"}, {"description", "kind=inventory: each item in full"}}},
                {"plot", {{"type", "string"}, {"description", "kind=plot: the plot's resource, like bed000pt_main"}}},
                {"flag", {{"description", "kind=plot: one flag, by number or name"}}},
@@ -320,6 +323,8 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "(\"GUI.SelectedChar\", \"Map.ShowAllLabels\", \"GUIPopupLayer.DialogBoxText\"), as `text` "
                  "and as `number`, and its `type`; or several at once with `paths`. `found` is false for a path "
                  "the tree has not. What the interface shows of the game is read here without a picture. "
+                 "`members: true` reads the list at `path` (a container's Container.Inventory, the level-up "
+                 "screen's chains): `count` and each member's path, to read the same way. "
                  "Reading only. Answers in any mode."},
         [&watch](const Json &raw) -> ToolResult {
             const Args args(raw, "inspect");
@@ -347,6 +352,23 @@ void AddInspect(Bench &bench, const Watch &watch)
                 }
                 return value;
             };
+            // A list, as the screens read one (DAOLib 5e10b31, Members): each
+            // member's path, to read the same way (#5's level-up chains).
+            if (args.Bool("members", false))
+            {
+                const auto path = args.String("path");
+                const auto count = dao::data::MemberCount(Wide(path));
+                if (!count)
+                {
+                    return Json{{"path", path}, {"found", false}};
+                }
+                Json members = Json::array();
+                for (const auto &member : dao::data::Members(Wide(path)))
+                {
+                    members.push_back(Narrow(member));
+                }
+                return Json{{"path", path}, {"found", true}, {"count", *count}, {"members", std::move(members)}};
+            }
             if (args.Has("paths"))
             {
                 const auto &paths = args.Raw().at("paths");

@@ -2,6 +2,8 @@
 
 #include "core/Args.h"
 
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -11,6 +13,7 @@
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace eluvian
 {
@@ -78,10 +81,42 @@ class Levelling
     Levelling(Bench &bench, const Args &args, milliseconds show)
         : bench_(bench), show_(milliseconds(args.Integer("showMs", show.count(), 0, 10000)))
     {
-        if (!args.Bool("auto", false))
+        const bool chosen = args.Has("abilities") || args.Has("attributes");
+        auto_ = args.Bool("auto", false);
+        offers_ = args.Bool("offers", false);
+        if ((auto_ ? 1 : 0) + (offers_ ? 1 : 0) + (chosen ? 1 : 0) != 1)
         {
-            throw ToolError("levelup: only `auto`: true for now, the level-up screen's Auto Level Up, which spends "
-                            "every point as the game chooses; choosing the points is to come (#5)");
+            throw ToolError("levelup: give one of `auto`: true (the screen's Auto Level Up), `offers`: true (what "
+                            "the screen offers, nothing spent), or the points to spend: `abilities` (ids the "
+                            "screen offers as learnable) and `attributes` ({\"strength\": 2, ...})");
+        }
+        if (args.Has("abilities"))
+        {
+            const auto &list = args.Raw().at("abilities");
+            if (!list.is_array())
+            {
+                throw ToolError("levelup: `abilities` is a list of ability ids, from `offers`");
+            }
+            for (const auto &ability : list)
+            {
+                if (!ability.is_number_integer())
+                {
+                    throw ToolError("levelup: each of `abilities` is an ability's id, a number, from `offers`");
+                }
+                chosen_.push_back(ability.get<std::int32_t>());
+            }
+        }
+        if (args.Has("attributes"))
+        {
+            raise_ = args.Raw().at("attributes");
+            for (const auto &[name, amount] : raise_.items())
+            {
+                if (AttributeIndex(name) == 0 || !amount.is_number_integer() || amount.get<int>() < 1)
+                {
+                    throw ToolError("levelup: `attributes` names strength, dexterity, willpower, magic, cunning or "
+                                    "constitution, each with the points to put in it, 1 or more");
+                }
+            }
         }
         if (args.Has("id"))
         {
@@ -102,8 +137,9 @@ class Levelling
         {
             throw ToolError("levelup: `id` is a creature's id, like \"0x82\" (inspect kind=game lists the party)");
         }
+        n_ = std::to_string(*number);
         const Json first = bench_.Invoke("inspect", Json{{"kind", "character"}, {"id", id_}}).data;
-        if (!first.value("canLevelUp", false))
+        if (!offers_ && !first.value("canLevelUp", false))
         {
             throw ToolError("levelup: " + first.value("name", id_) +
                             " has no level-up points to spend; inspect kind=character says `canLevelUp` and "
@@ -112,36 +148,111 @@ class Levelling
         const Json abilities = bench_.Invoke("inspect", Json{{"kind", "abilities"}, {"id", id_}}).data;
         answer_["creature"] = Json{{"id", id_}, {"name", first.value("name", std::string())}};
         answer_["before"] = Sheet(first);
-        const std::string n = std::to_string(*number);
+        if (offers_)
+        {
+            return Offers();
+        }
         Json last = first;
+        if (auto_)
+        {
+            if (auto stopped = Auto(last))
+            {
+                return std::move(*stopped);
+            }
+        }
+        else if (auto stopped = Choose(last))
+        {
+            return std::move(*stopped);
+        }
+        answer_["after"] = Sheet(last);
+        answer_["attributes"] = Raised(first, last);
+        if (const auto after = Ask("inspect", Json{{"kind", "abilities"}, {"id", id_}}))
+        {
+            answer_["gained"] = Gained(abilities, *after);
+        }
+        if (PointsLeft(last) >= PointsLeft(first))
+        {
+            return End(false, auto_ ? "the screen's Auto Level Up spent nothing" : "nothing was spent");
+        }
+        return End(true, last.value("canLevelUp", false) ? "levelled; points are left to spend"
+                                                         : "levelled: every point spent");
+    }
+
+  private:
+    // The screen opened for the creature; false with `refused_` said.
+    bool Open()
+    {
+        if (!Send("GUI.GoToLevelUp " + n_ + " 0"))
+        {
+            return false;
+        }
+        if (!Screen(true))
+        {
+            refused_ = "the level-up screen did not open: " + refused_ + " (in a fight or a conversation it may not)";
+            return false;
+        }
+        return true;
+    }
+
+    // The screen closed, complete (what was spent kept) or abandoned.
+    bool Close(bool complete)
+    {
+        if (!Send("GUILevelUp.CharGenEnd " + n_ + " 1 " + (complete ? "1" : "0")) || !Send("GUI.HideFullScreenGUI"))
+        {
+            return false;
+        }
+        if (!Screen(false))
+        {
+            refused_ = "the level-up screen did not close: " + refused_ +
+                       "; input {\"message\": \"GUI.HideFullScreenGUI\"} closes it";
+            return false;
+        }
+        return true;
+    }
+
+    // What the screen offers, read with it up, nothing spent: the screen is
+    // abandoned after, as its close button leaves it.
+    Json Offers()
+    {
+        if (!Open())
+        {
+            return End(false, refused_);
+        }
+        const auto read = Ask("inspect", Json{{"kind", "levelup"}});
+        Close(false); // abandoned: a look spends nothing
+        if (!read)
+        {
+            return End(false, "the screen's offers could not be read: " + refused_);
+        }
+        for (const char *key : {"points", "attributes", "talents", "spells", "skills"})
+        {
+            answer_[key] = read->value(key, Json());
+        }
+        return End(true, "the screen's offers: levelup with `abilities` (learnable ids) and `attributes` spends "
+                         "points on them");
+    }
+
+    // The screen's Auto Level Up, again while points are left and fewer.
+    std::optional<Json> Auto(Json &last)
+    {
         for (int round = 0; round < kMostRounds; ++round)
         {
-            if (!Send("GUI.GoToLevelUp " + n + " 0"))
+            if (!Open())
             {
                 return End(false, refused_);
-            }
-            if (!Screen(true))
-            {
-                return End(false, "the level-up screen did not open: " + refused_ +
-                                      " (in a fight or a conversation it may not)");
             }
             // The screen up a moment before and after its Auto Level Up, for
             // whoever watches: in one call it came and went in under a
             // second, never seen (the user, 2026-10-03, #14).
             std::this_thread::sleep_for(show_);
-            if (!Send("GUILevelUp.AutoLevelUp " + n))
+            if (!Send("GUILevelUp.AutoLevelUp " + n_))
             {
                 return End(false, refused_);
             }
             std::this_thread::sleep_for(show_);
-            if (!Send("GUILevelUp.CharGenEnd " + n + " 1 1") || !Send("GUI.HideFullScreenGUI"))
+            if (!Close(true))
             {
                 return End(false, refused_);
-            }
-            if (!Screen(false))
-            {
-                return End(false, "the level-up screen did not close: " + refused_ +
-                                      "; input {\"message\": \"GUI.HideFullScreenGUI\"} closes it");
             }
             const auto read = Ask("inspect", Json{{"kind", "character"}, {"id", id_}});
             if (!read)
@@ -156,22 +267,117 @@ class Levelling
                 break;
             }
         }
-        answer_["after"] = Sheet(last);
-        answer_["attributes"] = Raised(first, last);
-        if (const auto after = Ask("inspect", Json{{"kind", "abilities"}, {"id", id_}}))
-        {
-            answer_["gained"] = Gained(abilities, *after);
-        }
-        if (PointsLeft(last) >= PointsLeft(first))
-        {
-            return End(false, "the screen's Auto Level Up spent nothing");
-        }
-        return End(true, last.value("canLevelUp", false) ? "levelled; points are left that the screen's Auto Level "
-                                                           "Up did not spend"
-                                                         : "levelled: every point spent");
+        return std::nullopt;
     }
 
-  private:
+    // Points spent on the abilities and attributes named, as the screen's
+    // own buttons spend them: GUILevelUp.CharGenAssignAbility <id> <ability>
+    // 1, and GUICharGen.CharGenAssignAttribute then Paperdoll.CharGen-
+    // AssignAttribute <id> <attribute> <amount> (read from levelup.gfx,
+    // 2026-10-02). An ability the screen does not offer as learnable now is
+    // refused, the screen abandoned with nothing spent.
+    std::optional<Json> Choose(Json &last)
+    {
+        if (!Open())
+        {
+            return End(false, refused_);
+        }
+        std::this_thread::sleep_for(show_);
+        for (const auto ability : chosen_)
+        {
+            // Read again each time: taking one makes the next in its chain
+            // learnable.
+            const auto offers = Ask("inspect", Json{{"kind", "levelup"}});
+            if (!offers)
+            {
+                Close(false);
+                return End(false, "the screen's offers could not be read: " + refused_);
+            }
+            const std::string state = StateOf(*offers, ability);
+            if (state != "learnable")
+            {
+                Close(false);
+                answer_["offers"] = Learnable(*offers);
+                return End(false, "ability " + std::to_string(ability) + " is " +
+                                      (state.empty() ? std::string("not among the screen's offers") : state) +
+                                      "; nothing was spent. `offers` lists what is learnable now");
+            }
+            if (!Send("GUILevelUp.CharGenAssignAbility " + n_ + " " + std::to_string(ability) + " 1"))
+            {
+                Close(false);
+                return End(false, refused_);
+            }
+        }
+        for (const auto &[name, amount] : raise_.items())
+        {
+            const std::string spend =
+                n_ + " " + std::to_string(AttributeIndex(name)) + " " + std::to_string(amount.get<int>());
+            if (!Send("GUICharGen.CharGenAssignAttribute " + spend) ||
+                !Send("Paperdoll.CharGenAssignAttribute " + spend))
+            {
+                Close(false);
+                return End(false, refused_);
+            }
+        }
+        std::this_thread::sleep_for(show_);
+        if (!Close(true))
+        {
+            return End(false, refused_);
+        }
+        ++rounds_;
+        const auto read = Ask("inspect", Json{{"kind", "character"}, {"id", id_}});
+        if (!read)
+        {
+            return End(false, "the level-up is done, but its result could not be read: " + refused_);
+        }
+        last = *read;
+        return std::nullopt;
+    }
+
+    // An attribute's place in the screen's list, 1 to 6; 0 for no such name.
+    static int AttributeIndex(const std::string &name)
+    {
+        constexpr std::array<std::string_view, 6> kNames = {"strength", "dexterity", "willpower",
+                                                            "magic",    "cunning",   "constitution"};
+        const auto at = std::ranges::find(kNames, name);
+        return at == kNames.end() ? 0 : static_cast<int>(at - kNames.begin()) + 1;
+    }
+
+    // An ability's state among the screen's offers; empty if not offered.
+    static std::string StateOf(const Json &offers, std::int32_t ability)
+    {
+        for (const char *page : {"talents", "spells", "skills"})
+        {
+            for (const auto &entry : offers.value(page, Json::array()))
+            {
+                if (entry.value("id", 0) == ability)
+                {
+                    return entry.value("state", std::string());
+                }
+            }
+        }
+        return {};
+    }
+
+    // The abilities learnable now, by page.
+    static Json Learnable(const Json &offers)
+    {
+        Json learnable = Json::object();
+        for (const char *page : {"talents", "spells", "skills"})
+        {
+            Json list = Json::array();
+            for (const auto &entry : offers.value(page, Json::array()))
+            {
+                if (entry.value("state", std::string()) == "learnable")
+                {
+                    list.push_back(entry);
+                }
+            }
+            learnable[page] = std::move(list);
+        }
+        return learnable;
+    }
+
     // The game's own message by its text, as `input` sends it.
     bool Send(const std::string &text)
     {
@@ -285,6 +491,11 @@ class Levelling
 
     Bench &bench_;
     milliseconds show_;
+    bool auto_ = false;
+    bool offers_ = false;
+    std::vector<std::int32_t> chosen_;
+    Json raise_ = Json::object();
+    std::string n_; // the creature's id in decimal, as the screen's messages carry it
     std::string id_;
     std::string refused_;
     int rounds_ = 0;
@@ -298,11 +509,16 @@ void AddLevelUpTool(Bench &bench, milliseconds show)
     bench.Tools().Add(
         ToolSpec{
             "levelup",
-            "Spend a creature's level-up points as the game's level-up screen does, so its rules hold: `id` "
-            "(default the creature controlled) and `auto`: true, the screen's Auto Level Up, which spends "
-            "every point as the game chooses for the class (all a follower needs; choosing the points "
-            "yourself is to come). It opens the screen for the creature, presses Auto Level Up, ends it "
-            "complete and closes it, again while points are left. Answers `levelled`, `reason`, `before` and "
+            "Spend a creature's level-up points as the game's level-up screen does, so its rules hold, for "
+            "`id` (default the creature controlled). One of: `offers`: true, what the screen offers, nothing "
+            "spent (`points`, `attributes`, and the class's `talents`, `spells` and `skills`, each a list "
+            "of abilities with `id`, `name` and `state`: `has`, `learnable` now, or `not yet`); `abilities` "
+            "(ids `offers` lists as learnable, the first of a chain before the next) and `attributes` ({\"strength\": "
+            "2, ...}), spent as the screen's buttons spend "
+            "them, an ability not learnable refusing the lot with nothing spent; or `auto`: true, the screen's "
+            "Auto Level Up, which spends every point as the game chooses for the class (all a follower needs), "
+            "again while points are left. It opens the screen for the creature, spends, ends it complete and "
+            "closes it. Answers `levelled`, `reason`, `before` and "
             "`after` (level, points to spend), the `attributes` raised and by how much, the talents, spells "
             "and skills `gained`, and `cursor`. Refused for a creature with no points to spend "
             "(inspect kind=character says `canLevelUp`). A level-up is the character's for good once the "
@@ -314,8 +530,12 @@ void AddLevelUpTool(Bench &bench, milliseconds show)
                     {{"type", "string"}, {"description", "Who levels up: a creature id; default the one controlled"}}},
                    {"auto",
                     {{"type", "boolean"}, {"description", "Spend every point as the screen's Auto Level Up does"}}},
-                   {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}},
-                 {"required", {"auto"}}},
+                   {"offers", {{"type", "boolean"}, {"description", "What the screen offers; nothing spent"}}},
+                   {"abilities",
+                    {{"type", "array"}, {"description", "Ability ids to take, learnable in `offers`, in order"}}},
+                   {"attributes",
+                    {{"type", "object"}, {"description", "Points per attribute: {\"strength\": 2, \"cunning\": 1}"}}},
+                   {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
             Thread::Listener},
         [&bench, show](const Json &raw) -> ToolResult {
             const Args args(raw, "levelup");

@@ -21,10 +21,13 @@ struct Rogue
     int levels = 1;          // levels' points banked
     int strength = 10;       // base
     bool opens = true;       // whether the screen opens: not in a fight
+    bool closes = true;      // whether the screen closes when told
     bool onePerAuto = false; // whether an Auto Level Up spends one level's points, not all
     bool spends = true;      // whether an Auto Level Up spends anything at all
     bool up = false;         // the screen
     std::vector<int> abilities = {603, 100011};
+    // The class's talent chain as the screen offers it: had, learnable, not yet.
+    std::vector<std::pair<int, std::string>> chain = {{6, "has"}, {8, "learnable"}, {9, "not yet"}};
     std::vector<std::string> sent; // input's messages, in order
 
     Rogue()
@@ -38,6 +41,19 @@ struct Rogue
             if (kind == "gui")
             {
                 return Json{{"fullScreen", up ? Json("LevelUp") : Json(nullptr)}};
+            }
+            if (kind == "levelup")
+            {
+                Json talents = Json::array();
+                for (const auto &[id, state] : chain)
+                {
+                    talents.push_back(Json{{"id", id}, {"state", state}});
+                }
+                return Json{{"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}}},
+                            {"attributes", {{"strength", strength}}},
+                            {"talents", talents},
+                            {"spells", Json::array()},
+                            {"skills", Json::array()}};
             }
             if (kind == "abilities")
             {
@@ -72,9 +88,30 @@ struct Rogue
                 }
                 levels -= spend;
             }
+            else if (text.starts_with("GUILevelUp.CharGenAssignAbility"))
+            {
+                const int ability = std::stoi(text.substr(text.find(' ', text.find(' ') + 1) + 1));
+                abilities.push_back(ability);
+                for (std::size_t i = 0; i < chain.size(); ++i)
+                {
+                    if (chain[i].first == ability)
+                    {
+                        chain[i].second = "has";
+                        if (i + 1 < chain.size())
+                        {
+                            chain[i + 1].second = "learnable"; // the next in the chain opens
+                        }
+                    }
+                }
+                levels = 0;
+            }
+            else if (text.starts_with("GUICharGen.CharGenAssignAttribute"))
+            {
+                strength += std::stoi(text.substr(text.rfind(' ') + 1));
+            }
             else if (text == "GUI.HideFullScreenGUI")
             {
-                up = false;
+                up = !closes;
             }
             return Json{{"sent", true}};
         });
@@ -128,11 +165,31 @@ TEST_CASE("two levels banked that auto spends one at a time take two rounds", "[
 TEST_CASE("without auto, or with no points to spend, it is refused and nothing is sent", "[levelup]")
 {
     Rogue rogue;
-    CHECK_THROWS_WITH(rogue.LevelUp(Json{{"auto", false}}), ContainsSubstring("only `auto`"));
+    CHECK_THROWS_WITH(rogue.LevelUp(Json{{"auto", false}}), ContainsSubstring("give one of"));
     rogue.levels = 0;
     CHECK_THROWS_WITH(rogue.LevelUp(Json{{"auto", true}}), ContainsSubstring("no level-up points"));
     CHECK_THROWS_WITH(rogue.LevelUp(Json{{"id", "Lyna"}, {"auto", true}}), ContainsSubstring("like \"0x82\""));
     CHECK(rogue.sent.empty());
+}
+
+TEST_CASE("chosen points named wrong are refused, saying what is wanted, and nothing is sent", "[levelup]")
+{
+    Rogue rogue;
+    CHECK_THROWS_WITH(rogue.LevelUp(Json{{"abilities", 8}}), ContainsSubstring("a list of ability ids"));
+    CHECK_THROWS_WITH(rogue.LevelUp(Json{{"abilities", {"Riposte"}}}), ContainsSubstring("a number"));
+    CHECK_THROWS_WITH(rogue.LevelUp(Json{{"attributes", {{"luck", 2}}}}), ContainsSubstring("strength, dexterity"));
+    CHECK_THROWS_WITH(rogue.LevelUp(Json{{"attributes", {{"strength", 0}}}}), ContainsSubstring("1 or more"));
+    CHECK(rogue.sent.empty());
+}
+
+TEST_CASE("a screen that will not close says how to close it", "[levelup]")
+{
+    Rogue rogue;
+    rogue.closes = false;
+    const auto answer = rogue.LevelUp(Json{{"auto", true}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not close"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("GUI.HideFullScreenGUI"));
 }
 
 TEST_CASE("an Auto Level Up that spends nothing is said, and not asked again", "[levelup]")
@@ -143,6 +200,45 @@ TEST_CASE("an Auto Level Up that spends nothing is said, and not asked again", "
     CHECK(answer["levelled"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("spent nothing"));
     CHECK(answer["rounds"] == 1);
+}
+
+TEST_CASE("offers are read with the screen up and nothing spent, the screen abandoned", "[levelup]")
+{
+    Rogue rogue;
+    const auto answer = rogue.LevelUp(Json{{"offers", true}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    REQUIRE(answer["talents"].size() == 3); // an ability each, flat
+    CHECK(answer["talents"][1]["id"] == 8);
+    CHECK(answer["talents"][1]["state"] == "learnable");
+    CHECK(rogue.sent ==
+          std::vector<std::string>{"GUI.GoToLevelUp 130 0", "GUILevelUp.CharGenEnd 130 1 0", "GUI.HideFullScreenGUI"});
+    CHECK(rogue.levels == 1); // nothing spent
+}
+
+TEST_CASE("chosen points are spent as the screen's buttons spend them, a chain in its order", "[levelup]")
+{
+    Rogue rogue;
+    const auto answer = rogue.LevelUp(Json{{"abilities", {8, 9}}, {"attributes", {{"strength", 2}}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    CHECK(answer["attributes"]["strength"] == 2);
+    CHECK(answer["gained"].size() == 2);
+    CHECK(rogue.sent == std::vector<std::string>{"GUI.GoToLevelUp 130 0", "GUILevelUp.CharGenAssignAbility 130 8 1",
+                                                 "GUILevelUp.CharGenAssignAbility 130 9 1",
+                                                 "GUICharGen.CharGenAssignAttribute 130 1 2",
+                                                 "Paperdoll.CharGenAssignAttribute 130 1 2",
+                                                 "GUILevelUp.CharGenEnd 130 1 1", "GUI.HideFullScreenGUI"});
+}
+
+TEST_CASE("an ability not learnable now refuses the lot, nothing spent, and says what is", "[levelup]")
+{
+    Rogue rogue;
+    const auto answer = rogue.LevelUp(Json{{"abilities", {9}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("not yet"));
+    CHECK(answer["offers"]["talents"][0]["id"] == 8);
+    CHECK(rogue.sent.back() == "GUI.HideFullScreenGUI");
+    CHECK(std::ranges::find(rogue.sent, "GUILevelUp.CharGenEnd 130 1 0") != rogue.sent.end());
+    CHECK(rogue.levels == 1);
 }
 
 TEST_CASE("a screen that does not open ends the levelling, saying so", "[levelup]")

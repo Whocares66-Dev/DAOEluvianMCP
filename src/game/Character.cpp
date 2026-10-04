@@ -105,6 +105,85 @@ std::string_view SlotName(std::int32_t slot)
     return {};
 }
 
+// What the level-up screen offers, read as the screen reads it (#5): it asks
+// the engine "GameModeController.FindAbilityChains <creature> <type> 2" (2,
+// DISPLAYMODE_LEVELUP) for each page, and the engine fills the data tree's
+// CharGenCreature.Stats.TalentChains, SpellChains and SkillChains. Each is
+// a list of abilities, one a member, `<list>.<index>`, as the screen's
+// LoadNextAbility reads them: AbilityTemplate (its ID, Name, ...),
+// AbilityInstance (an ability had), DisplayState (DISPLAYSTATE_HAVE 1,
+// AVAILABLE 2, UNLOCKABLE 3), Column and Row, where the screen draws it
+// (levelup.gfx's SharedLibrary.Ability, read 2026-10-04). The first
+// reading took each of those five members for an ability: groups of five
+// with no state, some 60 KB (turn-based-agent, 2026-10-04). The points and attributes are
+// CharGenCreature.Attributes.<n>: 1 to 6 the attributes (seen in play: Lyna's 12, 22, 16, 14, 23, 12), 34 to 36 the
+// points (3, 1, 1 with three attribute points, a skill and a talent banked), 38 the specialisation points.
+Json LevelUpOffers()
+{
+    const auto creature = dao::data::Number(L"CharGenCreature.ID");
+    if (!creature)
+    {
+        throw ToolError("inspect: no level-up screen is up; the levelup tool with `offers: true` opens one and "
+                        "reads this");
+    }
+    const auto number = [](std::wstring_view path) { return dao::data::Number(path).value_or(0); };
+    constexpr std::array<std::string_view, 6> kAttributes = {"strength", "dexterity", "willpower",
+                                                             "magic",    "cunning",   "constitution"};
+    Json attributes = Json::object();
+    for (std::size_t i = 0; i < kAttributes.size(); ++i)
+    {
+        attributes[std::string(kAttributes[i])] = number(std::format(L"CharGenCreature.Attributes.{}.Total", i + 1));
+    }
+    Json answer = {{"creature", Brief(static_cast<ObjectId>(*creature))},
+                   {"points",
+                    {{"attributes", number(L"CharGenCreature.Attributes.34.Total")},
+                     {"skills", number(L"CharGenCreature.Attributes.35.Total")},
+                     {"talentsOrSpells", number(L"CharGenCreature.Attributes.36.Total")},
+                     {"specializations", number(L"CharGenCreature.Attributes.38.Total")}}},
+                   {"attributes", std::move(attributes)}};
+    struct Page
+    {
+        int type;
+        const wchar_t *path;
+        const char *name;
+    };
+    for (const Page page : {Page{1, L"CharGenCreature.Stats.TalentChains", "talents"},
+                            Page{2, L"CharGenCreature.Stats.SpellChains", "spells"},
+                            Page{3, L"CharGenCreature.Stats.SkillChains", "skills"}})
+    {
+        dao::messages::SendText(
+            std::format(L"GameModeController.FindAbilityChains {} {} 2", static_cast<ObjectId>(*creature), page.type));
+        Json abilities = Json::array();
+        for (const auto &member : dao::data::Members(page.path))
+        {
+            // An instance's template is the ability had; a slot with
+            // neither is empty and left out.
+            auto id = dao::data::Number(member + L".AbilityTemplate.ID");
+            if (!id || *id <= 0)
+            {
+                id = dao::data::Number(member + L".AbilityInstance.AbilityTemplate.ID");
+            }
+            if (!id || *id <= 0)
+            {
+                continue;
+            }
+            const auto ability = static_cast<std::int32_t>(*id);
+            std::string name = Narrow(dao::data::Text(member + L".AbilityTemplate.Name").value_or(L""));
+            if (name.empty())
+            {
+                name = AbilityJson(ability).value("name", std::string());
+            }
+            const auto state = static_cast<int>(number(member + L".DisplayState"));
+            abilities.push_back(
+                Json{{"id", ability},
+                     {"name", std::move(name)},
+                     {"state", state == 1 ? "has" : (state == 2 ? "learnable" : (state == 3 ? "not yet" : "?"))}});
+        }
+        answer[page.name] = std::move(abilities);
+    }
+    return answer;
+}
+
 } // namespace
 
 // An item: in brief for a list, in full for itself. Shared: the loot panel
@@ -517,6 +596,20 @@ void AddCharacter(Bench &bench, const Watch &watch)
             }
             answer["items"] = std::move(items);
             return answer;
+        });
+
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"levelup",
+                 "What the level-up screen offers its creature, while it is up (the levelup tool with `offers: "
+                 "true` opens it, reads this and closes it unchanged): the `points` to spend (attributes, skills, "
+                 "talents or spells, specialisations), the six `attributes` as the screen shows them, and the "
+                 "class's `talents`, `spells` and `skills`, each a list of abilities, `id`, `name` and "
+                 "`state`: has, learnable (can be taken now) or not yet (a level, an attribute or the one "
+                 "before it in its chain). The levelup tool spends points on named ones."},
+        [&watch](const Json &) -> ToolResult {
+            RequireWorld(watch, "inspect");
+            return LevelUpOffers();
         });
 
     bench.Tools().AddKind(
