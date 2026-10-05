@@ -1620,6 +1620,50 @@ MUTANTS = [
         'step > 0 && read->value(Json::json_pointer("/walk/found"), false)',
         "step > 0",
     ),
+    # #54: abilities taken as the screen's selection takes them.
+    Mutant(
+        "levelup takes an ability by the specialization message",
+        LEVELUP,
+        'Send("GUICharGen.CharGenAssignAbility " + pick)',
+        'Send("GUILevelUp.CharGenAssignAbility " + pick)',
+    ),
+    Mutant(
+        "levelup says nothing was spent after taking some",
+        LEVELUP,
+        "if (taken.empty())",
+        "if (taken.size() < 99)",
+    ),
+    Mutant(
+        "levelup forgets what it took before a refusal",
+        LEVELUP,
+        "taken.push_back(ability);",
+        "(void)ability;",
+    ),
+    Mutant(
+        "levelup says no level-up is waiting for one that has",
+        LEVELUP,
+        "if (!canLevelUp_)",
+        "if (canLevelUp_)",
+    ),
+    # #54: each kind's points counted by levelup itself.
+    Mutant(
+        "levelup takes an ability with no point left for it",
+        LEVELUP,
+        'if (state == "learnable" && left < 1)',
+        'if (state == "learnable" && left < -1)',
+    ),
+    Mutant(
+        "levelup counts no point for an ability taken",
+        LEVELUP,
+        "            left -= 1;",
+        "            left -= 0;",
+    ),
+    Mutant(
+        "levelup counts a skill on the talents' points",
+        LEVELUP,
+        'const bool skill = PageOf(*offers, ability) == "skills";',
+        'const bool skill = PageOf(*offers, ability) == "never";',
+    ),
 ]
 
 

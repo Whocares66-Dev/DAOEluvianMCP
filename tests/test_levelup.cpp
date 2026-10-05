@@ -28,6 +28,7 @@ struct Rogue
     std::vector<int> abilities = {603, 100011};
     // The class's talent chain as the screen offers it: had, learnable, not yet.
     std::vector<std::pair<int, std::string>> chain = {{6, "has"}, {8, "learnable"}, {9, "not yet"}};
+    int skillPoints = 1;           // a skill, 50, learnable, on its own points
     std::vector<std::string> sent; // input's messages, in order
 
     Rogue()
@@ -49,11 +50,12 @@ struct Rogue
                 {
                     talents.push_back(Json{{"id", id}, {"state", state}});
                 }
-                return Json{{"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}}},
-                            {"attributes", {{"strength", strength}}},
-                            {"talents", talents},
-                            {"spells", Json::array()},
-                            {"skills", Json::array()}};
+                return Json{
+                    {"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}, {"skills", skillPoints}}},
+                    {"attributes", {{"strength", strength}}},
+                    {"talents", talents},
+                    {"spells", Json::array()},
+                    {"skills", Json::array({Json{{"id", 50}, {"state", "learnable"}}})}};
             }
             if (kind == "abilities")
             {
@@ -88,9 +90,10 @@ struct Rogue
                 }
                 levels -= spend;
             }
-            else if (text.starts_with("GUILevelUp.CharGenAssignAbility"))
+            else if (text.starts_with("GUICharGen.CharGenAssignAbility"))
             {
-                const int ability = std::stoi(text.substr(text.find(' ', text.find(' ') + 1) + 1));
+                const auto at = text.find(' ', text.find(' ') + 1) + 1;
+                const int ability = std::stoi(text.substr(at, text.find(' ', at) - at));
                 abilities.push_back(ability);
                 for (std::size_t i = 0; i < chain.size(); ++i)
                 {
@@ -218,15 +221,17 @@ TEST_CASE("offers are read with the screen up and nothing spent, the screen aban
 TEST_CASE("chosen points are spent as the screen's buttons spend them, a chain in its order", "[levelup]")
 {
     Rogue rogue;
+    rogue.levels = 2; // a talent point for each
     const auto answer = rogue.LevelUp(Json{{"abilities", {8, 9}}, {"attributes", {{"strength", 2}}}, {"showMs", 0}});
     CHECK(answer["levelled"] == true);
     CHECK(answer["attributes"]["strength"] == 2);
     CHECK(answer["gained"].size() == 2);
-    CHECK(rogue.sent == std::vector<std::string>{"GUI.GoToLevelUp 130 0", "GUILevelUp.CharGenAssignAbility 130 8 1",
-                                                 "GUILevelUp.CharGenAssignAbility 130 9 1",
-                                                 "GUICharGen.CharGenAssignAttribute 130 1 2",
-                                                 "Paperdoll.CharGenAssignAttribute 130 1 2",
-                                                 "GUILevelUp.CharGenEnd 130 1 1", "GUI.HideFullScreenGUI"});
+    CHECK(rogue.sent == std::vector<std::string>{
+                            "GUI.GoToLevelUp 130 0", "GUICharGen.CharGenAssignAbility 130 8 0",
+                            "Paperdoll.CharGenAssignAbility 130 8 0", "GUICharGen.CharGenAssignAbility 130 9 0",
+                            "Paperdoll.CharGenAssignAbility 130 9 0", "GUICharGen.CharGenAssignAttribute 130 1 2",
+                            "Paperdoll.CharGenAssignAttribute 130 1 2", "GUILevelUp.CharGenEnd 130 1 1",
+                            "GUI.HideFullScreenGUI"});
 }
 
 TEST_CASE("an ability not learnable now refuses the lot, nothing spent, and says what is", "[levelup]")
@@ -239,6 +244,45 @@ TEST_CASE("an ability not learnable now refuses the lot, nothing spent, and says
     CHECK(rogue.sent.back() == "GUI.HideFullScreenGUI");
     CHECK(std::ranges::find(rogue.sent, "GUILevelUp.CharGenEnd 130 1 0") != rogue.sent.end());
     CHECK(rogue.levels == 1);
+}
+
+TEST_CASE("more abilities than points stops when the kind's points are gone, saying those taken", "[levelup]")
+{
+    Rogue rogue; // one level: one talent point
+    const auto answer = rogue.LevelUp(Json{{"abilities", {8, 9}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(),
+               ContainsSubstring("no talent or spell points are left for ability 9"));
+    CHECK(answer["taken"] == Json::array({8}));
+    CHECK(std::ranges::find(rogue.sent, "GUICharGen.CharGenAssignAbility 130 9 0") == rogue.sent.end());
+}
+
+TEST_CASE("a skill is counted on the skills' points, not the talents'", "[levelup]")
+{
+    Rogue rogue; // one talent point and one skill point
+    const auto answer = rogue.LevelUp(Json{{"abilities", {8, 50}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    CHECK(std::ranges::find(rogue.sent, "GUICharGen.CharGenAssignAbility 130 50 0") != rogue.sent.end());
+}
+
+TEST_CASE("an ability refused after others were taken says those taken", "[levelup]")
+{
+    Rogue rogue;
+    const auto answer = rogue.LevelUp(Json{{"abilities", {8, 12}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("those before it were taken and kept"));
+    CHECK(answer["taken"] == Json::array({8}));
+    CHECK(std::ranges::find(rogue.sent, "GUILevelUp.CharGenEnd 130 1 0") != rogue.sent.end());
+}
+
+TEST_CASE("offers for a creature with no level-up waiting say so when the screen will not open", "[levelup]")
+{
+    Rogue rogue;
+    rogue.levels = 0;
+    rogue.opens = false;
+    const auto answer = rogue.LevelUp(Json{{"offers", true}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("`canLevelUp` false"));
 }
 
 TEST_CASE("a screen that does not open ends the levelling, saying so", "[levelup]")

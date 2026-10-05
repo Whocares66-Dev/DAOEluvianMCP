@@ -139,6 +139,7 @@ class Levelling
         }
         n_ = std::to_string(*number);
         const Json first = bench_.Invoke("inspect", Json{{"kind", "character"}, {"id", id_}}).data;
+        canLevelUp_ = first.value("canLevelUp", false);
         if (!offers_ && !first.value("canLevelUp", false))
         {
             throw ToolError("levelup: " + first.value("name", id_) +
@@ -188,7 +189,8 @@ class Levelling
         }
         if (!Screen(true))
         {
-            refused_ = "the level-up screen did not open: " + refused_ + " (in a fight or a conversation it may not)";
+            refused_ = "the level-up screen did not open: " + refused_ +
+                       " (in a fight, a conversation or a changed shape, Bear Shape and the like, it may not)";
             return false;
         }
         return true;
@@ -216,6 +218,14 @@ class Levelling
     {
         if (!Open())
         {
+            // The screen opens only for a creature with a level-up waiting:
+            // Oghren, joined a minute before, gave the screen's timeout twice
+            // (turn-based-agent, 2026-10-04, #54).
+            if (!canLevelUp_)
+            {
+                return End(false, refused_ + "; it opens only with a level-up waiting, and inspect kind=character "
+                                             "says `canLevelUp` false");
+            }
             return End(false, refused_);
         }
         const auto read = Ask("inspect", Json{{"kind", "levelup"}});
@@ -271,11 +281,16 @@ class Levelling
     }
 
     // Points spent on the abilities and attributes named, as the screen's
-    // own buttons spend them: GUILevelUp.CharGenAssignAbility <id> <ability>
-    // 1, and GUICharGen.CharGenAssignAttribute then Paperdoll.CharGen-
-    // AssignAttribute <id> <attribute> <amount> (read from levelup.gfx,
-    // 2026-10-02). An ability the screen does not offer as learnable now is
-    // refused, the screen abandoned with nothing spent.
+    // own buttons spend them: GUICharGen.CharGenAssignAbility then
+    // Paperdoll.CharGenAssignAbility <id> <ability> 0, the screen's
+    // SendSelectionMessage, and GUICharGen.CharGenAssignAttribute then
+    // Paperdoll.CharGenAssignAttribute <id> <attribute> <amount> (read from
+    // levelup.gfx, 2026-10-02 and 2026-10-04). GUILevelUp.CharGenAssign-
+    // Ability <id> <ability> 1, sent here before, is the screen's
+    // SpendSpecializationPoint: it granted the abilities and spent no talent
+    // points, and an abandoned screen kept them (turn-based-agent,
+    // 2026-10-04, #54). An ability the screen does not offer as learnable
+    // now is refused, the screen abandoned; those taken before it are said.
     std::optional<Json> Choose(Json &last)
     {
         if (!Open())
@@ -283,6 +298,12 @@ class Levelling
             return End(false, refused_);
         }
         std::this_thread::sleep_for(show_);
+        Json taken = Json::array();
+        // The points each kind has, counted here: the screen took a third
+        // talent with two points, all three learned (turn-based-agent,
+        // 2026-10-04, #54). Talents and spells share theirs; skills their own.
+        double talentsLeft = -1;
+        double skillsLeft = -1;
         for (const auto ability : chosen_)
         {
             // Read again each time: taking one makes the next in its chain
@@ -293,20 +314,54 @@ class Levelling
                 Close(false);
                 return End(false, "the screen's offers could not be read: " + refused_);
             }
+            if (talentsLeft < 0)
+            {
+                talentsLeft = offers->value(Json::json_pointer("/points/talentsOrSpells"), 0.0);
+                skillsLeft = offers->value(Json::json_pointer("/points/skills"), 0.0);
+            }
+            const bool skill = PageOf(*offers, ability) == "skills";
+            double &left = skill ? skillsLeft : talentsLeft;
             const std::string state = StateOf(*offers, ability);
+            if (state == "learnable" && left < 1)
+            {
+                Close(false);
+                answer_["taken"] = taken;
+                return End(false, std::string("no ") + (skill ? "skill" : "talent or spell") +
+                                      " points are left for ability " + std::to_string(ability) +
+                                      (taken.empty() ? std::string("; nothing was spent")
+                                                     : std::string("; those before it were taken and kept "
+                                                                   "(`taken`): closing the screen does not give "
+                                                                   "them back")));
+            }
             if (state != "learnable")
             {
                 Close(false);
                 answer_["offers"] = Learnable(*offers);
-                return End(false, "ability " + std::to_string(ability) + " is " +
-                                      (state.empty() ? std::string("not among the screen's offers") : state) +
-                                      "; nothing was spent. `offers` lists what is learnable now");
+                std::string why = "ability " + std::to_string(ability) + " is " +
+                                  (state.empty() ? std::string("not among the screen's offers") : state);
+                if (taken.empty())
+                {
+                    why += "; nothing was spent";
+                }
+                else
+                {
+                    // Taken, and kept: an abandoned screen gives nothing back,
+                    // as Morrigan's four and Lyna's three stayed, their
+                    // points spent (turn-based-agent, 2026-10-04, #54).
+                    answer_["taken"] = taken;
+                    why += "; those before it were taken and kept (`taken`): closing the screen does not give "
+                           "them back";
+                }
+                return End(false, why + ". `offers` lists what is learnable now");
             }
-            if (!Send("GUILevelUp.CharGenAssignAbility " + n_ + " " + std::to_string(ability) + " 1"))
+            const std::string pick = n_ + " " + std::to_string(ability) + " 0";
+            if (!Send("GUICharGen.CharGenAssignAbility " + pick) || !Send("Paperdoll.CharGenAssignAbility " + pick))
             {
                 Close(false);
                 return End(false, refused_);
             }
+            taken.push_back(ability);
+            left -= 1;
         }
         for (const auto &[name, amount] : raise_.items())
         {
@@ -341,6 +396,23 @@ class Levelling
                                                             "magic",    "cunning",   "constitution"};
         const auto at = std::ranges::find(kNames, name);
         return at == kNames.end() ? 0 : static_cast<int>(at - kNames.begin()) + 1;
+    }
+
+    // The page an ability is on among the screen's offers: talents, spells
+    // or skills; empty if not offered.
+    static std::string PageOf(const Json &offers, std::int32_t ability)
+    {
+        for (const char *page : {"talents", "spells", "skills"})
+        {
+            for (const auto &entry : offers.value(page, Json::array()))
+            {
+                if (entry.value("id", 0) == ability)
+                {
+                    return page;
+                }
+            }
+        }
+        return {};
     }
 
     // An ability's state among the screen's offers; empty if not offered.
@@ -493,6 +565,7 @@ class Levelling
     milliseconds show_;
     bool auto_ = false;
     bool offers_ = false;
+    bool canLevelUp_ = false; // whether the creature had a level-up waiting when asked
     std::vector<std::int32_t> chosen_;
     Json raise_ = Json::object();
     std::string n_; // the creature's id in decimal, as the screen's messages carry it
