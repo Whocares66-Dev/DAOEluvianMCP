@@ -397,3 +397,23 @@ A playthrough driven by MCP alone, Lothering to the Circle Tower and the Fade, 2
 - The level-up offers came back empty (#5): the chains are filled at once, but a chain's members go by name and DAOLib's list read gave only numbered ones (lib-agent's member names since, not yet seen in play). Auto's attribute spread is the game's own per class (Sten strength 2, dexterity 1).
 - Failures met and filed: a "Return Path" text blocker taken for the way to the map, a walk that ended unseen after a fight (#32); a door the story keeps shut used three times (#33); the Fade's own map not taken as a map (#34).
 - Two crashes in turn-based fights (06:18 and 15:10, the same fault at 0x004d53b4 in the game's model loading): both plugins' event-script detours on the stack, not implicated as far as lib-agent reads (DAOLib #3, DAOTurnBased #19).
+
+The playthrough on, Redcliffe to Orzammar, 2026-10-04 (turn-based-agent's, DAOTurnBased#3; builds deploy-1003j to 1003z, each deployed into its gaps under a claim). What it showed, each an issue closed on its sighting:
+
+- The world map and the Fade's (#24, #34): `travel {"to": <tag>}` across the map, its pins read; the Fade's own map taken as a map too.
+- Doors and blockers (#33, #40, #44, #45, #46, #47, #50): a door the story keeps shut said at once; a door whose key the party lacks, or one that is not interactive, gone round rather than used; a placeable's state named (`stateName`); an unlocked door no longer taken for shut; a far door walked up to; a locked door's key used twice, unlocking then opening.
+- Orders (#35, #48, #51): an area ability aimed at its target's position; `order move` for another party member handing it control first and saying so; an item's ability out of combat by click.
+- Reads (#39, #49, #52): kind=gui's `fullScreen` only when shown; kind=triggers with the locals asked for; `script` naming the near commands for a wrong one.
+- Travel (#37, #53): in combat mode with no hostile near, walking on; where the path search finds none, short straight steps across a doorway's strip.
+- A load in a conversation refused, saying how (#36).
+- The level-up screen (#5): `levelup {auto}`, then `offers` (talents, spells and skills, each with its state) and abilities by name.
+
+The level-up screen's own buttons, crafting and the rest, 2026-10-05 (turn-based-agent's playthrough, Orzammar and the Deep Roads to Denerim; builds deploy-1004a to 1004n). Each an issue closed on its sighting:
+
+- Control and equipment events (#57, DAOLib #22): `eluvian.party.control_changed` by order, by the party bar's key and by a hand-over; `eluvian.equipment.equipped`/`unequipped`, an item an equip pushed out told as `displaced`.
+- `levelup` by name through the screen's own buttons (#54, #58, #63, #64): first by the selection messages with a point count; then by pressing each ability's icon (its `OnButtonAction`, the scene's own point rule) and closing as the screen's Finish does, after a diagnostic read showed the screen reverting presses it had not been told were finished. Lyna's Punisher and Momentum, Wynne's Mass Rejuvenation, Lyna's Combat Tactics (the skills page has a scroller of its own), and the specializations: Ranger, Arcane Warrior, Reaver by the same steps by hand and Alistair's Champion through the tool.
+- `eluvian.gui.message` (#58): every message a screen sends the engine, which showed the screen's own `CharGenEnd ... 1 1`.
+- `input` with `screen` (#28): `get` any value with its type, `call`'s answer, a clip's `children`; through nine rounds of reads that found the level-up icons; `inspect kind=controls`, the key bindings as text.
+- `craft` (#59): poisons, poultices and lyrium potions made through the crafting screen's own message, the listing true to the pack.
+- `equip` refusals (#31): `canUse`, and `requirements` as the inventory tooltip says them ("Requires: 38 strength"), read from the engine's own GetItemRequirements.
+- An argument a tool does not have is said (#61): `topics` on `events` answered "did you mean `topic`?".
