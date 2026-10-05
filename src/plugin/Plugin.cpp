@@ -11,6 +11,7 @@
 // dev/DESIGN.md is the design; README.md how to connect.
 #include "core/Bench.h"
 #include "core/Conversation.h"
+#include "core/Craft.h"
 #include "core/EventLog.h"
 #include "core/Http.h"
 #include "core/LevelUp.h"
@@ -227,6 +228,7 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     // whoever watches sees it (the user, 2026-10-03, #14).
     AddLootTool(g->bench, std::chrono::seconds(1));
     AddLevelUpTool(g->bench, std::chrono::seconds(1));
+    AddCraftTool(g->bench, std::chrono::seconds(1));
     AddPartyTool(g->bench);
     game::AddHealthTool(g->bench, g->watch, [] {
         static const std::string owner = OwnerSetting();

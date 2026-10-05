@@ -24,6 +24,7 @@ add_executable(
     test_base64.cpp
     test_bench.cpp
     test_conversation.cpp
+    test_craft.cpp
     test_erf.cpp
     test_events.cpp
     test_event_log.cpp

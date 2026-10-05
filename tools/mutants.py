@@ -108,6 +108,7 @@ ERF = "src/core/Erf.cpp"
 ARGS = "src/core/Args.cpp"
 REGISTRY = "src/core/ToolRegistry.cpp"
 LEVELUP = "src/core/LevelUp.cpp"
+CRAFT = "src/core/Craft.cpp"
 CONVERSATION = "src/core/Conversation.cpp"
 PLACEABLES = "src/core/Placeables.cpp"
 
@@ -1761,6 +1762,157 @@ MUTANTS = [
         REGISTRY,
         "if (!properties.is_object() || properties.empty())",
         "if (!properties.is_object())",
+    ),
+    # craft (#59): the crafting screen's own rules, its messages and the pack
+    Mutant(
+        "craft reads a maker's id in decimal, not hex",
+        CRAFT,
+        "value, 16);",
+        "value, 10);",
+    ),
+    Mutant(
+        "craft opens the screen for a maker without the skill",
+        CRAFT,
+        "if (!Held(kind_.ability))",
+        "if (false)",
+    ),
+    Mutant(
+        "craft crafts for whoever is controlled",
+        CRAFT,
+        "if (maker_ != controlled)",
+        "if (false)",
+    ),
+    Mutant(
+        "craft keeps the control it handed over",
+        CRAFT,
+        "if (!handBack_.empty())",
+        "if (false)",
+    ),
+    Mutant(
+        "craft crafts on a screen open for another",
+        CRAFT,
+        'selected->value("number", -1.0) != static_cast<double>(n_)',
+        "false",
+    ),
+    Mutant(
+        "craft crafts a recipe whose skill rank is missing",
+        CRAFT,
+        "if (!Held(now.skill))",
+        "if (false)",
+    ),
+    Mutant(
+        "craft crafts what the screen does not allow",
+        CRAFT,
+        "if (!now.canMake)",
+        "if (false)",
+    ),
+    Mutant(
+        "craft counts nothing it made",
+        CRAFT,
+        "made += *after - *before;",
+        "made += 0;",
+    ),
+    Mutant(
+        "craft takes one of several recipes a part of a name fits",
+        CRAFT,
+        "near.size() == 1",
+        "!near.empty()",
+    ),
+    Mutant(
+        "craft names no ingredient short",
+        CRAFT,
+        "ingredient.have < ingredient.need",
+        "false",
+    ),
+    Mutant(
+        "craft takes no recipe by its full name",
+        CRAFT,
+        "name == asked || product == asked",
+        "false",
+    ),
+    Mutant(
+        "craft reads a list's bare member names as full",
+        CRAFT,
+        "name.starts_with(prefix) ? name : prefix + name",
+        "name",
+    ),
+    Mutant(
+        "craft reads more paths at once than inspect takes",
+        CRAFT,
+        "kMostPaths = 64;",
+        "kMostPaths = 640;",
+    ),
+    Mutant(
+        "craft counts what is not the product",
+        CRAFT,
+        "== ResRef(productRef)",
+        "!= ResRef(productRef)",
+    ),
+    Mutant(
+        "craft compares a template with its .uti",
+        CRAFT,
+        'if (ref.ends_with(".uti"))',
+        "if (false)",
+    ),
+    Mutant(
+        "craft does not wait for the product",
+        CRAFT,
+        "if (*count > before)",
+        "if (*count >= before)",
+    ),
+    Mutant(
+        "craft lists every craft's recipes",
+        CRAFT,
+        "return BaseOf(recipe.skill) != kind_.ability;",
+        "return recipe.skill < 0;",
+    ),
+    Mutant(
+        "craft takes a craft's last rank for another's",
+        CRAFT,
+        "skill < kind.ability + 4",
+        "skill < kind.ability + 3",
+    ),
+    Mutant(
+        'craft keeps the "?" before a recipe\'s name',
+        CRAFT,
+        "if (recipe.name.starts_with('?'))",
+        "if (false)",
+    ),
+    Mutant(
+        "craft makes one more than asked",
+        CRAFT,
+        "while (made < count_)",
+        "while (made <= count_)",
+    ),
+    Mutant(
+        "craft gives the product no time to arrive",
+        CRAFT,
+        "kMadeWait{3000}",
+        "kMadeWait{0}",
+    ),
+    Mutant(
+        "craft leaves the screen up",
+        CRAFT,
+        'if (!Send("GUI.HideFullScreenGUI"))',
+        "if (false)",
+    ),
+    Mutant(
+        "craft goes on when the screen does not open",
+        CRAFT,
+        "if (!Screen(true))",
+        "if (false)",
+    ),
+    Mutant(
+        "craft makes two unasked",
+        CRAFT,
+        'Integer("count", 1, 1',
+        'Integer("count", 2, 1',
+    ),
+    Mutant(
+        "craft makes something when only asked to list",
+        CRAFT,
+        "if (recipe_.is_null())",
+        "if (false)",
     ),
 ]
 
