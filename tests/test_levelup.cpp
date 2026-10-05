@@ -47,7 +47,9 @@ struct Rogue
         const std::string under = std::string(kContainer) + ".AbilityChainContainer_mc.";
         if (scene == "Skills")
         {
-            return {{under + "AbilityChain200", skillIcons}};
+            // The skills page keeps its chains in its own scroller, with no
+            // class containers (levelup.gfx's ScrollingSkills_mc_init).
+            return {{"_level0.ScrollingSkills_mc.Scrollable_mc.AbilityChain200", skillIcons}};
         }
         std::vector<int> talents;
         for (const auto &[id, state] : chain)
@@ -152,7 +154,10 @@ struct Rogue
             {
                 return Json{{"type", "number"}, {"value", path.starts_with("Skills") ? skillPoints : levels}};
             }
-            if (path == std::string(kContainer) + ".AbilityChainContainer_mc.m_aChains")
+            const bool skillsOwn = path == "ScrollingSkills_mc.Scrollable_mc.m_aChains" && scene == "Skills";
+            const bool talents =
+                path == std::string(kContainer) + ".AbilityChainContainer_mc.m_aChains" && scene == "SpellsTalents";
+            if (skillsOwn || talents)
             {
                 std::string list;
                 for (const auto &[name, ids] : Chains())

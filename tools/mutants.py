@@ -1934,6 +1934,19 @@ MUTANTS = [
         "pieces.push_back(answer.substr(from));",
         "(void)from;",
     ),
+    # levelup finds a skill in the skills page's own scroller (#63)
+    Mutant(
+        "levelup looks for a skill in the talents' scroller",
+        LEVELUP,
+        '3, "ScrollingSkills_mc.Scrollable_mc"',
+        '3, "ScrollingAbilities_mc.Scrollable_mc"',
+    ),
+    Mutant(
+        "levelup walks class containers only where the scroller has chains of its own",
+        LEVELUP,
+        "if (chains->empty())",
+        "if (!chains->empty())",
+    ),
 ]
 
 

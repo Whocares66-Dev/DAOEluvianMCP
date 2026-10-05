@@ -33,27 +33,28 @@ constexpr int kMostRounds = 5;
 // The most icons a chain of abilities shows (levelup.gfx's
 // AbilityChainContainer.MAX_CHAIN_LENGTH).
 constexpr int kChainLength = 4;
-// Where the screen's pages list their abilities, as its movie names it.
-constexpr const char *kScroller = "ScrollingAbilities_mc.Scrollable_mc";
-
 // A page of the screen: the scene that shows it, the scene's object that
-// counts its points, and the engine's type for its chains (levelup.gfx:
+// counts its points, the engine's type for its chains (levelup.gfx:
 // SceneManager.PlayScene("SpellsTalents" or "Skills"); TALENTS 1, SPELLS 2,
-// SKILLS 3). Talents and spells share a scene and its points.
+// SKILLS 3), and the scroller its abilities are listed in. Talents and
+// spells share a scene, its points and its scroller; the skills page has a
+// scroller of its own (ScrollingSkills_mc_init), where a skill was looked
+// for in the talents' and not found (turn-based-agent, 2026-10-05, #63).
 struct Page
 {
     const char *scene;
     const char *object;
     int type;
+    const char *scroller;
 };
 
 Page PageNamed(const std::string &page)
 {
     if (page == "skills")
     {
-        return Page{"Skills", "SkillsScene", 3};
+        return Page{"Skills", "SkillsScene", 3, "ScrollingSkills_mc.Scrollable_mc"};
     }
-    return Page{"SpellsTalents", "SpellsTalentsScene", page == "spells" ? 2 : 1};
+    return Page{"SpellsTalents", "SpellsTalentsScene", page == "spells" ? 2 : 1, "ScrollingAbilities_mc.Scrollable_mc"};
 }
 
 // The paths in a list this GFx gives as its string: comma-joined.
@@ -496,7 +497,7 @@ class Levelling
         const auto deadline = Clock::now() + kScreenWait;
         while (true)
         {
-            auto icons = Icons();
+            auto icons = Icons(page.scroller);
             if (!icons)
             {
                 return false;
@@ -516,48 +517,69 @@ class Levelling
         }
     }
 
-    // The abilities a page shows, each by the path to its icon: the
-    // scroller's class containers, each's chains (AbilityChainContainer_mc's
-    // m_aChains, which this GFx gives as their paths comma-joined), and each
-    // chain's icons, icon0 up, an icon's m_oAbility the ability (seen in
-    // play, turn-based-agent, 2026-10-05).
-    std::optional<std::map<std::int32_t, std::string>> Icons()
+    // The abilities a page shows, each by the path to its icon: its chains,
+    // and each chain's icons, icon0 up, an icon's m_oAbility the ability
+    // (seen in play, turn-based-agent, 2026-10-05). The chains are the
+    // scroller's own where it keeps them, the skills page adding each
+    // ability to its scrollable itself; else each of its class containers'
+    // (AbilityChainContainer_mc), as on the talents' page.
+    std::optional<std::map<std::int32_t, std::string>> Icons(const std::string &scroller)
     {
-        const auto containers = Movie(Json{{"children", kScroller}});
-        if (!containers)
+        auto chains = Chains(scroller);
+        if (!chains)
         {
             return std::nullopt;
         }
-        std::map<std::int32_t, std::string> icons;
-        for (const auto &container : containers->value("children", Json::array()))
+        if (chains->empty())
         {
-            const auto chains =
-                Movie(Json{{"get", container.value("path", std::string()) + ".AbilityChainContainer_mc.m_aChains"}});
-            if (!chains)
+            const auto containers = Movie(Json{{"children", scroller}});
+            if (!containers)
             {
                 return std::nullopt;
             }
-            const Json list = chains->value("value", Json());
-            for (const auto &chain : Split(list.is_string() ? list.get<std::string>() : std::string()))
+            for (const auto &container : containers->value("children", Json::array()))
             {
-                for (int k = 0; k < kChainLength; ++k)
+                const auto theirs = Chains(container.value("path", std::string()) + ".AbilityChainContainer_mc");
+                if (!theirs)
                 {
-                    const std::string icon = chain + ".icon" + std::to_string(k);
-                    const auto id = Movie(Json{{"get", icon + ".m_oAbility.nID"}});
-                    if (!id)
-                    {
-                        return std::nullopt;
-                    }
-                    const Json value = id->value("value", Json());
-                    if (!value.is_number())
-                    {
-                        break; // the chain is shorter
-                    }
-                    icons[static_cast<std::int32_t>(value.get<double>())] = icon;
+                    return std::nullopt;
                 }
+                chains->insert(chains->end(), theirs->begin(), theirs->end());
+            }
+        }
+        std::map<std::int32_t, std::string> icons;
+        for (const auto &chain : *chains)
+        {
+            for (int k = 0; k < kChainLength; ++k)
+            {
+                const std::string icon = chain + ".icon" + std::to_string(k);
+                const auto id = Movie(Json{{"get", icon + ".m_oAbility.nID"}});
+                if (!id)
+                {
+                    return std::nullopt;
+                }
+                const Json value = id->value("value", Json());
+                if (!value.is_number())
+                {
+                    break; // the chain is shorter
+                }
+                icons[static_cast<std::int32_t>(value.get<double>())] = icon;
             }
         }
         return icons;
+    }
+
+    // A holder's chains (its m_aChains, which this GFx gives as their paths
+    // comma-joined); none where it has no such list.
+    std::optional<std::vector<std::string>> Chains(const std::string &holder)
+    {
+        const auto read = Movie(Json{{"get", holder + ".m_aChains"}});
+        if (!read)
+        {
+            return std::nullopt;
+        }
+        const Json list = read->value("value", Json());
+        return Split(list.is_string() ? list.get<std::string>() : std::string());
     }
 
     // A number in the screen's movie; nothing with `refused_` said.
