@@ -288,7 +288,20 @@ void AddInspect(Bench &bench, const Watch &watch)
                {"ints",
                 {{"type", "array"},
                  {"description", "kind=triggers: local int names to read on each trigger, as its scripts set "
-                                 "them (GetLocalInt)"}}}}}},
+                                 "them (GetLocalInt)"}}},
+               // kind=resources' (Resources.cpp): undeclared, they were said
+               // ignored once calls began to say so (#61).
+               {"type",
+                {{"type", "string"},
+                 {"description", "kind=resources: an extension: utc a creature's template, uti an item's, plo a "
+                                 "plot, cut a cutscene"}}},
+               {"match", {{"type", "string"}, {"description", "kind=resources: words the name must hold (\"ogre\")"}}},
+               {"most",
+                {{"type", "integer"},
+                 {"minimum", 1},
+                 {"maximum", 2000},
+                 {"description", "kind=resources: at most "
+                                 "this many (100)"}}}}}},
         Thread::Frame, true});
 
     bench.Tools().AddKind(

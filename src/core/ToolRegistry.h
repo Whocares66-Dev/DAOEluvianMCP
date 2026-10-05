@@ -62,6 +62,11 @@ class ToolRegistry
     // naming the kinds there are.
     [[nodiscard]] std::optional<Call> Resolve(std::string_view tool, const Json &args) const;
 
+    // The arguments a call gave that its tool's schema does not list, each
+    // with what to say of it: the nearest it does list, or what it takes.
+    // Empty for a tool whose schema lists none, which cannot tell.
+    [[nodiscard]] Json Unknown(std::string_view tool, const Json &args) const;
+
     // MCP's tools/list `tools` array, sorted by name, with every base tool's
     // kinds written into its schema and description. Unlisted tools are left
     // out.

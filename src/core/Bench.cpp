@@ -37,6 +37,9 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
         throw UnknownTool("no tool \"" + std::string(tool) + "\"; tools/list (or GET /api/tools) lists them");
     }
     const auto thread = call->thread;
+    // What it ignores is said: in the answer, or with its refusal, as a
+    // misspelt argument is often why a tool refuses (#61).
+    const Json ignored = tools_.Unknown(tool, args);
     const auto start = std::chrono::steady_clock::now();
     const auto record = [&](std::string_view error) {
         if (options_.onCall)
@@ -62,7 +65,25 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
             result = frames_.RunAndWait([handler, arguments] { return (*handler)(*arguments); }, options_.frameTimeout);
         }
         record({});
+        if (!ignored.empty() && result.data.is_object())
+        {
+            result.data["ignored"] = ignored;
+        }
         return result;
+    }
+    catch (const ToolError &error)
+    {
+        record(error.what());
+        if (ignored.empty())
+        {
+            throw;
+        }
+        std::string said = error.what();
+        for (const auto &[name, why] : ignored.items())
+        {
+            said += " (`" + name + "` is " + why.get<std::string>() + ")";
+        }
+        throw ToolError(said);
     }
     catch (const std::exception &error)
     {
@@ -106,7 +127,8 @@ void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
                  "The bench's events since a cursor: what happened in the game (eluvian.*) and what mods emit (their "
                  "own prefix), in "
                  "order, each with its sequence number, frame and time. Returns `next`, the cursor to read from "
-                 "next time, and `missed`, how many were too old to keep.",
+                 "next time (pass it as `since`; other tools' answers call theirs `cursor`), and `missed`, how many "
+                 "were too old to keep. Filter with `topic`: one, a prefix or an array of them.",
                  eventsSchema, Thread::Listener, true},
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "events");

@@ -1707,6 +1707,55 @@ MUTANTS = [
         "if (canLevelUp_)",
     ),
     # #54: each kind's points counted by levelup itself.
+    # what a call ignored is said (#61)
+    Mutant(
+        "the bench says nothing of an argument it ignored",
+        BENCH,
+        'result.data["ignored"] = ignored;',
+        'result.data["kept"] = ignored;',
+    ),
+    Mutant(
+        "a refusal keeps quiet of what it ignored",
+        BENCH,
+        "if (ignored.empty())",
+        "if (ignored.size() < 99)",
+    ),
+    Mutant(
+        "an argument the schema lists is said ignored",
+        REGISTRY,
+        "properties.contains(name) ||",
+        "false ||",
+    ),
+    Mutant(
+        "a kind's own property is said ignored",
+        REGISTRY,
+        "(!entry.handler && name == entry.spec.kindProperty)",
+        "(false)",
+    ),
+    Mutant(
+        "no argument meant is ever offered",
+        REGISTRY,
+        "best <= std::max<std::size_t>(2, name.size() / 3)",
+        "best <= 0",
+    ),
+    Mutant(
+        "any argument is offered as the one meant",
+        REGISTRY,
+        "best <= std::max<std::size_t>(2, name.size() / 3)",
+        "best <= 99",
+    ),
+    Mutant(
+        "a letter changed costs nothing in the distance",
+        REGISTRY,
+        "diagonal + (a[i - 1] == b[j - 1] ? 0 : 1)",
+        "diagonal + (a[i - 1] == b[j - 1] ? 0 : 0)",
+    ),
+    Mutant(
+        "a schema with no arguments listed says every one ignored",
+        REGISTRY,
+        "if (!properties.is_object() || properties.empty())",
+        "if (!properties.is_object())",
+    ),
 ]
 
 

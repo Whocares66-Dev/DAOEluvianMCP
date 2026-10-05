@@ -49,6 +49,53 @@ TEST_CASE("an unknown tool and a tool's refusal reach the caller", "[bench]")
     CHECK_THROWS_AS(bench.Invoke("refuse", {}), ToolError);
 }
 
+TEST_CASE("an argument a tool does not have is named in its answer, with the one meant", "[bench]")
+{
+    Bench bench;
+    const Json schema = {{"type", "object"}, {"properties", {{"topic", Json::object()}, {"since", Json::object()}}}};
+    bench.Tools().Add(ToolSpec{"read", "Read.", schema, Thread::Listener},
+                      [](const Json &) -> ToolResult { return Json{{"events", Json::array()}}; });
+    const auto answer = bench.Invoke("read", Json{{"since", 0}, {"topics", {"eluvian.gui.message"}}}).data;
+    REQUIRE(answer.contains("ignored"));
+    CHECK(answer["ignored"].size() == 1);
+    CHECK(answer["ignored"]["topics"] == "not an argument of read; did you mean `topic`?");
+    // Far from any it has: what it takes is said instead.
+    const auto far = bench.Invoke("read", Json{{"cursor", 3}}).data;
+    CHECK(far["ignored"]["cursor"] == "not an argument of read; it takes `topic`, `since`");
+    // Nearer one than the others, but by more than a third of it: not meant.
+    const auto stem = bench.Invoke("read", Json{{"topicsfilter", "x"}}).data;
+    CHECK(stem["ignored"]["topicsfilter"] == "not an argument of read; it takes `topic`, `since`");
+    CHECK_FALSE(bench.Invoke("read", Json{{"topic", "x"}}).data.contains("ignored"));
+}
+
+TEST_CASE("a refusal says what argument it ignored, the likely why", "[bench]")
+{
+    Bench bench;
+    const Json schema = {{"type", "object"}, {"properties", {{"abilities", Json::object()}}}};
+    bench.Tools().Add(ToolSpec{"spend", "Spend.", schema, Thread::Listener},
+                      [](const Json &) -> ToolResult { throw ToolError("give `abilities`"); });
+    CHECK_THROWS_WITH(bench.Invoke("spend", Json{{"abilites", {7}}}),
+                      "give `abilities` (`abilites` is not an argument of spend; did you mean `abilities`?)");
+    CHECK_THROWS_WITH(bench.Invoke("spend", Json{{"abilities", {7}}}), "give `abilities`");
+}
+
+TEST_CASE("a tool whose schema lists no arguments, and a kind's own, are not said ignored", "[bench]")
+{
+    Bench bench;
+    bench.Tools().Add(ToolSpec{"open", "Open.", {}, Thread::Listener},
+                      [](const Json &) -> ToolResult { return Json::object(); });
+    CHECK_FALSE(bench.Invoke("open", Json{{"anything", 1}}).data.contains("ignored"));
+    bench.Tools().Add(ToolSpec{"bare", "Bare.", {{"type", "object"}}, Thread::Listener},
+                      [](const Json &) -> ToolResult { return Json::object(); });
+    CHECK_FALSE(bench.Invoke("bare", Json{{"anything", 1}}).data.contains("ignored"));
+    ToolSpec look{"look", "Look.", {{"type", "object"}, {"properties", {{"id", Json::object()}}}}, Thread::Listener};
+    bench.Tools().Add(look, nullptr);
+    bench.Tools().AddKind("look", KindSpec{"game", "The game.", Thread::Listener},
+                          [](const Json &) -> ToolResult { return Json::object(); });
+    CHECK_FALSE(bench.Invoke("look", Json{{"kind", "game"}, {"id", "0x82"}}).data.contains("ignored"));
+    CHECK(bench.Invoke("look", Json{{"kind", "game"}, {"idd", "0x82"}}).data.contains("ignored"));
+}
+
 TEST_CASE("events returns the bus from a cursor, filtered", "[bench]")
 {
     Bench bench;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace eluvian
 {
@@ -22,6 +23,28 @@ std::string KindList(const auto &kinds)
         list += name;
     }
     return list.empty() ? "(none registered)" : list;
+}
+
+// How many single-letter edits make one name the other.
+std::size_t Distance(std::string_view a, std::string_view b)
+{
+    std::vector<std::size_t> row(b.size() + 1);
+    for (std::size_t j = 0; j <= b.size(); ++j)
+    {
+        row[j] = j;
+    }
+    for (std::size_t i = 1; i <= a.size(); ++i)
+    {
+        std::size_t diagonal = row[0];
+        row[0] = i;
+        for (std::size_t j = 1; j <= b.size(); ++j)
+        {
+            const std::size_t above = row[j];
+            row[j] = std::min({row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] == b[j - 1] ? 0 : 1)});
+            diagonal = above;
+        }
+    }
+    return row[b.size()];
 }
 
 } // namespace
@@ -87,6 +110,57 @@ std::optional<Call> ToolRegistry::Resolve(std::string_view tool, const Json &arg
                         "\"; the choices are: " + KindList(entry.kinds));
     }
     return Call{entry.spec.name, kindName, kit->second.spec.thread, kit->second.handler};
+}
+
+// An argument a tool does not have was ignored without a word: `events`
+// with `topics` read every topic, its filter being `topic`
+// (turn-based-agent, 2026-10-05, #61). A kind of a base tool shares its
+// tool's schema, whose properties are its kinds' together.
+Json ToolRegistry::Unknown(std::string_view tool, const Json &args) const
+{
+    const std::lock_guard lock(mutex_);
+    Json unknown = Json::object();
+    const auto it = tools_.find(tool);
+    if (it == tools_.end() || !args.is_object())
+    {
+        return unknown;
+    }
+    const Entry &entry = it->second;
+    if (!entry.spec.inputSchema.is_object())
+    {
+        return unknown;
+    }
+    const Json properties = entry.spec.inputSchema.value("properties", Json::object());
+    if (!properties.is_object() || properties.empty())
+    {
+        return unknown;
+    }
+    for (const auto &[name, value] : args.items())
+    {
+        if (properties.contains(name) || (!entry.handler && name == entry.spec.kindProperty))
+        {
+            continue;
+        }
+        std::string nearest;
+        std::size_t best = name.size();
+        std::string all;
+        for (const auto &[known, schema] : properties.items())
+        {
+            all += (all.empty() ? "`" : ", `") + known + "`";
+            const std::size_t distance = Distance(name, known);
+            if (distance < best)
+            {
+                best = distance;
+                nearest = known;
+            }
+        }
+        // Near enough to be the one meant: a letter or two off, or a third
+        // of the name.
+        const bool near = !nearest.empty() && best <= std::max<std::size_t>(2, name.size() / 3);
+        unknown[name] = "not an argument of " + std::string(tool) + "; " +
+                        (near ? "did you mean `" + nearest + "`?" : "it takes " + all);
+    }
+    return unknown;
 }
 
 Json ToolRegistry::Describe() const
