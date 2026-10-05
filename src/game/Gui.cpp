@@ -269,6 +269,55 @@ void AddGui(Bench &bench, const Watch &watch)
             answer["store"] = world ? StoreJson() : Json(nullptr);
             return answer;
         });
+
+    // The key bindings as the Options screen's Controls list shows them, read
+    // as text: a test of a mod's keys checks them without a picture. Each
+    // action is InputMappings.Mappings.<name>, with its Description and the
+    // keys as shown, "Ctrl + T", "Enter", "" for none (read in play by
+    // turn-based-agent, 2026-10-03, #28); the names come from DAOLib's
+    // MemberNames, as the screen's ListMemberNames gives them.
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"controls",
+                 "The key bindings, as the Options screen's Controls list shows them: each action's `name`, "
+                 "its `description`, and its `primary` and `secondary` keys as shown (\"Ctrl + T\", \"\" for "
+                 "none). `match` keeps those whose name or description holds it, in any case. A plugin's own "
+                 "actions are among them. Reading only; answers in any mode once the game runs."},
+        [&watch](const Json &raw) -> ToolResult {
+            const Args args(raw, "inspect");
+            if (watch.Mode() < 0)
+            {
+                throw ToolError("inspect: the game is still starting; health says when it runs");
+            }
+            const auto lower = [](std::string text) {
+                std::ranges::transform(text, text.begin(),
+                                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                return text;
+            };
+            const std::string match = lower(args.String("match", ""));
+            Json controls = Json::array();
+            for (const auto &name : dao::data::MemberNames(L"InputMappings.Mappings"))
+            {
+                std::wstring base = L"InputMappings.Mappings.";
+                base += name;
+                const auto text = [&base](std::wstring_view field) {
+                    std::wstring path = base;
+                    path += field;
+                    return Narrow(dao::data::Text(path).value_or(L""));
+                };
+                Json row = {{"name", Narrow(name)},
+                            {"description", text(L".Description")},
+                            {"primary", text(L".PrimaryMappedKey")},
+                            {"secondary", text(L".SecondaryMappedKey")}};
+                if (!match.empty() && lower(row["name"].get<std::string>()).find(match) == std::string::npos &&
+                    lower(row["description"].get<std::string>()).find(match) == std::string::npos)
+                {
+                    continue;
+                }
+                controls.push_back(std::move(row));
+            }
+            return Json{{"count", controls.size()}, {"controls", std::move(controls)}};
+        });
 }
 
 } // namespace eluvian::game

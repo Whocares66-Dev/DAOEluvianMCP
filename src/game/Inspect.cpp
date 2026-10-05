@@ -295,7 +295,10 @@ void AddInspect(Bench &bench, const Watch &watch)
                 {{"type", "string"},
                  {"description", "kind=resources: an extension: utc a creature's template, uti an item's, plo a "
                                  "plot, cut a cutscene"}}},
-               {"match", {{"type", "string"}, {"description", "kind=resources: words the name must hold (\"ogre\")"}}},
+               {"match",
+                {{"type", "string"},
+                 {"description", "kind=resources: words the name must hold (\"ogre\"); kind=controls: only the "
+                                 "actions whose name or description holds this"}}},
                {"most",
                 {{"type", "integer"},
                  {"minimum", 1},
