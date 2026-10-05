@@ -57,6 +57,14 @@ Page PageNamed(const std::string &page)
     return Page{"SpellsTalents", "SpellsTalentsScene", page == "spells" ? 2 : 1, "ScrollingAbilities_mc.Scrollable_mc"};
 }
 
+// Where the screen lists a creature's specializations: one icon a
+// specialization of its base class, icon0 up, each with sName,
+// nSpecializationAbilityID, bSelected (had: HasAbility) and bGrey (not to
+// be taken: its achievement not earned on the player's profile, or no
+// point), as specializations_mc_init fills them (levelup.gfx); read in play
+// for Lyna, Wynne and Oghren (turn-based-agent, 2026-10-05, #64).
+constexpr const char *kSpecializations = "specializations_mc.Scrollable_mc";
+
 // The paths in a list this GFx gives as its string: comma-joined.
 std::vector<std::string> Split(const std::string &text)
 {
@@ -195,8 +203,12 @@ class Levelling
         }
         n_ = std::to_string(*number);
         const Json first = bench_.Invoke("inspect", Json{{"kind", "character"}, {"id", id_}}).data;
-        canLevelUp_ = first.value("canLevelUp", false);
-        if (!offers_ && !first.value("canLevelUp", false))
+        // A level-up waits with a point of any kind: the game answers
+        // canLevelUp false with only a specialization point left, and Lyna,
+        // Wynne and Oghren were refused theirs so (turn-based-agent,
+        // 2026-10-05, #64).
+        canLevelUp_ = first.value("canLevelUp", false) || PointsLeft(first) > 0;
+        if (!offers_ && !canLevelUp_)
         {
             throw ToolError("levelup: " + first.value("name", id_) +
                             " has no level-up points to spend; inspect kind=character says `canLevelUp` and "
@@ -231,8 +243,7 @@ class Levelling
         {
             return End(false, auto_ ? "the screen's Auto Level Up spent nothing" : "nothing was spent");
         }
-        return End(true, last.value("canLevelUp", false) ? "levelled; points are left to spend"
-                                                         : "levelled: every point spent");
+        return End(true, PointsLeft(last) > 0 ? "levelled; points are left to spend" : "levelled: every point spent");
     }
 
   private:
@@ -308,6 +319,19 @@ class Levelling
             return End(false, refused_);
         }
         const auto read = Ask("inspect", Json{{"kind", "levelup"}});
+        // The specializations as the screen shows them: an empty list read
+        // as none unlocked, where the tool had listed none at all
+        // (turn-based-agent, 2026-10-05, #64).
+        if (const auto specializations = Specializations())
+        {
+            Json listed = Json::array();
+            for (const auto &specialization : *specializations)
+            {
+                listed.push_back(
+                    Json{{"id", specialization.id}, {"name", specialization.name}, {"state", specialization.state}});
+            }
+            answer_["specializations"] = std::move(listed);
+        }
         Close(false); // abandoned: a look spends nothing
         if (!read)
         {
@@ -383,6 +407,21 @@ class Levelling
         Json taken = Json::array();
         for (const auto ability : chosen_)
         {
+            // A specialization, taken as a click on its icon takes it.
+            if (const auto taking = Specialization(ability))
+            {
+                if (!*taking)
+                {
+                    Close(false);
+                    if (!taken.empty())
+                    {
+                        answer_["givenBack"] = taken;
+                    }
+                    return End(false, refused_ + GivenBack(taken));
+                }
+                taken.emplace_back(ability);
+                continue;
+            }
             // Read again each time: taking one makes the next in its chain
             // learnable.
             const auto offers = Ask("inspect", Json{{"kind", "levelup"}});
@@ -439,6 +478,99 @@ class Levelling
         }
         last = *read;
         return std::nullopt;
+    }
+
+    // A specialization as its icon shows it.
+    struct Special
+    {
+        std::int32_t id = 0;
+        std::string name;
+        std::string state; // has, learnable, locked, or no point to spend
+        std::string icon;
+    };
+
+    // The specializations the screen lists for the creature; nothing with
+    // `refused_` said.
+    std::optional<std::vector<Special>> Specializations()
+    {
+        const auto found = Number("LevelUp.nSpecializationsFound");
+        const auto points = Number("LevelUp.nSpecializationPoints");
+        if (!found || !points)
+        {
+            return std::nullopt;
+        }
+        std::vector<Special> specializations;
+        for (int n = 0; n < static_cast<int>(*found); ++n)
+        {
+            const std::string icon = std::string(kSpecializations) + ".icon" + std::to_string(n);
+            const auto name = Movie(Json{{"get", icon + ".sName"}});
+            const auto id = Number(icon + ".nSpecializationAbilityID");
+            const auto selected = Movie(Json{{"get", icon + ".bSelected"}});
+            const auto grey = Movie(Json{{"get", icon + ".bGrey"}});
+            if (!name || !id || !selected || !grey)
+            {
+                return std::nullopt;
+            }
+            const bool had = selected->value("value", Json()) == true;
+            const bool shut = grey->value("value", Json()) == true;
+            const Json label = name->value("value", Json());
+            specializations.push_back(Special{static_cast<std::int32_t>(*id),
+                                              label.is_string() ? label.get<std::string>() : std::string(),
+                                              had           ? "has"
+                                              : !shut       ? "learnable"
+                                              : *points < 1 ? "no point to spend"
+                                                            : "locked",
+                                              icon});
+        }
+        return specializations;
+    }
+
+    // A specialization taken by a click on its icon (its onPressHitArea,
+    // which spends only on an icon not grey, not had, with a point left:
+    // SpendSpecializationPoint, GUILevelUp.CharGenAssignAbility <id> <ability>
+    // 1). Nothing if the ability is no specialization of the creature's;
+    // false with `refused_` said if it was not taken.
+    std::optional<bool> Specialization(std::int32_t ability)
+    {
+        if (!specializations_)
+        {
+            specializations_ = Specializations();
+            if (!specializations_)
+            {
+                specializations_ = std::vector<Special>{}; // unread: none taken as one
+            }
+        }
+        const auto it = std::ranges::find(*specializations_, ability, &Special::id);
+        if (it == specializations_->end())
+        {
+            return std::nullopt;
+        }
+        if (it->state == "has")
+        {
+            refused_ = "the creature has the specialization " + it->name + " (" + std::to_string(ability) + ") already";
+            return false;
+        }
+        const auto before = Number("LevelUp.nSpecializationPoints");
+        if (!before || !Movie(Json{{"call", it->icon + ".onPressHitArea"}}))
+        {
+            return false;
+        }
+        const auto left = Number("LevelUp.nSpecializationPoints");
+        if (!left)
+        {
+            return false;
+        }
+        if (*left < *before)
+        {
+            answer_["specialization"] = Json{{"id", ability}, {"name", it->name}};
+            return true;
+        }
+        refused_ = *before < 1
+                       ? "no specialization point is left for " + it->name
+                       : "the screen took no point for the specialization " + it->name + ": it is " + it->state +
+                             " (a specialization is unlocked by its achievement, kept on the "
+                             "player's profile)";
+        return false;
     }
 
     // An ability taken by pressing its icon on its page; false with
@@ -785,9 +917,10 @@ class Levelling
     bool canLevelUp_ = false; // whether the creature had a level-up waiting when asked
     std::vector<std::int32_t> chosen_;
     Json raise_ = Json::object();
-    std::string n_;                             // the creature's id in decimal, as the screen's messages carry it
-    std::string shown_;                         // the scene of the page shown, once one is
-    std::map<std::int32_t, std::string> icons_; // its abilities' icons
+    std::string n_;     // the creature's id in decimal, as the screen's messages carry it
+    std::string shown_; // the scene of the page shown, once one is
+    std::optional<std::vector<Special>> specializations_; // as the screen listed them, once read
+    std::map<std::int32_t, std::string> icons_;           // its abilities' icons
     std::string id_;
     std::string refused_;
     int rounds_ = 0;

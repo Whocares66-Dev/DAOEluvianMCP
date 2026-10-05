@@ -1096,7 +1096,7 @@ MUTANTS = [
     Mutant(
         "levelup levels a creature with no points",
         LEVELUP,
-        'if (!offers_ && !first.value("canLevelUp", false))',
+        "if (!offers_ && !canLevelUp_)",
         "if (false)",
     ),
     Mutant(
@@ -1946,6 +1946,79 @@ MUTANTS = [
         LEVELUP,
         "if (chains->empty())",
         "if (!chains->empty())",
+    ),
+    # levelup's specializations, as the screen's icons have them (#64)
+    Mutant(
+        "levelup lists no specializations in its offers",
+        LEVELUP,
+        'answer_["specializations"] = std::move(listed);',
+        'answer_["noSpecializations"] = std::move(listed);',
+    ),
+    Mutant(
+        "levelup reads a specialization had as not had",
+        LEVELUP,
+        'const bool had = selected->value("value", Json()) == true;',
+        'const bool had = selected->value("value", Json()) == false;',
+    ),
+    Mutant(
+        "levelup reads a grey specialization as open",
+        LEVELUP,
+        'const bool shut = grey->value("value", Json()) == true;',
+        'const bool shut = grey->value("value", Json()) == false;',
+    ),
+    Mutant(
+        "levelup calls a grey specialization locked though no point is left",
+        LEVELUP,
+        ': *points < 1 ? "no point to spend"',
+        ': *points < -1 ? "no point to spend"',
+    ),
+    Mutant(
+        "levelup presses a specialization had already",
+        LEVELUP,
+        'if (it->state == "has")',
+        'if (it->state == "never")',
+    ),
+    Mutant(
+        "levelup counts a specialization the screen took no point for",
+        LEVELUP,
+        "if (*left < *before)",
+        "if (*left <= *before)",
+    ),
+    Mutant(
+        "levelup takes no specialization by name",
+        LEVELUP,
+        "if (const auto taking = Specialization(ability))",
+        "if (const auto taking = std::optional<bool>{}; ability < 0 && taking)",
+    ),
+    Mutant(
+        "levelup goes on past a refused specialization",
+        LEVELUP,
+        "if (!*taking)",
+        "if (!*taking && ability < 0)",
+    ),
+    Mutant(
+        "levelup reads one specialization fewer than the screen found",
+        LEVELUP,
+        "n < static_cast<int>(*found)",
+        "n + 1 < static_cast<int>(*found)",
+    ),
+    Mutant(
+        "levelup forgets a specialization taken before a refusal",
+        LEVELUP,
+        "taken.emplace_back(ability);",
+        "(void)ability;",
+    ),
+    Mutant(
+        "levelup takes only canLevelUp for a level-up waiting",
+        LEVELUP,
+        'first.value("canLevelUp", false) || PointsLeft(first) > 0;',
+        'first.value("canLevelUp", false) || PointsLeft(first) > 99;',
+    ),
+    Mutant(
+        "levelup says points are left when none are",
+        LEVELUP,
+        'PointsLeft(last) > 0 ? "levelled; points are left to spend"',
+        'PointsLeft(last) >= 0 ? "levelled; points are left to spend"',
     ),
 ]
 

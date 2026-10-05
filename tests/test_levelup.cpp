@@ -36,8 +36,19 @@ struct Rogue
     int exitPoint = 0;                  // LevelUp.nExitPoint: LEVELUP_EXIT_ABORT 0 as the screen starts, COMPLETE 1
     std::vector<int> stored;            // the picks its icons stored, which an unfinished end reverts
     bool takesExit = true;              // whether the movie takes its exit point when set
-    std::vector<std::string> sent;      // input's messages, in order
-    std::vector<Json> movie;            // input's calls into the screen's movie, in order
+    // The specializations the screen lists, as its icons have them (#64).
+    struct Special
+    {
+        int id;
+        std::string name;
+        bool selected; // had
+        bool grey;     // not to be taken: locked, or no point
+    };
+    std::vector<Special> specials;
+    int specialPoints = 0;
+    std::vector<int> specialStored; // picks its icons stored, which an unfinished end reverts
+    std::vector<std::string> sent;  // input's messages, in order
+    std::vector<Json> movie;        // input's calls into the screen's movie, in order
 
     static constexpr const char *kContainer = "_level0.ScrollingAbilities_mc.Scrollable_mc.AbilityClassContainer84";
 
@@ -100,6 +111,17 @@ struct Rogue
     {
         if (exitPoint == 0)
         {
+            for (const int id : specialStored)
+            {
+                for (auto &special : specials)
+                {
+                    if (special.id == id)
+                    {
+                        special.selected = false;
+                        specialPoints += 1;
+                    }
+                }
+            }
             for (auto it = stored.rbegin(); it != stored.rend(); ++it)
             {
                 std::erase(abilities, *it);
@@ -118,6 +140,7 @@ struct Rogue
             }
         }
         stored.clear();
+        specialStored.clear();
         sent.push_back("GUILevelUp.CharGenEnd 130 1 " + std::to_string(exitPoint));
     }
 
@@ -146,6 +169,29 @@ struct Rogue
         if (args.contains("get"))
         {
             const std::string path = args.at("get");
+            if (path == "LevelUp.nSpecializationsFound" || path == "LevelUp.nSpecializationPoints")
+            {
+                return Json{{"type", "number"},
+                            {"value", path.ends_with("Found") ? static_cast<int>(specials.size()) : specialPoints}};
+            }
+            for (std::size_t n = 0; n < specials.size(); ++n)
+            {
+                const std::string icon = "specializations_mc.Scrollable_mc.icon" + std::to_string(n);
+                const auto &special = specials[n];
+                if (path == icon + ".sName")
+                {
+                    return Json{{"type", "string"}, {"value", special.name}};
+                }
+                if (path == icon + ".nSpecializationAbilityID")
+                {
+                    return Json{{"type", "number"}, {"value", special.id}};
+                }
+                if (path == icon + ".bSelected" || path == icon + ".bGrey")
+                {
+                    return Json{{"type", "boolean"},
+                                {"value", path.ends_with("Selected") ? special.selected : special.grey}};
+                }
+            }
             if (path == "LevelUp.LEVELUP_EXIT_COMPLETE" || path == "LevelUp.LEVELUP_EXIT_ABORT")
             {
                 return Json{{"type", "number"}, {"value", path.ends_with("COMPLETE") ? 1 : 0}};
@@ -182,6 +228,20 @@ struct Rogue
         if (call == "SceneManager.PlayScene")
         {
             scene = args.at("args").at(0);
+        }
+        // A click on a specialization's icon, as its onPressHitArea takes it:
+        // not grey, not had, with a point left (SpendSpecializationPoint).
+        for (std::size_t n = 0; n < specials.size(); ++n)
+        {
+            auto &special = specials[n];
+            if (call == "specializations_mc.Scrollable_mc.icon" + std::to_string(n) + ".onPressHitArea" &&
+                !special.grey && !special.selected && specialPoints > 0)
+            {
+                special.selected = true;
+                specialPoints -= 1;
+                specialStored.push_back(special.id);
+                sent.push_back("GUILevelUp.CharGenAssignAbility 130 " + std::to_string(special.id) + " 1");
+            }
         }
         for (const auto &[name, ids] : Chains())
         {
@@ -231,12 +291,15 @@ struct Rogue
                 }
                 return Json{{"talents", talents}};
             }
-            return Json{
-                {"name", "Lyna"},
-                {"level", 2 + levels},
-                {"canLevelUp", levels > 0},
-                {"pointsToSpend", {{"attributes", 3 * levels}, {"skills", levels}, {"talentsOrSpells", levels}}},
-                {"attributes", {{"strength", {{"base", strength}, {"total", strength + 2}}}}}};
+            return Json{{"name", "Lyna"},
+                        {"level", 2 + levels},
+                        {"canLevelUp", levels > 0}, // as the game: false with only a specialization point (#64)
+                        {"pointsToSpend",
+                         {{"attributes", 3 * levels},
+                          {"skills", levels},
+                          {"talentsOrSpells", levels},
+                          {"specializations", specialPoints}}},
+                        {"attributes", {{"strength", {{"base", strength}, {"total", strength + 2}}}}}};
         });
         bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
             if (args.contains("screen"))
@@ -547,4 +610,84 @@ TEST_CASE("a screen that does not take its exit point is left up, not hidden to 
     CHECK(answer["levelled"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not take LevelUp.nExitPoint"));
     CHECK(std::ranges::find(rogue.sent, "GUI.HideFullScreenGUI") == rogue.sent.end());
+}
+
+namespace
+{
+
+// Lyna's four as read in play, and one had and one locked for the states.
+void Specials(Rogue &rogue)
+{
+    rogue.levels = 0;
+    rogue.specialPoints = 1;
+    rogue.specials = {{4014, "Assassin", false, false},
+                      {4025, "Spirit Healer", true, false},
+                      {4029, "Ranger", false, false},
+                      {4030, "Duelist", false, true}};
+}
+
+} // namespace
+
+TEST_CASE("offers list the specializations as the screen's icons have them", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    const auto answer = rogue.LevelUp(Json{{"offers", true}, {"showMs", 0}});
+    REQUIRE(answer["specializations"].size() == 4);
+    CHECK(answer["specializations"][0] == Json{{"id", 4014}, {"name", "Assassin"}, {"state", "learnable"}});
+    CHECK(answer["specializations"][1]["state"] == "has");
+    CHECK(answer["specializations"][3]["state"] == "locked");
+    // With no point, a grey one is said so, not locked.
+    rogue.specialPoints = 0;
+    rogue.levels = 1;
+    CHECK(rogue.LevelUp(Json{{"offers", true}, {"showMs", 0}})["specializations"][3]["state"] == "no point to spend");
+}
+
+TEST_CASE("a specialization is taken by a click on its icon, and kept as the screen's Finish keeps it", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    const auto answer = rogue.LevelUp(Json{{"abilities", {4029}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    CHECK(answer["specialization"] == Json{{"id", 4029}, {"name", "Ranger"}});
+    CHECK(answer["reason"] == "levelled: every point spent");
+    CHECK(std::ranges::find(rogue.sent, "GUILevelUp.CharGenAssignAbility 130 4029 1") != rogue.sent.end());
+    CHECK(rogue.sent.back() == "GUILevelUp.CharGenEnd 130 1 1");
+    CHECK(rogue.specials[2].selected);
+    CHECK(rogue.specialPoints == 0);
+}
+
+TEST_CASE("a locked specialization, or one had, is refused and nothing spent", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    auto answer = rogue.LevelUp(Json{{"abilities", {4030}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Duelist: it is locked"));
+    CHECK(rogue.specialPoints == 1);
+    answer = rogue.LevelUp(Json{{"abilities", {4025}}, {"showMs", 0}});
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("has the specialization Spirit Healer"));
+    CHECK(rogue.specialPoints == 1);
+}
+
+TEST_CASE("a specialization refused after a talent gives the talent back", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    rogue.levels = 1;
+    const auto answer = rogue.LevelUp(Json{{"abilities", {8, 4030}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK(answer["givenBack"] == Json::array({8}));
+    CHECK(rogue.levels == 1);
+}
+
+TEST_CASE("a specialization taken before a refusal is given back with the rest", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    const auto answer = rogue.LevelUp(Json{{"abilities", {4029, 12}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK(answer["givenBack"] == Json::array({4029}));
+    CHECK(rogue.specialPoints == 1);
+    CHECK_FALSE(rogue.specials[2].selected);
 }
