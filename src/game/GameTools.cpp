@@ -2,6 +2,9 @@
 
 #include "game/Shared.h"
 
+#include "dao/Equipment.h"
+#include "dao/Party.h"
+
 namespace eluvian::game
 {
 
@@ -153,6 +156,26 @@ void DescribeTopics(EventCatalog &topics)
              "(the main menu), gui (a menu over the game), and the rest.",
              Json{{"from", "the mode before"}, {"to", "the mode now"}});
     describe("eluvian.paused", "The game was paused or unpaused.", Json{{"paused", "true or false"}});
+    describe("eluvian.party.control_changed",
+             "The creature the player controls changed, by any cause: the party bar, a key, a script, order "
+             "move handing a follower control. A load reads as a change from nobody.",
+             Json{{"before", "who was controlled {id, name, tag}, null for nobody"},
+                  {"now", "who is controlled now {id, name, tag}"}});
+    describe("eluvian.equipment.equipped",
+             "An item went on a creature, by any path: the inventory screen, equip, a script. A refusal is not "
+             "told, nor the ammunition the engine puts on each creature as an area loads.",
+             Json{{"creature", "{id, name, tag}"},
+                  {"item", "{id, name, tag}"},
+                  {"slot", "the slot's number (INVENTORY_SLOT_*)"},
+                  {"slotName", "the slot by name, as kind=inventory names it"}});
+    describe("eluvian.equipment.unequipped",
+             "An item came off a creature, by any path; what an equip displaces (a shield for a two-handed "
+             "weapon) comes off before the equip.",
+             Json{{"creature", "{id, name, tag}"},
+                  {"item", "{id, name, tag}"},
+                  {"slot", "the slot it was in (INVENTORY_SLOT_*)"},
+                  {"slotName", "the slot by name"},
+                  {"displaced", "true for an item an equip pushed out of its slot"}});
     describe("eluvian.game.loaded", "A save loaded, or a new game began, and the world is in place.",
              Json{{"newGame", "true for a new game"},
                   {"character", "the save's character folder"},
@@ -269,6 +292,37 @@ void AddEngineEvents(Bench &bench)
     dao::dialogue::OnReplyChosen([&bench](dao::dialogue::Conversation &talk, const dao::dialogue::Line &reply) {
         bench.Events().Emit("eluvian.dialogue.chosen", LineJson(reply, HeroIsFemale(), &talk));
     });
+    // Who the player controls, and what goes on or comes off whom, by any
+    // cause: DAOLib #22's hooks at the engine's own functions, so an order
+    // handing control over (#48) or a script's equip is caught as a click
+    // is (lib-agent, 2026-10-04, #57). On the game's thread: emit and return.
+    dao::party::OnControlChanged([&bench](ObjectId before, ObjectId now) {
+        bench.Events().Emit("eluvian.party.control_changed",
+                            Json{{"before", before == kInvalidObject ? Json(nullptr) : Brief(before)},
+                                 {"now", now == kInvalidObject ? Json(nullptr) : Brief(now)}});
+    });
+    // Only what was done into a real slot: a refused equip comes with slot
+    // 255 and done false, and as an area loads the engine equips every
+    // creature's ammunition with slot 255, a burst at each load
+    // (turn-based-agent and lib-agent, 2026-10-04). An item an equip pushed
+    // out of its slot comes as an unequip, `displaced` (DAOLib 66ab84a).
+    constexpr std::int32_t kNoSlot = 255;
+    const auto equipment = [&bench](const char *topic, const dao::equipment::Change &change) {
+        if (!change.done || change.slot == kNoSlot)
+        {
+            return;
+        }
+        const std::string_view slot = EquipSlotName(change.slot);
+        bench.Events().Emit(topic, Json{{"creature", Brief(change.creature)},
+                                        {"item", Brief(change.item)},
+                                        {"slot", change.slot},
+                                        {"slotName", slot.empty() ? Json(nullptr) : Json(std::string(slot))},
+                                        {"displaced", change.displaced}});
+    };
+    dao::equipment::OnEquip(
+        [equipment](const dao::equipment::Change &change) { equipment("eluvian.equipment.equipped", change); });
+    dao::equipment::OnUnequip(
+        [equipment](const dao::equipment::Change &change) { equipment("eluvian.equipment.unequipped", change); });
     dao::saves::OnSaved([&bench](const dao::saves::Slot &slot) {
         bench.Events().Emit("eluvian.game.saved", Json{{"character", Narrow(slot.character)},
                                                        {"kind", dao::saves::Name(slot.kind)},

@@ -77,6 +77,10 @@ Json Depletable(ObjectId id, std::int32_t property);
 std::string Side(ObjectId id, ObjectId hero, const std::set<ObjectId> &party);
 std::set<ObjectId> PartyOf(ObjectId hero);
 
+// An equipment slot's name (INVENTORY_SLOT_*), as kind=inventory names it:
+// "main_hand", "chest", ...; empty for none.
+std::string_view EquipSlotName(std::int32_t slot);
+
 Json PathJson(const dao::world::WalkPath &path, const dao::Vector &from, bool waypoints);
 const dao::Command *CurrentCommand(ObjectId id);
 Json CommandJson(ObjectId id);

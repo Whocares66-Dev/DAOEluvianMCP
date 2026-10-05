@@ -186,6 +186,13 @@ Json LevelUpOffers()
 
 } // namespace
 
+// A slot's name, as kind=inventory names it: for the equipment events
+// (#57), which live in GameTools.
+std::string_view EquipSlotName(std::int32_t slot)
+{
+    return SlotName(slot);
+}
+
 // An item: in brief for a list, in full for itself. Shared: the loot panel
 // lists its container's items as kind=inventory does.
 Json ItemJson(ObjectId item, bool full)
