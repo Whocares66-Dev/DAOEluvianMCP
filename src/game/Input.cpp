@@ -19,6 +19,85 @@ bool NamesASave(std::string_view text)
     return lower.find("savegame") != std::string::npos;
 }
 
+// A movie's answer as JSON, as this GFx gives it (DAOLib #24): undefined,
+// null, a bool, a number or a string, and an object, array or clip as its
+// string, a clip's being its full path.
+Json Answered(const std::optional<dao::gui::Movie::Answer> &answer)
+{
+    if (!answer)
+    {
+        return Json{{"type", nullptr}, {"value", nullptr}};
+    }
+    using Type = dao::gui::Value::Type;
+    switch (answer->type)
+    {
+    case Type::Null:
+        return Json{{"type", "null"}, {"value", nullptr}};
+    case Type::Boolean:
+        return Json{{"type", "boolean"}, {"value", answer->boolean}};
+    case Type::Number:
+        return Json{{"type", "number"}, {"value", answer->number}};
+    case Type::String:
+    case Type::StringW:
+        return Json{{"type", "string"}, {"value", answer->text}};
+    case Type::Object:
+    case Type::Array:
+    case Type::DisplayObject:
+        return Json{{"type", "object"}, {"value", answer->text}};
+    default:
+        return Json{{"type", "undefined"}, {"value", nullptr}};
+    }
+}
+
+// A clip's children, by ActionScript's own depth functions (lib-agent,
+// 2026-10-05): getNextHighestDepth is one above the highest depth in use,
+// getInstanceAtDepth a depth's clip, which comes back as its full path. A
+// clip made at run time (attachMovie, createEmptyMovieClip) sits at 0 and
+// up; one placed in the authoring tool from -16384 up, walked when
+// `placed`. The level-up screen's ability icons are made with no name to
+// guess (#58); this reaches them.
+constexpr int kMostDepths = 4096;
+constexpr int kPlacedFrom = -16384;
+
+Json Children(dao::gui::Movie &movie, const std::string &clip, bool placed)
+{
+    const auto highest = movie.Call((clip + ".getNextHighestDepth").c_str());
+    if (!highest || highest->type != dao::gui::Value::Type::Number)
+    {
+        throw ToolError("input: \"" + clip +
+                        "\" is not a clip (it has no getNextHighestDepth); `get` it to see what it is");
+    }
+    const int next = std::clamp(static_cast<int>(highest->number), 0, kMostDepths);
+    const std::string at = clip + ".getInstanceAtDepth";
+    Json children = Json::array();
+    const auto look = [&](int depth) {
+        const std::array<dao::gui::Value, 1> where{dao::gui::Value::Number(depth)};
+        const auto child = movie.Call(at.c_str(), where);
+        // Whatever answers is listed with its type: this GFx gave three
+        // depths in use under the level-up scroller and none of them as a
+        // display object (turn-based-agent, 2026-10-05), so a clip may come
+        // as an object.
+        Json answered = Answered(child);
+        const Json type = answered["type"];
+        if (type.is_string() && type != "undefined" && type != "null")
+        {
+            children.push_back(Json{{"depth", depth}, {"type", type}, {"path", answered["value"]}});
+        }
+    };
+    if (placed)
+    {
+        for (int depth = kPlacedFrom; depth < 0; ++depth)
+        {
+            look(depth);
+        }
+    }
+    for (int depth = 0; depth < next; ++depth)
+    {
+        look(depth);
+    }
+    return Json{{"children", std::move(children)}, {"nextHighestDepth", highest->number}};
+}
+
 // A screen's own controls, driven through its movie: a tab, a scroll, what
 // no engine message chooses. An agent asked for a picture of the Options
 // screen's Controls tab could open the screen but not choose the tab (the
@@ -37,23 +116,35 @@ Json MovieCall(const Args &args)
         throw ToolError("input: the screen \"" + screen +
                         "\" is not shown; inspect kind=gui lists the screens shown, by the names to give here");
     }
-    const int forms = (args.Has("call") ? 1 : 0) + (args.Has("set") ? 1 : 0) + (args.Has("get") ? 1 : 0);
+    const int forms = (args.Has("call") ? 1 : 0) + (args.Has("set") ? 1 : 0) + (args.Has("get") ? 1 : 0) +
+                      (args.Has("children") ? 1 : 0);
     if (forms != 1)
     {
         throw ToolError("input: with `screen`, give one of `call` (an ActionScript function's path, with "
-                        "`args`), `set` (a variable's path, with `value`) or `get` (a number's or a bool's path)");
+                        "`args`), `set` (a variable's path, with `value`), `get` (a path, answered with its type "
+                        "and value) or `children` (a clip's path, answered with its children's)");
+    }
+    if (args.Has("children"))
+    {
+        const std::string clip = args.String("children");
+        Json answer = Children(*movie, clip, args.Bool("placed", false));
+        answer["screen"] = screen;
+        answer["of"] = clip;
+        return answer;
     }
     if (args.Has("get"))
     {
         const std::string path = args.String("get");
-        if (const auto number = movie->GetNumber(path.c_str()))
+        // For reading a screen's tree in play (#58).
+        const auto answer = movie->Get(path.c_str());
+        Json read = Answered(answer);
+        read["screen"] = screen;
+        read["get"] = path;
+        if (!answer)
         {
-            return Json{{"screen", screen}, {"get", path}, {"value", *number}};
+            read["note"] = "the movie did not read that path";
         }
-        // A bool is read as a bool, a number as a number; a string or an
-        // object is not asked for (GFx keeps a reference to it).
-        const auto flag = movie->GetBool(path.c_str());
-        return Json{{"screen", screen}, {"get", path}, {"value", flag ? Json(*flag) : Json(nullptr)}};
+        return read;
     }
     // The values' texts must outlive the call.
     std::vector<std::string> texts;
@@ -97,8 +188,14 @@ Json MovieCall(const Args &args)
     {
         values.push_back(value(each));
     }
-    const bool ran = movie->Invoke(function.c_str(), values);
-    return Json{{"screen", screen}, {"call", function}, {"ran", ran}};
+    // What it returned with it (#58): a clip from getInstanceAtDepth, a
+    // count, a label.
+    const auto answer = movie->Call(function.c_str(), values);
+    Json called = Answered(answer);
+    called["screen"] = screen;
+    called["call"] = function;
+    called["ran"] = answer.has_value();
+    return called;
 }
 
 } // namespace
@@ -125,8 +222,11 @@ void AddInput(Bench &bench, const Watch &watch)
             "`screen` (a screen shown, by its name in inspect kind=gui, \"Options\") drives that screen's own "
             "script, what no message reaches: `call` an ActionScript function by its path with `args` "
             "(\"SceneManager.PlayScene\", [\"Controls\"] shows the Options' Controls page), "
-            "`set` a variable to `value`, or "
-            "`get` a number's or a bool's value; answers whether it `ran` or was `done`, or the `value`.",
+            "`set` a variable to `value`, `get` a path's value, or list a clip's `children` (each's `depth` and "
+            "`path`, to `get` or `call` under; `placed`: true for those placed in the movie's authoring as "
+            "well as those made at run time); a call answers whether it `ran` and what it returned, a get or a "
+            "call the `type` and `value` (an object or a clip as its string, a clip's being its full path), a "
+            "set whether it was `done`.",
             Json{
                 {"type", "object"},
                 {"properties",
@@ -138,7 +238,14 @@ void AddInput(Bench &bench, const Watch &watch)
                   {"args", {{"type", "array"}, {"description", "The call's arguments: strings, numbers, bools"}}},
                   {"set", {{"type", "string"}, {"description", "A variable's path in its movie"}}},
                   {"value", {{"description", "What `set` puts there: a string, number or bool"}}},
-                  {"get", {{"type", "string"}, {"description", "A number's or a bool's path in its movie"}}}}}},
+                  {"get",
+                   {{"type", "string"},
+                    {"description", "A path in its movie: answers its `type` and `value` (a number, a bool, a "
+                                    "string; an object or a clip as its string, a clip's being its full path)"}}},
+                  {"children", {{"type", "string"}, {"description", "A clip's path: its children, by depth"}}},
+                  {"placed",
+                   {{"type", "boolean"},
+                    {"description", "With `children`: the clips placed in authoring too (depths below 0)"}}}}}},
             Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "input");
@@ -152,7 +259,7 @@ void AddInput(Bench &bench, const Watch &watch)
             {
                 throw ToolError("input: give one of `message` (\"Receiver.Message arguments\", a button's), "
                                 "`binding` (\"Message arguments\", a key's) or `screen` (a shown screen's name, "
-                                "with call, set or get)");
+                                "with call, set, get or children)");
             }
             if (args.Has("screen"))
             {
