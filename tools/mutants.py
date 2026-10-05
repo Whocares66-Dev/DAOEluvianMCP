@@ -1521,8 +1521,20 @@ MUTANTS = [
     Mutant(
         "levelup abandons the screen where it should keep what was spent",
         LEVELUP,
-        '(complete ? "1" : "0")',
-        '(complete ? "0" : "0")',
+        '(complete ? "LEVELUP_EXIT_COMPLETE" : "LEVELUP_EXIT_ABORT")',
+        '(complete ? "LEVELUP_EXIT_ABORT" : "LEVELUP_EXIT_ABORT")',
+    ),
+    Mutant(
+        "levelup hides the screen with its exit point unset",
+        LEVELUP,
+        '{"set", "LevelUp.nExitPoint"}',
+        '{"set", "LevelUp.nOtherPoint"}',
+    ),
+    Mutant(
+        "levelup hides the screen though its exit point was not taken",
+        LEVELUP,
+        'if (!set->value("done", false))',
+        'if (set->value("nothing", false))',
     ),
     # #5's choices: offers read with nothing spent; an ability not learnable
     # now refuses the lot; attributes spent as the screen's buttons do.
@@ -1621,17 +1633,66 @@ MUTANTS = [
         "step > 0",
     ),
     # #54: abilities taken as the screen's selection takes them.
-    Mutant(
-        "levelup takes an ability by the specialization message",
-        LEVELUP,
-        'Send("GUICharGen.CharGenAssignAbility " + pick)',
-        'Send("GUILevelUp.CharGenAssignAbility " + pick)',
-    ),
+    # levelup by name presses the ability's own icon (#58)
     Mutant(
         "levelup says nothing was spent after taking some",
         LEVELUP,
-        "if (taken.empty())",
-        "if (taken.size() < 99)",
+        'taken.empty() ? "; nothing was spent"',
+        'taken.size() < 99 ? "; nothing was spent"',
+    ),
+    Mutant(
+        "levelup counts a press that took no point as taken",
+        LEVELUP,
+        "if (*after < *before)",
+        "if (*after <= *before)",
+    ),
+    Mutant(
+        "levelup presses the first icon whatever the ability",
+        LEVELUP,
+        "icons_.find(ability)",
+        "icons_.begin()",
+    ),
+    Mutant(
+        "levelup plays the page again for each ability",
+        LEVELUP,
+        "if (shown_ == page.scene)",
+        "if (false)",
+    ),
+    Mutant(
+        "levelup shows the talents' page for a skill",
+        LEVELUP,
+        'if (page == "skills")',
+        'if (page == "never")',
+    ),
+    Mutant(
+        "levelup asks a spell's chains as a talent's",
+        LEVELUP,
+        'page == "spells" ? 2 : 1',
+        'page == "never" ? 2 : 1',
+    ),
+    Mutant(
+        "levelup reads one chain of a page",
+        LEVELUP,
+        "from = comma + 1;",
+        "from = text.size();",
+    ),
+    Mutant(
+        "levelup presses before the page shows its abilities",
+        LEVELUP,
+        "if (!icons->empty())",
+        "if (icons->size() < 99)",
+    ),
+    Mutant(
+        "levelup presses on another screen",
+        LEVELUP,
+        'args["screen"] = "LevelUp";',
+        'args["screen"] = "Options";',
+    ),
+    Mutant(
+        "levelup says a refused press had no points when it had",
+        LEVELUP,
+        "*before < 1 ?",
+        "*before < -1 ?",
     ),
     Mutant(
         "levelup forgets what it took before a refusal",
@@ -1646,24 +1707,6 @@ MUTANTS = [
         "if (canLevelUp_)",
     ),
     # #54: each kind's points counted by levelup itself.
-    Mutant(
-        "levelup takes an ability with no point left for it",
-        LEVELUP,
-        'if (state == "learnable" && left < 1)',
-        'if (state == "learnable" && left < -1)',
-    ),
-    Mutant(
-        "levelup counts no point for an ability taken",
-        LEVELUP,
-        "            left -= 1;",
-        "            left -= 0;",
-    ),
-    Mutant(
-        "levelup counts a skill on the talents' points",
-        LEVELUP,
-        'const bool skill = PageOf(*offers, ability) == "skills";',
-        'const bool skill = PageOf(*offers, ability) == "never";',
-    ),
 ]
 
 

@@ -161,6 +161,11 @@ void DescribeTopics(EventCatalog &topics)
              "move handing a follower control. A load reads as a change from nobody.",
              Json{{"before", "who was controlled {id, name, tag}, null for nobody"},
                   {"now", "who is controlled now {id, name, tag}"}});
+    describe("eluvian.gui.message",
+             "A screen sent the engine one of its messages, as its buttons and its own script send them: what "
+             "the interface asked of the game, the same text input's `message` sends.",
+             Json{{"screen", "the movie that sent it, as the game names it (\"levelup\", \"inventory\")"},
+                  {"text", "the message: \"Receiver.Message arguments\""}});
     describe("eluvian.equipment.equipped",
              "An item went on a creature, by any path: the inventory screen, equip, a script. A refusal is not "
              "told, nor the ammunition the engine puts on each creature as an area loads.",
@@ -323,6 +328,21 @@ void AddEngineEvents(Bench &bench)
         [equipment](const dao::equipment::Change &change) { equipment("eluvian.equipment.equipped", change); });
     dao::equipment::OnUnequip(
         [equipment](const dao::equipment::Change &change) { equipment("eluvian.equipment.unequipped", change); });
+    // Every message a screen sends the engine, as it sent it: the
+    // level-up screen's own SpendPoint took a point and the engine kept
+    // nothing, and the question was what went out, with which creature
+    // (turn-based-agent, 2026-10-05, #58). DAOLib's OnAnyFSCommand sees
+    // each FSCommand before its handler (lib-agent); the screens send their
+    // messages as SendMessage, and its other commands (sounds, movies,
+    // telemetry) are left off.
+    dao::gui::OnAnyFSCommand([&bench](void *owner, std::string_view name, std::string_view args) {
+        if (name != "SendMessage")
+        {
+            return;
+        }
+        bench.Events().Emit("eluvian.gui.message",
+                            Json{{"screen", Narrow(dao::gui::NameOf(owner))}, {"text", std::string(args)}});
+    });
     dao::saves::OnSaved([&bench](const dao::saves::Slot &slot) {
         bench.Events().Emit("eluvian.game.saved", Json{{"character", Narrow(slot.character)},
                                                        {"kind", dao::saves::Name(slot.kind)},

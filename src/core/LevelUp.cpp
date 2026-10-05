@@ -7,6 +7,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -29,6 +30,60 @@ constexpr milliseconds kScreenWait{5000};
 // The screen's Auto Level Up spent two levels' points at once in play;
 // rounds are asked again while points are left and fewer each time.
 constexpr int kMostRounds = 5;
+// The most icons a chain of abilities shows (levelup.gfx's
+// AbilityChainContainer.MAX_CHAIN_LENGTH).
+constexpr int kChainLength = 4;
+// Where the screen's pages list their abilities, as its movie names it.
+constexpr const char *kScroller = "ScrollingAbilities_mc.Scrollable_mc";
+
+// A page of the screen: the scene that shows it, the scene's object that
+// counts its points, and the engine's type for its chains (levelup.gfx:
+// SceneManager.PlayScene("SpellsTalents" or "Skills"); TALENTS 1, SPELLS 2,
+// SKILLS 3). Talents and spells share a scene and its points.
+struct Page
+{
+    const char *scene;
+    const char *object;
+    int type;
+};
+
+Page PageNamed(const std::string &page)
+{
+    if (page == "skills")
+    {
+        return Page{"Skills", "SkillsScene", 3};
+    }
+    return Page{"SpellsTalents", "SpellsTalentsScene", page == "spells" ? 2 : 1};
+}
+
+// The paths in a list this GFx gives as its string: comma-joined.
+std::vector<std::string> Split(const std::string &text)
+{
+    std::vector<std::string> parts;
+    std::size_t from = 0;
+    while (from < text.size())
+    {
+        const auto comma = std::min(text.find(',', from), text.size());
+        if (comma > from)
+        {
+            parts.push_back(text.substr(from, comma - from));
+        }
+        from = comma + 1;
+    }
+    return parts;
+}
+
+// What became of those taken before a refusal: the screen, closed
+// unfinished, reverts every pick its icons stored (its RevertAllChanges),
+// as talent 7 went at an abandon in play (turn-based-agent, 2026-10-05,
+// #58). Picks sent as messages before (#54) were not the screen's, and
+// stayed.
+std::string GivenBack(const Json &taken)
+{
+    return taken.empty() ? "; nothing was spent"
+                         : "; nothing was spent: the screen, closed unfinished, gave back those taken before it "
+                           "(`givenBack`)";
+}
 
 // A creature's id as the screen's messages carry it, in decimal: "0x82" is 130.
 std::optional<std::uint32_t> Decimal(std::string_view id)
@@ -197,9 +252,32 @@ class Levelling
     }
 
     // The screen closed, complete (what was spent kept) or abandoned.
+    //
+    // As the screen's own Finish and Close buttons close it: its
+    // LevelUp.nExitPoint set to its LEVELUP_EXIT_COMPLETE or _ABORT, then
+    // the screen hidden; its scene's end reverts every pick it stored if
+    // aborted, and sends GUILevelUp.CharGenEnd itself (levelup.gfx, read
+    // 2026-10-05). Sending CharGenEnd here first, as before, left the
+    // screen to end aborted after it and revert what its icons had taken
+    // (turn-based-agent, 2026-10-05, #58).
     bool Close(bool complete)
     {
-        if (!Send("GUILevelUp.CharGenEnd " + n_ + " 1 " + (complete ? "1" : "0")) || !Send("GUI.HideFullScreenGUI"))
+        const auto exit = Number(std::string("LevelUp.") + (complete ? "LEVELUP_EXIT_COMPLETE" : "LEVELUP_EXIT_ABORT"));
+        if (!exit)
+        {
+            return false;
+        }
+        const auto set = Movie(Json{{"set", "LevelUp.nExitPoint"}, {"value", *exit}});
+        if (!set)
+        {
+            return false;
+        }
+        if (!set->value("done", false))
+        {
+            refused_ = "the screen did not take LevelUp.nExitPoint";
+            return false;
+        }
+        if (!Send("GUI.HideFullScreenGUI"))
         {
             return false;
         }
@@ -281,16 +359,19 @@ class Levelling
     }
 
     // Points spent on the abilities and attributes named, as the screen's
-    // own buttons spend them: GUICharGen.CharGenAssignAbility then
-    // Paperdoll.CharGenAssignAbility <id> <ability> 0, the screen's
-    // SendSelectionMessage, and GUICharGen.CharGenAssignAttribute then
-    // Paperdoll.CharGenAssignAttribute <id> <attribute> <amount> (read from
-    // levelup.gfx, 2026-10-02 and 2026-10-04). GUILevelUp.CharGenAssign-
-    // Ability <id> <ability> 1, sent here before, is the screen's
-    // SpendSpecializationPoint: it granted the abilities and spent no talent
-    // points, and an abandoned screen kept them (turn-based-agent,
-    // 2026-10-04, #54). An ability the screen does not offer as learnable
-    // now is refused, the screen abandoned; those taken before it are said.
+    // own buttons spend them. An ability is taken as a click on its icon
+    // takes it: the icon's OnButtonAction is its scene's Learn, whose
+    // AbilityScene.SpendPoint takes a point only while the page has one,
+    // stores the pick and sends the selection (levelup.gfx, read
+    // 2026-10-04). Before, Eluvian sent the selection itself and counted the
+    // points, a rule the screen has (the user, 2026-10-04, #58); the icons
+    // were found in play under the page's class containers
+    // (turn-based-agent, 2026-10-05). Whether a press took a point is the
+    // page's own count after. Attributes go as before:
+    // GUICharGen.CharGenAssignAttribute then Paperdoll.CharGenAssignAttribute
+    // <id> <attribute> <amount>. An ability the screen does not offer as
+    // learnable now is refused, the screen abandoned; those taken before it
+    // are said.
     std::optional<Json> Choose(Json &last)
     {
         if (!Open())
@@ -299,11 +380,6 @@ class Levelling
         }
         std::this_thread::sleep_for(show_);
         Json taken = Json::array();
-        // The points each kind has, counted here: the screen took a third
-        // talent with two points, all three learned (turn-based-agent,
-        // 2026-10-04, #54). Talents and spells share theirs; skills their own.
-        double talentsLeft = -1;
-        double skillsLeft = -1;
         for (const auto ability : chosen_)
         {
             // Read again each time: taking one makes the next in its chain
@@ -314,54 +390,29 @@ class Levelling
                 Close(false);
                 return End(false, "the screen's offers could not be read: " + refused_);
             }
-            if (talentsLeft < 0)
-            {
-                talentsLeft = offers->value(Json::json_pointer("/points/talentsOrSpells"), 0.0);
-                skillsLeft = offers->value(Json::json_pointer("/points/skills"), 0.0);
-            }
-            const bool skill = PageOf(*offers, ability) == "skills";
-            double &left = skill ? skillsLeft : talentsLeft;
             const std::string state = StateOf(*offers, ability);
-            if (state == "learnable" && left < 1)
-            {
-                Close(false);
-                answer_["taken"] = taken;
-                return End(false, std::string("no ") + (skill ? "skill" : "talent or spell") +
-                                      " points are left for ability " + std::to_string(ability) +
-                                      (taken.empty() ? std::string("; nothing was spent")
-                                                     : std::string("; those before it were taken and kept "
-                                                                   "(`taken`): closing the screen does not give "
-                                                                   "them back")));
-            }
             if (state != "learnable")
             {
                 Close(false);
                 answer_["offers"] = Learnable(*offers);
-                std::string why = "ability " + std::to_string(ability) + " is " +
-                                  (state.empty() ? std::string("not among the screen's offers") : state);
-                if (taken.empty())
+                if (!taken.empty())
                 {
-                    why += "; nothing was spent";
+                    answer_["givenBack"] = taken;
                 }
-                else
-                {
-                    // Taken, and kept: an abandoned screen gives nothing back,
-                    // as Morrigan's four and Lyna's three stayed, their
-                    // points spent (turn-based-agent, 2026-10-04, #54).
-                    answer_["taken"] = taken;
-                    why += "; those before it were taken and kept (`taken`): closing the screen does not give "
-                           "them back";
-                }
-                return End(false, why + ". `offers` lists what is learnable now");
+                return End(false, "ability " + std::to_string(ability) + " is " +
+                                      (state.empty() ? std::string("not among the screen's offers") : state) +
+                                      GivenBack(taken) + ". `offers` lists what is learnable now");
             }
-            const std::string pick = n_ + " " + std::to_string(ability) + " 0";
-            if (!Send("GUICharGen.CharGenAssignAbility " + pick) || !Send("Paperdoll.CharGenAssignAbility " + pick))
+            if (!Press(PageOf(*offers, ability), ability))
             {
                 Close(false);
-                return End(false, refused_);
+                if (!taken.empty())
+                {
+                    answer_["givenBack"] = taken;
+                }
+                return End(false, refused_ + GivenBack(taken));
             }
             taken.push_back(ability);
-            left -= 1;
         }
         for (const auto &[name, amount] : raise_.items())
         {
@@ -387,6 +438,150 @@ class Levelling
         }
         last = *read;
         return std::nullopt;
+    }
+
+    // An ability taken by pressing its icon on its page; false with
+    // `refused_` said.
+    bool Press(const std::string &pageName, std::int32_t ability)
+    {
+        const Page page = PageNamed(pageName);
+        if (!ShowPage(page))
+        {
+            return false;
+        }
+        const auto icon = icons_.find(ability);
+        if (icon == icons_.end())
+        {
+            refused_ = "ability " + std::to_string(ability) + " is not shown on the screen's " + pageName + " page";
+            return false;
+        }
+        const std::string points = std::string(page.object) + ".nPointsToSpend";
+        const auto before = Number(points);
+        if (!before || !Movie(Json{{"call", icon->second + ".OnButtonAction"}}))
+        {
+            return false;
+        }
+        const auto after = Number(points);
+        if (!after)
+        {
+            return false;
+        }
+        if (*after < *before)
+        {
+            return true;
+        }
+        // The screen took no point: none left, as its SpendPoint wants one
+        // (Zevran's third talent with two points, 2026-10-04, #54).
+        refused_ = *before < 1 ? std::string("no ") + (pageName == "skills" ? "skill" : "talent or spell") +
+                                     " points are left for ability " + std::to_string(ability)
+                               : "the screen took no point for ability " + std::to_string(ability) +
+                                     " when its icon was pressed";
+        return false;
+    }
+
+    // The page shown, as the screen's own navigation shows it: its chains
+    // asked of the engine, then its scene played; and its icons read.
+    bool ShowPage(const Page &page)
+    {
+        if (shown_ == page.scene)
+        {
+            return true;
+        }
+        if (!Send("GameModeController.FindAbilityChains " + n_ + " " + std::to_string(page.type) + " 2") ||
+            !Movie(Json{{"call", "SceneManager.PlayScene"}, {"args", Json::array({page.scene})}}))
+        {
+            return false;
+        }
+        // The page's icons are made over its first frames.
+        const auto deadline = Clock::now() + kScreenWait;
+        while (true)
+        {
+            auto icons = Icons();
+            if (!icons)
+            {
+                return false;
+            }
+            if (!icons->empty())
+            {
+                icons_ = std::move(*icons);
+                shown_ = page.scene;
+                return true;
+            }
+            if (Clock::now() >= deadline)
+            {
+                refused_ = std::string("the screen's ") + page.scene + " page showed no abilities after 5 s";
+                return false;
+            }
+            std::this_thread::sleep_for(milliseconds(100));
+        }
+    }
+
+    // The abilities a page shows, each by the path to its icon: the
+    // scroller's class containers, each's chains (AbilityChainContainer_mc's
+    // m_aChains, which this GFx gives as their paths comma-joined), and each
+    // chain's icons, icon0 up, an icon's m_oAbility the ability (seen in
+    // play, turn-based-agent, 2026-10-05).
+    std::optional<std::map<std::int32_t, std::string>> Icons()
+    {
+        const auto containers = Movie(Json{{"children", kScroller}});
+        if (!containers)
+        {
+            return std::nullopt;
+        }
+        std::map<std::int32_t, std::string> icons;
+        for (const auto &container : containers->value("children", Json::array()))
+        {
+            const auto chains =
+                Movie(Json{{"get", container.value("path", std::string()) + ".AbilityChainContainer_mc.m_aChains"}});
+            if (!chains)
+            {
+                return std::nullopt;
+            }
+            const Json list = chains->value("value", Json());
+            for (const auto &chain : Split(list.is_string() ? list.get<std::string>() : std::string()))
+            {
+                for (int k = 0; k < kChainLength; ++k)
+                {
+                    const std::string icon = chain + ".icon" + std::to_string(k);
+                    const auto id = Movie(Json{{"get", icon + ".m_oAbility.nID"}});
+                    if (!id)
+                    {
+                        return std::nullopt;
+                    }
+                    const Json value = id->value("value", Json());
+                    if (!value.is_number())
+                    {
+                        break; // the chain is shorter
+                    }
+                    icons[static_cast<std::int32_t>(value.get<double>())] = icon;
+                }
+            }
+        }
+        return icons;
+    }
+
+    // A number in the screen's movie; nothing with `refused_` said.
+    std::optional<double> Number(const std::string &path)
+    {
+        const auto read = Movie(Json{{"get", path}});
+        if (!read)
+        {
+            return std::nullopt;
+        }
+        const Json value = read->value("value", Json());
+        if (!value.is_number())
+        {
+            refused_ = "the screen's " + path + " read " + read->value("type", Json()).dump() + ", not a number";
+            return std::nullopt;
+        }
+        return value.get<double>();
+    }
+
+    // The level-up screen's own script, through input's `screen`.
+    std::optional<Json> Movie(Json args)
+    {
+        args["screen"] = "LevelUp";
+        return Ask("input", args);
     }
 
     // An attribute's place in the screen's list, 1 to 6; 0 for no such name.
@@ -568,7 +763,9 @@ class Levelling
     bool canLevelUp_ = false; // whether the creature had a level-up waiting when asked
     std::vector<std::int32_t> chosen_;
     Json raise_ = Json::object();
-    std::string n_; // the creature's id in decimal, as the screen's messages carry it
+    std::string n_;                             // the creature's id in decimal, as the screen's messages carry it
+    std::string shown_;                         // the scene of the page shown, once one is
+    std::map<std::int32_t, std::string> icons_; // its abilities' icons
     std::string id_;
     std::string refused_;
     int rounds_ = 0;
