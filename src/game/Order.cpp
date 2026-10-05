@@ -267,6 +267,24 @@ ToolResult ToolOrder(Bench &bench, const Watch &watch, const Json &raw)
                          "passed to the creature first, and stays with it (order action=control gives it "
                          "back)";
     }
+    // A door's use toggles it, and a second use sent unseen shut the
+    // door the first had opened (turn-based-agent, 2026-10-05, #68):
+    // the state it is in as the use is ordered, read before the use
+    // reaches it.
+    if (action == "use")
+    {
+        if (const auto target = args.OptionalId("target", "a placeable or other object to use");
+            target && api::GetObjectType(*target) == k::OBJECT_TYPE_PLACEABLE &&
+            PlaceableController(*target) == "StateCnt_Door")
+        {
+            answer["doorWas"] = PlaceableStateWord(*target);
+            if (answer["doorWas"] == "open")
+            {
+                answer["note"] = "the door was open: this use shuts it (inspect kind=placeables says a "
+                                 "door's state)";
+            }
+        }
+    }
     const bool taken =
         via == "click" ? OrderByClick(args, action, who, answer) : OrderByCommand(args, action, who, answer);
     if (!taken)

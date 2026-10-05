@@ -96,6 +96,11 @@ void RequireWorld(const Watch &watch, std::string_view tool);
 
 // An object by id, name and tag; null for none.
 Json Brief(ObjectId id);
+// A placeable's state controller (StateCnt_Door, StateCnt_Container, ...)
+// and its state in a word as the controller names it (#44); null where it
+// names none.
+std::string PlaceableController(ObjectId id);
+Json PlaceableStateWord(ObjectId id);
 std::vector<ObjectId> Objects(const dao::script::Array &array);
 float Distance(const dao::Vector &a, const dao::Vector &b);
 Json Depletable(ObjectId id, std::int32_t property);

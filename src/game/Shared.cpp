@@ -2,6 +2,8 @@
 // checks before the game is touched, and the watch on deaths.
 #include "game/Shared.h"
 
+#include "core/Placeables.h"
+
 #include <algorithm>
 #include <cwctype>
 #include <regex>
@@ -24,6 +26,22 @@ void RequireWorld(const Watch &watch, std::string_view tool)
         throw ToolError(
             std::format("{}: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again", tool));
     }
+}
+
+// The controller read as the scripts read it: the placeable types table
+// (93) by the placeable's appearance (core_h.nss,
+// GetPlaceableStateCntTable).
+constexpr std::int32_t kTablePlaceableTypes = 93;
+
+std::string PlaceableController(ObjectId id)
+{
+    return Narrow(api::GetM2DAString(kTablePlaceableTypes, L"StateController", api::GetAppearanceType(id)));
+}
+
+Json PlaceableStateWord(ObjectId id)
+{
+    const auto word = PlaceableStateName(PlaceableController(id), api::GetPlaceableState(id));
+    return word.empty() ? Json(nullptr) : Json(std::string(word));
 }
 
 Json Brief(ObjectId id)

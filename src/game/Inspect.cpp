@@ -168,19 +168,6 @@ std::string PlaceableLine(const Json &p)
     return line;
 }
 
-// A placeable's state in a word, as its state controller names it (#44):
-// the controller read as the scripts read it (core_h.nss,
-// GetPlaceableStateCntTable). Null where the controller names none.
-constexpr std::int32_t kTablePlaceableTypes = 93;
-
-Json PlaceableStateWord(ObjectId id)
-{
-    const std::string controller =
-        Narrow(api::GetM2DAString(kTablePlaceableTypes, L"StateController", api::GetAppearanceType(id)));
-    const auto word = PlaceableStateName(controller, api::GetPlaceableState(id));
-    return word.empty() ? Json(nullptr) : Json(std::string(word));
-}
-
 // What stands in a walk's way: a placeable with its state and its lock, as
 // kind=placeables reads them, so a door the story keeps shut (pick level
 // 10000) is told from one a use opens (#33), and where it leads if it is an
