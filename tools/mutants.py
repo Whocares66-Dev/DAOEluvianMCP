@@ -595,6 +595,12 @@ MUTANTS = [
         "(void)error;\n        throw;",
     ),
     Mutant(
+        "the bench does not tell of a refused call",
+        BENCH,
+        "record(error.what());\n        if (ignored.empty())",
+        "(void)error;\n        if (ignored.empty())",
+    ),
+    Mutant(
         "events reads from now by default",
         BENCH,
         'const auto since = static_cast<std::uint64_t>(args.Integer("since", 0, 0, kNoLimit));\n'

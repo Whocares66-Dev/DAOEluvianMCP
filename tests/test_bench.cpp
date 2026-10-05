@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -254,15 +255,20 @@ TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
                       [](const Json &args) -> ToolResult { return args; });
     bench.Tools().Add(ToolSpec{"refuse", "Refuse.", {}, Thread::Listener},
                       [](const Json &) -> ToolResult { throw ToolError("refuse: not now"); });
+    bench.Tools().Add(ToolSpec{"break", "Break.", {}, Thread::Listener},
+                      [](const Json &) -> ToolResult { throw std::runtime_error("broke"); });
 
     bench.Invoke("echo", Json{{"id", "0x7d9"}});
     CHECK_THROWS_AS(bench.Invoke("refuse", Json::object()), ToolError);
     CHECK_THROWS_AS(bench.Invoke("nothing", Json::object()), UnknownTool); // no tool, so no call to tell of
+    // A failure that is not a refusal is told of too, by its own path.
+    CHECK_THROWS_AS(bench.Invoke("break", Json::object()), std::runtime_error);
 
-    REQUIRE(seen.size() == 2);
+    REQUIRE(seen.size() == 3);
     CHECK(seen[0].tool == "echo");
     CHECK(seen[0].args["id"] == "0x7d9");
     CHECK(seen[0].thread == Thread::Listener);
     CHECK(seen[0].error.empty());
     CHECK(seen[1].error == "refuse: not now");
+    CHECK(seen[2].error == "broke");
 }
