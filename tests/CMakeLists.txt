@@ -38,6 +38,7 @@ add_executable(
     test_mcp.cpp
     test_origin.cpp
     test_registry.cpp
+    test_requirements.cpp
     test_rest.cpp
     test_scenario.cpp
     test_travel.cpp

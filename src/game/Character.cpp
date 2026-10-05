@@ -6,6 +6,8 @@
 // item's properties (seen in play, 2026-10-01).
 #include "game/Shared.h"
 
+#include "core/Requirements.h"
+
 #include "dao/Data.h"
 
 #include <cctype>
@@ -660,8 +662,8 @@ static void AddEquip(Bench &bench, const Watch &watch)
                  "game's rules hold (requirements, what a slot takes). `action`: equip (default) or unequip; "
                  "`item`, an id from inspect kind=inventory or kind=equipment; `slot` for equip, by name (main, "
                  "offhand, ring1, ring2, ...) or number, default the item's first. It acts on the character the "
-                 "interface has selected (`id`, if given, must be that one: input binding "
-                 "\"SelectPartyMemberIndexMessage <place in the party> 0\" selects another). Answers what the "
+                 "interface has selected (`id`, if given, must be that one: order {\"action\": \"control\", "
+                 "\"id\": ...} makes another the one selected). Answers what the "
                  "slot held `before` and holds `after`, and whether it took (`equipped`); the item a slot held "
                  "goes back to the pack.",
                  Json{{"type", "object"},
@@ -687,10 +689,14 @@ static void AddEquip(Bench &bench, const Watch &watch)
             const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
             if (who != selected)
             {
+                // order action=control selects a party member wherever the
+                // party is; the binding SelectPartyMemberIndexMessage, named
+                // here before, selected nobody at camp (turn-based-agent,
+                // 2026-10-03, #31).
                 throw ToolError(std::format("equip: the inventory screen equips the character the interface has "
-                                            "selected, {} now; select {} first (input binding "
-                                            "\"SelectPartyMemberIndexMessage <its place in the party, from 0> 0\")",
-                                            FormatId(selected), FormatId(who)));
+                                            "selected, {} now; select {} first: order {{\"action\": \"control\", "
+                                            "\"id\": \"{}\"}}",
+                                            FormatId(selected), FormatId(who), FormatId(who)));
             }
             const auto set = api::GetActiveWeaponSet(who);
             Json answer = {{"action", action},
@@ -761,8 +767,71 @@ static void AddEquip(Bench &bench, const Watch &watch)
             answer["equipped"] = after == item;
             if (after != item)
             {
-                answer["note"] = "the game did not put it on: its requirements (inspect kind=item), or the creature "
-                                 "cannot change equipment now (GUI.SelectedChar.CanChangeEquipment)";
+                // The game's own verdict on the creature using it
+                // (CanUseItem), which its inventory screen's requirement
+                // lines follow: Alistair's Helm of the Legion was refused
+                // with nothing said (turn-based-agent, 2026-10-05, #31). The
+                // lines themselves (DAExternalCommands.GetItemRequirements)
+                // come back as objects this GFx cannot hand over.
+                const bool canUse = api::CanUseItem(who, item) != 0;
+                answer["canUse"] = canUse;
+                // And the lines themselves, as the inventory screen asks for
+                // them: a shown screen's DAExternalCommands.GetItemRequirements
+                // raises the engine's handler, which leaves its answer, one
+                // string, in the movie's fsc_retval before the movie splits
+                // it (lib-agent read the handler, 2026-10-05). That is the
+                // root's: the function's register 1 is _root (flags 0x6a),
+                // and DAExternalCommands.fsc_retval read null in play while
+                // the call answered the split list (turn-based-agent,
+                // 2026-10-05; "0;Requires: 36 strength;" at the root). Asked of
+                // the first screen shown that has DAExternalCommands: the
+                // quickbar is not shown while a picker, a conversation or a
+                // full screen is up (turn-based-agent, 2026-10-05).
+                for (const wchar_t *screen : {L"Quickbar", L"Inventory", L"CharacterRecord", L"Store"})
+                {
+                    auto movie = dao::gui::ScreenMovie(screen);
+                    if (!movie)
+                    {
+                        continue;
+                    }
+                    const std::array<dao::gui::Value, 2> ids{dao::gui::Value::Number(static_cast<double>(item)),
+                                                             dao::gui::Value::Number(static_cast<double>(who))};
+                    if (!movie->Call("DAExternalCommands.GetItemRequirements", ids))
+                    {
+                        continue;
+                    }
+                    using Type = dao::gui::Value::Type;
+                    const auto said = movie->Get("_root.fsc_retval");
+                    if (said && (said->type == Type::String || said->type == Type::StringW))
+                    {
+                        answer["requirements"] = ItemRequirements(said->text);
+                        break;
+                    }
+                }
+                answer["note"] = canUse ? "the game did not put it on, though it says the creature can use it: the "
+                                          "creature cannot change equipment now "
+                                          "(GUI.SelectedChar.CanChangeEquipment), or the slot is held"
+                                        : "the game says " + Narrow(api::GetName(who)) +
+                                              " cannot use it (CanUseItem): a requirement not met, most often "
+                                              "an attribute (strength for heavy armour), or a restriction; the "
+                                              "inventory screen's tooltip names it";
+                // An item's own restrictions are among its properties:
+                // Warden's Oath, "Restrict: player", was refused for a
+                // follower with no reason given (turn-based-agent, 2026-10-03,
+                // #31).
+                Json restrictions = Json::array();
+                for (const auto &property : ItemJson(item, true).value("properties", Json::array()))
+                {
+                    const std::string label = property.value("label", std::string());
+                    if (label.find("Restrict") != std::string::npos || label.find("restrict") != std::string::npos)
+                    {
+                        restrictions.push_back(label);
+                    }
+                }
+                if (!restrictions.empty())
+                {
+                    answer["restrictions"] = std::move(restrictions);
+                }
             }
             return answer;
         });

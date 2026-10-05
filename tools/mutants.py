@@ -111,6 +111,7 @@ LEVELUP = "src/core/LevelUp.cpp"
 CRAFT = "src/core/Craft.cpp"
 CONVERSATION = "src/core/Conversation.cpp"
 PLACEABLES = "src/core/Placeables.cpp"
+REQUIREMENTS = "src/core/Requirements.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
 # characters here: "\\r\\n" is the source's "\r\n". An edit that leaves a
@@ -1913,6 +1914,25 @@ MUTANTS = [
         CRAFT,
         "if (recipe_.is_null())",
         "if (false)",
+    ),
+    # an item's requirements, as the screens split the engine's answer (#31)
+    Mutant(
+        "requirements read any mark but 0 as met",
+        REQUIREMENTS,
+        'pieces[i] == "1"',
+        'pieces[i] != "0"',
+    ),
+    Mutant(
+        "requirements read a pair at every piece",
+        REQUIREMENTS,
+        "i += 2)",
+        "i += 1)",
+    ),
+    Mutant(
+        "requirements lose a last piece with no ';' after it",
+        REQUIREMENTS,
+        "pieces.push_back(answer.substr(from));",
+        "(void)from;",
     ),
 ]
 
