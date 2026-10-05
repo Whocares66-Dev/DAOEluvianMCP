@@ -341,6 +341,17 @@ class BridgeTest(unittest.TestCase):
         result = self.call("game_status")["structuredContent"]
         self.assertIn("no eluvian.dll", result["why"])
 
+    def test_status_says_when_eluvian_was_left_loose_beside_the_folders(self) -> None:
+        self.down()
+        (self.folder / "loader.log").write_text(
+            "[19:20:01.003] [62804] [warning] eluvian.dll: not loaded; a plugin goes in a "
+            "folder of its own, daolib\\plugins\\eluvian\\eluvian.dll\n"
+            "[19:20:01.009] [62804] [info] 1 plugin(s) in C:\\game\\daolib\\plugins\n",
+            encoding="utf-8",
+        )
+        result = self.call("game_status")["structuredContent"]
+        self.assertIn("a plugin goes in a folder of its own", result["why"])
+
     def test_launch_into_a_save_asks_for_it_and_waits_for_the_world(self) -> None:
         self.processes.pids.clear()
         save = {"character": "Aedan", "kind": "manual", "number": 2}

@@ -4,9 +4,10 @@
     eluvian.dll out.
 
 .DESCRIPTION
-    After `.\tools\build.ps1 -Preset <preset>`, puts build\<preset>\daolib\plugins\eluvian.dll
-    (and its .pdb, so a crash log names our frames) under bin_ship\daolib\plugins. The game
-    must not be running: it holds the file open.
+    After `.\tools\build.ps1 -Preset <preset>`, puts the folder build\<preset>\daolib\plugins\
+    eluvian\ (eluvian.dll and its .pdb, so a crash log names our frames) at
+    bin_ship\daolib\plugins\eluvian\, where a loader of DAOLib #26 on looks for it, and takes
+    out a loose eluvian.dll from before. The game must not be running: it holds the file open.
 
     DAOLib's loader (version.dll) is copied only if the game has none, or with -Loader: the
     turn-based mod deploys one too, and a loader loads every plugin of its own plugin API, so
@@ -20,7 +21,8 @@
     plugin read the running game's. Without them the loader loads nothing. Of this build's file
     and the game's, the one that knows more IDs stays (another plugin may be on a later DAOLib).
 
-    -Remove deletes eluvian.dll and its .pdb; the loader and other plugins stay.
+    -Remove deletes the eluvian folder (and a loose eluvian.dll and .pdb); the loader and
+    other plugins stay.
 
 .EXAMPLE
     .\tools\deploy.ps1                 # debug build into the GOG install
@@ -77,12 +79,16 @@ foreach ($claimFile in @((Join-Path $claimFolder 'game.claim.json'), (Join-Path 
     }
 }
 
+# A plugin lives in a folder of its own, bin_ship\daolib\plugins\eluvian\, its files
+# beside it (DAOLib #26): a loader of #26 loads no DLL loose in plugins\, and loader.log
+# says where each belongs. A loose eluvian.dll and .pdb from before are taken out.
 $plugins = Join-Path $Game 'daolib\plugins'
-$plugin = Join-Path $plugins 'eluvian.dll'
-$pluginPdb = Join-Path $plugins 'eluvian.pdb'
+$pluginDir = Join-Path $plugins 'eluvian'
+$loose = @((Join-Path $plugins 'eluvian.dll'), (Join-Path $plugins 'eluvian.pdb'))
 
 if ($Remove) {
-    foreach ($f in @($plugin, $pluginPdb)) {
+    if (Test-Path $pluginDir) { Remove-Item -Recurse -Force $pluginDir; Show-Ok "removed $pluginDir" }
+    foreach ($f in $loose) {
         if (Test-Path $f) { Remove-Item -Force $f; Show-Ok "removed $f" }
     }
     Show-Info 'the loader (version.dll) stays; DAOLib''s deploy.ps1 -Remove takes it out'
@@ -90,7 +96,8 @@ if ($Remove) {
 }
 
 $build = Join-Path $repo "build\$Preset"
-$builtPlugin = Join-Path $build 'daolib\plugins\eluvian.dll'
+$builtDir = Join-Path $build 'daolib\plugins\eluvian'
+$builtPlugin = Join-Path $builtDir 'eluvian.dll'
 $builtLoader = Join-Path $build 'version.dll'
 foreach ($f in @($builtPlugin, $builtLoader)) {
     if (-not (Test-Path $f)) { throw "No $f; run .\tools\build.ps1 -Preset $Preset first" }
@@ -112,10 +119,14 @@ if ($Loader -or -not (Test-Path $gameLoader)) {
 else {
     Show-Info "loader  already at $gameLoader (kept; -Loader replaces it)"
 }
-Copy-Item -Force $builtPlugin $plugin
-$builtPdb = [IO.Path]::ChangeExtension($builtPlugin, '.pdb')
-if (Test-Path $builtPdb) { Copy-Item -Force $builtPdb $pluginPdb }
-Show-Ok "plugin  -> $plugin"
+# The plugin's folder as built, but the linker's incremental-link file.
+New-Item -ItemType Directory -Force $pluginDir | Out-Null
+Get-ChildItem -Path $builtDir -File | Where-Object { $_.Extension -ne '.ilk' } |
+    ForEach-Object { Copy-Item -Force $_.FullName (Join-Path $pluginDir $_.Name) }
+Show-Ok "plugin  -> $pluginDir"
+foreach ($f in $loose) {
+    if (Test-Path $f) { Remove-Item -Force $f; Show-Ok "removed the loose $f (plugins have folders now)" }
+}
 # The address files: one per build of the game, read by the loader and every plugin. The
 # library only adds IDs (known on 2026-10-02: 103,293 for GOG's build, 103,528 Steam's, 103,567 EA's),
 # and the plugins in one folder may be on different DAOLibs: so of this build's file and the

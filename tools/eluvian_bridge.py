@@ -615,7 +615,13 @@ class Bridge:
 
         loader = lines("loader.log")
         for line in loader:
-            if "plugins are not loaded" in line or "eluvian.dll: LoadLibrary" in line:
+            # A loader of DAOLib #26 on loads a plugin only from a folder of its
+            # own, and says so of one left loose in the plugins folder.
+            if (
+                "plugins are not loaded" in line
+                or "eluvian.dll: LoadLibrary" in line
+                or "eluvian.dll: not loaded" in line
+            ):
                 return f"loader.log: {said(line)}"
             if "eluvian.dll: refused" in line:
                 for own in lines("eluvian.log"):

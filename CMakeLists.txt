@@ -262,7 +262,8 @@ target_compile_definitions(
 )
 
 # `cmake --build --preset debug` builds the loader too, so build\<preset>\
-# is a game folder's worth of files: version.dll, daolib\plugins\*.dll and
+# is a game folder's worth of files: version.dll, daolib\plugins\<name>\ (a
+# folder a plugin, DAOLib #26) and
 # daolib\addresses\*.bin (the address library's files, one per build of the
 # game, without which the loader loads nothing; built with whatever links
 # daolib, DAOLib 8ecb9ac on).
