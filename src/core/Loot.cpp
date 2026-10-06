@@ -37,12 +37,62 @@ class Looting
     Looting(Bench &bench, const Args &args, milliseconds show)
         : bench_(bench), deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 600000))),
           show_(milliseconds(args.Integer("showMs", show.count(), 0, 10000))),
-          target_(args.Has("target") ? args.String("target") : std::string())
+          target_(args.Has("target") ? args.String("target") : std::string()),
+          who_(args.Has("id") ? args.String("id") : std::string())
     {
         answer_["cursor"] = bench_.Events().Next();
     }
 
+    // Another party member loots with control handed to it for the
+    // walk and the use, and given back as the looting ends, however it
+    // ends: the driver did both by hand (turn-based-agent's survey,
+    // 2026-10-06, #86).
     Json Run()
+    {
+        if (who_.empty())
+        {
+            return Loot();
+        }
+        const Json control = bench_.Invoke("order", Json{{"action", "control"}, {"id", who_}}).data;
+        if (!control.value("taken", false))
+        {
+            throw ToolError("loot: " + who_ + " would not take control; nothing was looted");
+        }
+        before_ = control.value(Json::json_pointer("/before/id"), std::string());
+        Json answer;
+        try
+        {
+            answer = Loot();
+        }
+        catch (...)
+        {
+            GiveBack();
+            throw;
+        }
+        if (const auto back = GiveBack())
+        {
+            answer["controlled"] = *back;
+        }
+        return answer;
+    }
+
+    // Control given back to whom had it, if another: whom the game says
+    // is controlled after, or nothing if it was not asked or refused.
+    std::optional<Json> GiveBack()
+    {
+        if (before_.empty() || before_ == who_)
+        {
+            return std::nullopt;
+        }
+        const auto back = Ask("order", Json{{"action", "control"}, {"id", before_}});
+        if (!back)
+        {
+            return Json{{"backTo", before_}, {"refused", refused_}};
+        }
+        return back->value("controlled", Json());
+    }
+
+    Json Loot()
     {
         // A panel up already is taken from, if it is the container meant:
         // another's stands in the way of this one's opening.
@@ -280,6 +330,8 @@ class Looting
     Clock::time_point deadline_;
     milliseconds show_;
     std::string target_;
+    std::string who_;     // the party member looting, if not the one controlled
+    std::string before_;  // whom control is given back to
     std::string refused_; // why the last call Ask made was refused
     Json answer_ = Json::object();
 };
@@ -289,26 +341,31 @@ class Looting
 void AddLootTool(Bench &bench, milliseconds show)
 {
     bench.Tools().Add(
-        ToolSpec{"loot",
-                 "Take what a container holds (a chest, a body's remains, a pile of bones: an id from inspect "
-                 "kind=placeables), in one call: the creature controlled walks to `target` (as travel does, "
-                 "opening doors on the way), uses it, which opens the game's loot panel, and takes all as the "
-                 "panel's Take All does, which closes it. With no `target`, takes from the loot panel up now. "
-                 "Answers `looted`, `reason`, the `container`, what was `taken` and what is `left` (each item "
-                 "in brief), whether the backpack was `full` (then the rest stays and the panel stays up), "
-                 "whether the panel `closed`, and the `walk`. It stops and says why when the container does not "
-                 "open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains "
-                 "open no panel). A container's treasure may be chosen "
-                 "only as it opens, so one that read empty may not be. The events from `cursor` say what "
-                 "followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for "
-                 "the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so "
-                 "whoever watches sees it; 0 for none.",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"target", {{"type", "string"}, {"description", "The container's id; none: the panel up now"}}},
-                        {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}},
-                        {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
-                 Thread::Listener},
+        ToolSpec{
+            "loot",
+            "Take what a container holds (a chest, a body's remains, a pile of bones: an id from inspect "
+            "kind=placeables), in one call: the creature controlled, or `id`, another party member, "
+            "given control for the looting and control given back after (`controlled` says to whom), "
+            "walks to `target` (as travel does, "
+            "opening doors on the way), uses it, which opens the game's loot panel, and takes all as the "
+            "panel's Take All does, which closes it. With no `target`, takes from the loot panel up now. "
+            "Answers `looted`, `reason`, the `container`, what was `taken` and what is `left` (each item "
+            "in brief), whether the backpack was `full` (then the rest stays and the panel stays up), "
+            "whether the panel `closed`, and the `walk`. It stops and says why when the container does not "
+            "open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains "
+            "open no panel). A container's treasure may be chosen "
+            "only as it opens, so one that read empty may not be. The events from `cursor` say what "
+            "followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for "
+            "the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so "
+            "whoever watches sees it; 0 for none.",
+            Json{{"type", "object"},
+                 {"properties",
+                  {{"target", {{"type", "string"}, {"description", "The container's id; none: the panel up now"}}},
+                   {"id",
+                    {{"type", "string"}, {"description", "The party member who loots (default: the one controlled)"}}},
+                   {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}},
+                   {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
+            Thread::Listener},
         [&bench, show](const Json &raw) -> ToolResult {
             const Args args(raw, "loot");
             return Looting(bench, args, show).Run();

@@ -2281,6 +2281,31 @@ MUTANTS = [
         'if (!startArea_.empty() && pin->value("area", std::string()) == startArea_)',
         'if (!startArea_.empty() && pin->value("area", std::string()) == "" + name)',
     ),
+    # another party member loots (#86)
+    Mutant(
+        "loot keeps control with the party member it handed it to",
+        LOOT,
+        "        if (const auto back = GiveBack())",
+        "        if (const auto back = std::optional<Json>())",
+    ),
+    Mutant(
+        "loot keeps control when the looting is refused",
+        LOOT,
+        "            GiveBack();\n            throw;",
+        "            throw;",
+    ),
+    Mutant(
+        "loot goes on when the party member will not take control",
+        LOOT,
+        '        if (!control.value("taken", false))',
+        '        if (control.value("taken", false) && control.empty())',
+    ),
+    Mutant(
+        "loot hands control back to the one controlled already",
+        LOOT,
+        "        if (before_.empty() || before_ == who_)",
+        "        if (before_.empty())",
+    ),
 ]
 
 

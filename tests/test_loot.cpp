@@ -32,13 +32,14 @@ struct Chest
     int panelLate = 0;        // gui reads after the use before its panel comes
     bool refuses = false;     // whether the game refuses the use: an area loading
     Json items = Json::array({Json{{"id", "0x500"}, {"name", "Greenstone"}}});
-    std::vector<std::string> calls; // the tools called, in order
-    Json walkArgs;                  // what the walk there was given
-    std::string used;               // the container the use was ordered on
-    std::string mode;               // the mode the use brought, if any
-    int startIn = 0;                // gui reads until the use starts; 0: started, or none ordered
-    int panelIn = 0;                // gui reads until its panel comes; 0: come, or none coming
-    bool walkOpens = false;         // whether the walk opens the target itself on the way, stopped by its pause
+    std::vector<std::string> calls;  // the tools called, in order
+    Json walkArgs;                   // what the walk there was given
+    std::string used;                // the container the use was ordered on
+    std::string mode;                // the mode the use brought, if any
+    int startIn = 0;                 // gui reads until the use starts; 0: started, or none ordered
+    int panelIn = 0;                 // gui reads until its panel comes; 0: come, or none coming
+    bool walkOpens = false;          // whether the walk opens the target itself on the way, stopped by its pause
+    std::string controlled = "0x82"; // the creature controlled
 
     Chest()
     {
@@ -75,6 +76,19 @@ struct Chest
     // The stand-in's order.
     ToolResult FakeOrder(const Json &args)
     {
+        if (args.value("action", "") == "control")
+        {
+            const std::string id = args.value("id", "");
+            calls.emplace_back("order control " + id);
+            const Json before = {{"id", controlled}};
+            const bool taken = id != "0xbad"; // one that will not take it
+            if (taken)
+            {
+                controlled = id;
+            }
+            return Json{
+                {"action", "control"}, {"before", before}, {"controlled", {{"id", controlled}}}, {"taken", taken}};
+        }
         calls.emplace_back("order " + args.value("action", ""));
         if (refuses)
         {
@@ -416,4 +430,46 @@ TEST_CASE("a full backpack leaves the rest in the container and closes its panel
     CHECK(answer["left"].size() == 1);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("its panel closed"));
     CHECK(chest.calls.back() == "game press Close");
+}
+
+TEST_CASE("another party member loots with control handed to it, and given back after", "[loot]")
+{
+    Chest chest;
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}, {"id", "0x7d9"}});
+    CHECK(answer["looted"] == true);
+    CHECK(chest.calls == std::vector<std::string>{"order control 0x7d9", "travel", "order use", "game press Take All",
+                                                  "order control 0x82"});
+    CHECK(answer["controlled"]["id"] == "0x82");
+    CHECK(chest.controlled == "0x82");
+}
+
+TEST_CASE("control is given back though the looting stops short, or is refused", "[loot]")
+{
+    Chest stops;
+    stops.arrives = false;
+    const auto stopped = stops.Loot(Json{{"target", "0x3ec"}, {"id", "0x7d9"}});
+    CHECK(stopped["looted"] == false);
+    CHECK(stops.controlled == "0x82");
+
+    Chest other; // another's panel up: refused, after control was handed over
+    other.panel = "0x3ed";
+    CHECK_THROWS_AS(other.Loot(Json{{"target", "0x3ec"}, {"id", "0x7d9"}}), ToolError);
+    CHECK(other.controlled == "0x82");
+}
+
+TEST_CASE("a party member who will not take control loots nothing", "[loot]")
+{
+    Chest chest;
+    CHECK_THROWS_WITH(chest.Loot(Json{{"target", "0x3ec"}, {"id", "0xbad"}}),
+                      ContainsSubstring("would not take control"));
+    CHECK(chest.calls == std::vector<std::string>{"order control 0xbad"});
+}
+
+TEST_CASE("the one controlled named as the looter is no hand-over", "[loot]")
+{
+    Chest chest;
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}, {"id", "0x82"}});
+    CHECK(answer["looted"] == true);
+    CHECK_FALSE(answer.contains("controlled"));
+    CHECK(chest.calls.back() == "game press Take All");
 }

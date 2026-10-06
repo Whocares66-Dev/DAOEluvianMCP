@@ -910,6 +910,64 @@ void WhyNotOn(ObjectId item, ObjectId who, Json &answer)
     }
 }
 
+// Another party member made the one selected for an equip, and control
+// given back to whom had it as the call ends, a refusal too (#86).
+class SelectedFor
+{
+  public:
+    SelectedFor(ObjectId who, ObjectId selected) : before_(api::GetMainControlled())
+    {
+        if (who == selected)
+        {
+            return;
+        }
+        if (!PartyOf(api::GetHero()).contains(who))
+        {
+            throw ToolError(std::format("equip: {} is not in the party; the inventory screen equips a party "
+                                        "member (inspect kind=game lists the party)",
+                                        FormatId(who)));
+        }
+        api::SetPrimaryControlled(who);
+        handed_ = true;
+        const auto now = static_cast<ObjectId>(
+            dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
+        if (now != who)
+        {
+            throw ToolError(std::format("equip: control passed to {} but the interface still selects {}, "
+                                        "and the inventory screen equips that one; nothing was equipped. "
+                                        "order {{\"action\": \"control\", \"id\": \"{}\"}}, then "
+                                        "equip again",
+                                        FormatId(who), FormatId(now), FormatId(who)));
+        }
+    }
+    SelectedFor(const SelectedFor &) = delete;
+    SelectedFor &operator=(const SelectedFor &) = delete;
+    SelectedFor(SelectedFor &&) = delete;
+    SelectedFor &operator=(SelectedFor &&) = delete;
+    ~SelectedFor()
+    {
+        if (handed_ && before_ != kInvalidObject)
+        {
+            api::SetPrimaryControlled(before_);
+        }
+    }
+
+    // Says the hand-over in the answer, if there was one.
+    void Say(Json &answer) const
+    {
+        if (handed_)
+        {
+            answer["selectedFirst"] = true;
+            answer["controlled"] = Brief(before_);
+            answer["note"] = "control passed to the creature for the equip and back to whom had it";
+        }
+    }
+
+  private:
+    ObjectId before_;
+    bool handed_ = false;
+};
+
 ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
 {
     RequireWorld(watch, "equip");
@@ -923,17 +981,14 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
     const auto selected = static_cast<ObjectId>(
         dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
     const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
-    if (who != selected)
-    {
-        // order action=control selects a party member wherever the
-        // party is; the binding SelectPartyMemberIndexMessage, named
-        // here before, selected nobody at camp (turn-based-agent,
-        // 2026-10-03, #31).
-        throw ToolError(std::format("equip: the inventory screen equips the character the interface has "
-                                    "selected, {} now; select {} first: order {{\"action\": \"control\", "
-                                    "\"id\": \"{}\"}}",
-                                    FormatId(selected), FormatId(who), FormatId(who)));
-    }
+    // The inventory screen equips whom the interface has selected; the
+    // scripts' hand-over (order action=control's) selects a party
+    // member wherever the party is, where the binding
+    // SelectPartyMemberIndexMessage selected nobody at camp
+    // (turn-based-agent, 2026-10-03, #31). Another one is selected so,
+    // equipped, and control given back, where the driver did both by
+    // hand (#86).
+    const SelectedFor selection(who, selected);
     const auto set = api::GetActiveWeaponSet(who);
     Json answer = {{"action", action},
                    {"item", ItemJson(item, false)},
@@ -941,7 +996,9 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
                    {"cursor", bench.Events().Next()}};
     if (action == "unequip")
     {
-        return Unequip(item, std::move(answer));
+        answer = Unequip(item, std::move(answer));
+        selection.Say(answer);
+        return answer;
     }
     const auto mask = api::GetM2DAInt(k::TABLE_ITEMS, L"EquippableSlots", api::GetBaseItemType(item));
     const std::int32_t slot = SlotFor(args, mask);
@@ -960,6 +1017,7 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
     {
         WhyNotOn(item, who, answer);
     }
+    selection.Say(answer);
     return answer;
 }
 
@@ -973,8 +1031,8 @@ static void AddEquip(Bench &bench, const Watch &watch)
                  "game's rules hold (requirements, what a slot takes). `action`: equip (default) or unequip; "
                  "`item`, an id from inspect kind=inventory or kind=equipment; `slot` for equip, by name (main, "
                  "offhand, ring1, ring2, ...) or number, default the item's first. It acts on the character the "
-                 "interface has selected (`id`, if given, must be that one: order {\"action\": \"control\", "
-                 "\"id\": ...} makes another the one selected). Answers what the "
+                 "interface has selected; `id`, another party member, is made the one selected for the equip and "
+                 "control given back after (`selectedFirst`). Answers what the "
                  "slot held `before` and holds `after`, and whether it took (`equipped`); the item a slot held "
                  "goes back to the pack.",
                  Json{{"type", "object"},
@@ -982,7 +1040,7 @@ static void AddEquip(Bench &bench, const Watch &watch)
                        {{"action", {{"type", "string"}, {"enum", {"equip", "unequip"}}}},
                         {"item", {{"type", "string"}, {"description", "The item's id"}}},
                         {"slot", {{"description", "equip: the slot's name or number; default the item's first"}}},
-                        {"id", {{"type", "string"}, {"description", "The creature: the one selected"}}}}},
+                        {"id", {{"type", "string"}, {"description", "The party member (default: the one selected)"}}}}},
                       {"required", {"item"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolEquip(bench, watch, raw); });

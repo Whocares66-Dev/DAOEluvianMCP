@@ -195,16 +195,18 @@ Json HandOver(ObjectId who, ObjectId controlled)
 {
     if (!PartyOf(api::GetHero()).contains(who))
     {
-        throw ToolError(std::format("order: a move goes to the controlled creature ({}), not {}: the "
-                                    "game's move click moves whom the player controls, and a creature "
-                                    "outside the party is not moved by order",
-                                    controlled == kInvalidObject ? "nobody" : FormatId(controlled), FormatId(who)));
+        throw ToolError(std::format("order: a move, or a use or item's ability out of combat, is the "
+                                    "controlled creature's ({}), not {}'s: control is handed over to a "
+                                    "party member first, and {} is not in the party (via \"command\" "
+                                    "orders any creature to use or cast)",
+                                    controlled == kInvalidObject ? "nobody" : FormatId(controlled), FormatId(who),
+                                    FormatId(who)));
     }
     api::SetPrimaryControlled(who);
     if (api::GetMainControlled() != who)
     {
-        throw ToolError(std::format("order: {} would not take control, and a move goes to the "
-                                    "controlled creature; nobody moved",
+        throw ToolError(std::format("order: {} would not take control, and the order is the controlled "
+                                    "creature's; nothing was ordered",
                                     FormatId(who)));
     }
     return Brief(controlled);
@@ -229,6 +231,57 @@ void SayDoorWas(const Args &args, Json &answer)
     }
 }
 
+// Who carries out an order, and how: by click, the controlled creature's,
+// or by command, any creature's.
+struct Acting
+{
+    Json handedOver;          // whom control was taken from, if it was handed over
+    std::string via;          // "click" or "command"
+    bool itemByClick = false; // an item's ability out of combat, by click
+};
+
+Acting WhoActs(const Args &args, const std::string &action, ObjectId who, ObjectId controlled, const Watch &watch)
+{
+    const bool explore = watch.Mode() == static_cast<std::int32_t>(dao::GameMode::Explore);
+    const bool item = action == "ability" && (args.Has("item") || args.Has("itemTag"));
+    // A move goes to the controlled creature, whatever `id` says: it is
+    // explore mode's own move click (GameModeExplore::MoveTo), which moves
+    // whom the player controls. Ordered for a follower in the Gauntlet, the
+    // hero walked there instead, and the answer named the follower
+    // (turn-based-agent, 2026-10-04, #48). A script's move would reach it,
+    // but the party's following takes a follower back to the leader once it
+    // ends. So another party member is given control first, as a click on
+    // its portrait, and keeps it; judged at the moment of the order, so a
+    // fight's member on its turn, controlled already, is moved as before.
+    // A use or an item's ability out of combat is a click too, and for
+    // another party member control is handed over first the same way, where
+    // the driver gave `order control` before and after by hand
+    // (turn-based-agent's survey, 2026-10-06, #86). In a fight the command
+    // path works and stays.
+    const bool clicked = (action == "use" && !args.Has("objectAction")) || (item && explore);
+    Acting acts;
+    if (who != controlled && (action == "move" || (clicked && explore && !args.Has("via"))))
+    {
+        acts.handedOver = HandOver(who, controlled);
+    }
+    const ObjectId acting = acts.handedOver.is_null() ? controlled : who;
+    const bool useByClick = action == "use" && who == acting && !args.Has("objectAction");
+    // An item's ability out of combat by command takes nothing: Kolgrim's
+    // Horn ordered so three times on the mountain top answered given and
+    // stayed in the pack, its script never run; by click it was used at once
+    // (turn-based-agent, 2026-10-04, #51). In fights the command path works
+    // (poultices, the Litany), and stays.
+    acts.itemByClick = item && who == acting && explore;
+    acts.via = args.Choice("via", {"command", "click"}, useByClick || acts.itemByClick ? "click" : "command");
+    if (acts.via == "click" && who != acting)
+    {
+        throw ToolError(std::format("order: a click is the controlled creature's ({}); via \"command\" "
+                                    "orders any creature",
+                                    controlled == kInvalidObject ? "nobody" : FormatId(controlled)));
+    }
+    return acts;
+}
+
 // The order tool's handler, registered by AddOrder.
 ToolResult ToolOrder(Bench &bench, const Watch &watch, const Json &raw)
 {
@@ -245,60 +298,33 @@ ToolResult ToolOrder(Bench &bench, const Watch &watch, const Json &raw)
     {
         throw ToolError("order: nobody is controlled and no `id` was given");
     }
-    const bool useByClick = action == "use" && who == controlled && !args.Has("objectAction");
-    // An item's ability out of combat by command takes nothing:
-    // Kolgrim's Horn ordered so three times on the mountain top
-    // answered given and stayed in the pack, its script never run;
-    // by click it was used at once (turn-based-agent, 2026-10-04,
-    // #51). In fights the command path works (poultices, the
-    // Litany), and stays.
-    const bool itemByClick = action == "ability" && who == controlled && (args.Has("item") || args.Has("itemTag")) &&
-                             watch.Mode() == static_cast<std::int32_t>(dao::GameMode::Explore);
-    const auto via = args.Choice("via", {"command", "click"}, useByClick || itemByClick ? "click" : "command");
-    if (via == "click" && who != controlled)
-    {
-        throw ToolError(std::format("order: a click is the controlled creature's ({}); via \"command\" "
-                                    "orders any creature",
-                                    controlled == kInvalidObject ? "nobody" : FormatId(controlled)));
-    }
-    // A move goes to the controlled creature, whatever `id` says:
-    // it is explore mode's own move click (GameModeExplore::MoveTo),
-    // which moves whom the player controls. Ordered for a follower
-    // in the Gauntlet, the hero walked there instead, and the answer
-    // named the follower (turn-based-agent, 2026-10-04, #48). A
-    // script's move would reach it, but the party's following takes
-    // a follower back to the leader once it ends. So another party
-    // member is given control first, as a click on its portrait,
-    // and keeps it; judged at the moment of the order, so a fight's
-    // member on its turn, controlled already, is moved as before.
-    Json handedOver;
-    if (action == "move" && who != controlled)
-    {
-        handedOver = HandOver(who, controlled);
-    }
+    const auto acts = WhoActs(args, action, who, controlled, watch);
     const auto cursor = bench.Events().Next();
-    Json answer = {{"action", action}, {"via", via}, {"creature", Brief(who)}};
-    if (!handedOver.is_null())
+    Json answer = {{"action", action}, {"via", acts.via}, {"creature", Brief(who)}};
+    if (!acts.handedOver.is_null())
     {
         answer["controlled"] = Brief(who);
-        answer["before"] = handedOver;
-        answer["note"] = "a move is the player's move click, which moves whom the player controls: control "
-                         "passed to the creature first, and stays with it (order action=control gives it "
-                         "back)";
+        answer["before"] = acts.handedOver;
+        answer["note"] = action == "move" ? "a move is the player's move click, which moves whom the player controls: "
+                                            "control passed to the creature first, and stays with it (order "
+                                            "action=control gives it back)"
+                                          : "out of combat a use or an item's ability is a click, the controlled "
+                                            "creature's: control passed to the creature first, and stays with it while "
+                                            "it acts (order action=control gives it back)";
     }
     if (action == "use")
     {
         SayDoorWas(args, answer);
     }
     const bool taken =
-        via == "click" ? OrderByClick(args, action, who, answer) : OrderByCommand(args, action, who, answer);
+        acts.via == "click" ? OrderByClick(args, action, who, answer) : OrderByCommand(args, action, who, answer);
     if (!taken)
     {
-        throw ToolError(via == "click" ? "order: explore mode did not take the ability's click"
-                                       : "order: the game took no order: the creature is not there, or (for move) "
-                                         "the game is not in explore or combat mode");
+        throw ToolError(acts.via == "click" ? "order: explore mode did not take the ability's click"
+                                            : "order: the game took no order: the creature is not there, or (for move) "
+                                              "the game is not in explore or combat mode");
     }
-    if (itemByClick && !args.Has("via"))
+    if (acts.itemByClick && !args.Has("via"))
     {
         answer["note"] = "an item's ability out of combat goes by click: by command it takes nothing there";
     }
@@ -319,8 +345,9 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "ability "
                  "`ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable: a "
                  "door, a chest, a lever); control, make `id`, a party member, the creature controlled, as a "
-                 "click on its portrait does (out of combat a follower takes an order by command poorly; "
-                 "control it, then order it by click). "
+                 "click on its portrait does. Out of combat a use or an item's ability is a click, and for "
+                 "another party member `id` control is given to it first, as for a move, and stays with it "
+                 "while it acts (`controlled`, `before`); in a fight they go by command. "
                  "`via`: \"command\" (the default, but for use by the controlled creature) gives it through "
                  "the engine's own click functions, so the "
                  "command is player-issued and anything watching the command queue sees one; any creature "
