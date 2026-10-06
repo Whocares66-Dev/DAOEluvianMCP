@@ -149,10 +149,34 @@ Json LevelUpOffers()
         const wchar_t *path;
         const char *name;
     };
+    // The screen shows one ability page of the two, by class: levelup.gfx's
+    // specializations_mc_init sets LevelUp.nAbilityType to CharGen.SPELLS
+    // (2) for a class whose TABLE_CLASS row uses mana (bUsesMana), and to
+    // CharGen.TALENTS (1) otherwise (read 2026-10-05). The engine fills both
+    // lists all the same, and a rogue's offers listed a mage's spells as
+    // learnable (turn-based-agent, 2026-10-05, #71): the page the screen
+    // does not show is left empty, as the screen leaves it.
+    int shown = 0;
+    if (auto movie = dao::gui::ScreenMovie(L"LevelUp"))
+    {
+        if (const auto type = movie->Get("LevelUp.nAbilityType"); type && type->type == dao::gui::Value::Type::Number)
+        {
+            shown = static_cast<int>(type->number);
+        }
+    }
+    if (shown == 1 || shown == 2)
+    {
+        answer["abilityPage"] = shown == 2 ? "spells" : "talents";
+    }
     for (const Page page : {Page{1, L"CharGenCreature.Stats.TalentChains", "talents"},
                             Page{2, L"CharGenCreature.Stats.SpellChains", "spells"},
                             Page{3, L"CharGenCreature.Stats.SkillChains", "skills"}})
     {
+        if ((shown == 1 || shown == 2) && page.type != 3 && page.type != shown)
+        {
+            answer[page.name] = Json::array();
+            continue;
+        }
         dao::messages::SendText(
             std::format(L"GameModeController.FindAbilityChains {} {} 2", static_cast<ObjectId>(*creature), page.type));
         Json abilities = Json::array();
@@ -658,7 +682,8 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "talents or spells, specialisations), the six `attributes` as the screen shows them, and the "
                  "class's `talents`, `spells` and `skills`, each a list of abilities, `id`, `name` and "
                  "`state`: has, learnable (can be taken now) or not yet (a level, an attribute or the one "
-                 "before it in its chain). The levelup tool spends points on named ones."},
+                 "before it in its chain). A class has talents or spells, not both: `abilityPage` names the one "
+                 "the screen shows, and the other list is empty. The levelup tool spends points on named ones."},
         [&watch](const Json &args) -> ToolResult { return KindLevelup(watch, args); });
 
     bench.Tools().AddKind(
