@@ -84,10 +84,6 @@ CLAIM_FILE = "game.claim.json"
 EVENTS_FILE = "eluvian.events.jsonl"
 # The run before's, kept when a game starts (EventLog::PreviousOf, #74).
 PREVIOUS_EVENTS_FILE = "eluvian.events.previous.jsonl"
-# Its name until 2026-10-02. A bridge started before then writes this one, and a claim there
-# went unseen by one started after, which launched over a tester's run (2026-10-02): both
-# are read until no bridge with the old name runs.
-OLD_CLAIM_FILE = "eluvian.claim.json"
 
 
 def log_folder() -> Path:
@@ -794,12 +790,8 @@ class Bridge:
         return self.game.folder / CLAIM_FILE
 
     def claim(self) -> dict | None:
-        """The claim that stands now, or None: no file, not readable, or past its time. The file
-        of the old name is read too."""
-        for path in (self.claim_path(), self.game.folder / OLD_CLAIM_FILE):
-            claim = self.read_claim(path)
-            if claim:
-                return claim
+        """The claim that stands now, or None: no file, not readable, or past its time. The file"""
+        return self.read_claim(self.claim_path())
         return None
 
     @staticmethod
@@ -871,11 +863,10 @@ class Bridge:
                 is_error=True,
             )
         had = self.claim() is not None
-        for path in (self.claim_path(), self.game.folder / OLD_CLAIM_FILE):
-            try:
-                path.unlink()
-            except OSError:
-                pass
+        try:
+            self.claim_path().unlink()
+        except OSError:
+            pass
         return text_result({"released": had})
 
     def game_launch(self, arguments: dict) -> dict:

@@ -6,8 +6,8 @@
 .DESCRIPTION
     After `.\tools\build.ps1 -Preset <preset>`, puts the folder build\<preset>\daolib\plugins\
     eluvian\ (eluvian.dll and its .pdb, so a crash log names our frames) at
-    bin_ship\daolib\plugins\eluvian\, where a loader of DAOLib #26 on looks for it, and takes
-    out a loose eluvian.dll from before. The game must not be running: it holds the file open.
+    bin_ship\daolib\plugins\eluvian\, where a loader of DAOLib #26 on looks for it. The game
+    must not be running: it holds the file open.
 
     DAOLib's loader (version.dll) is copied only if the game has none, or with -Loader: the
     turn-based mod deploys one too, and a loader loads every plugin of its own plugin API, so
@@ -21,8 +21,7 @@
     plugin read the running game's. Without them the loader loads nothing. Of this build's file
     and the game's, the one that knows more IDs stays (another plugin may be on a later DAOLib).
 
-    -Remove deletes the eluvian folder (and a loose eluvian.dll and .pdb); the loader and
-    other plugins stay.
+    -Remove deletes the eluvian folder; the loader and other plugins stay.
 
     The game plays the release build: optimised, the release runtime, its pdb kept (#76). The
     debug runtime's heap checks validate every allocation and free under the process heap's
@@ -69,32 +68,26 @@ foreach ($running in @(Get-Process -Name DAOrigins -ErrorAction SilentlyContinue
 # scripts honour (README.md, "The claim"); one that stands and is not this caller's stops the
 # copy. -Owner says who is deploying.
 $claimFolder = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'BioWare\Dragon Age\daolib'
-# The old name too, which a bridge started before the shared name still writes (2026-10-02).
-foreach ($claimFile in @((Join-Path $claimFolder 'game.claim.json'), (Join-Path $claimFolder 'eluvian.claim.json'))) {
-    if (Test-Path $claimFile) {
-        try {
-            $claim = Get-Content $claimFile -Raw | ConvertFrom-Json
-            $left = [double]$claim.until - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-            if ($left -gt 0 -and $claim.owner -ne $Owner) {
-                throw "the game and its folder are claimed by $($claim.owner) for another $([math]::Round($left / 60, 1)) minutes ($($claim.note)); not deployed"
-            }
+$claimFile = Join-Path $claimFolder 'game.claim.json'
+if (Test-Path $claimFile) {
+    try {
+        $claim = Get-Content $claimFile -Raw | ConvertFrom-Json
+        $left = [double]$claim.until - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        if ($left -gt 0 -and $claim.owner -ne $Owner) {
+            throw "the game and its folder are claimed by $($claim.owner) for another $([math]::Round($left / 60, 1)) minutes ($($claim.note)); not deployed"
         }
-        catch [System.ArgumentException] { Show-Info "$claimFile is not readable; taken as no claim" }
     }
+    catch [System.ArgumentException] { Show-Info "$claimFile is not readable; taken as no claim" }
 }
 
 # A plugin lives in a folder of its own, bin_ship\daolib\plugins\eluvian\, its files
 # beside it (DAOLib #26): a loader of #26 loads no DLL loose in plugins\, and loader.log
-# says where each belongs. A loose eluvian.dll and .pdb from before are taken out.
+# says where each belongs.
 $plugins = Join-Path $Game 'daolib\plugins'
 $pluginDir = Join-Path $plugins 'eluvian'
-$loose = @((Join-Path $plugins 'eluvian.dll'), (Join-Path $plugins 'eluvian.pdb'))
 
 if ($Remove) {
     if (Test-Path $pluginDir) { Remove-Item -Recurse -Force $pluginDir; Show-Ok "removed $pluginDir" }
-    foreach ($f in $loose) {
-        if (Test-Path $f) { Remove-Item -Force $f; Show-Ok "removed $f" }
-    }
     Show-Info 'the loader (version.dll) stays; DAOLib''s deploy.ps1 -Remove takes it out'
     return
 }
@@ -128,9 +121,6 @@ New-Item -ItemType Directory -Force $pluginDir | Out-Null
 Get-ChildItem -Path $builtDir -File | Where-Object { $_.Extension -ne '.ilk' } |
     ForEach-Object { Copy-Item -Force $_.FullName (Join-Path $pluginDir $_.Name) }
 Show-Ok "plugin  -> $pluginDir"
-foreach ($f in $loose) {
-    if (Test-Path $f) { Remove-Item -Force $f; Show-Ok "removed the loose $f (plugins have folders now)" }
-}
 # The address files: one per build of the game, read by the loader and every plugin. The
 # library only adds IDs (known on 2026-10-02: 103,293 for GOG's build, 103,528 Steam's, 103,567 EA's),
 # and the plugins in one folder may be on different DAOLibs: so of this build's file and the

@@ -493,32 +493,6 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(released["structuredContent"]["released"])
         self.assertNotIn("claim", self.call("game_status")["structuredContent"])
 
-    def test_a_claim_under_the_old_name_stands_too(self) -> None:
-        self.processes.pids.clear()
-        (self.folder / "eluvian.claim.json").write_text(
-            json.dumps(
-                {
-                    "owner": "tester-a",
-                    "note": "an older bridge's",
-                    "until": time.time() + 600,
-                }
-            ),
-            encoding="utf-8",
-        )
-        refused = self.call("game_launch", {"owner": "tester-b"})
-        self.assertIn("tester-a", refused["content"][0]["text"])
-        self.assertEqual(self.processes.started, 0)
-        self.assertTrue(self.call("game_claim", {"owner": "tester-b"})["isError"])
-        self.assertEqual(
-            self.call("game_status")["structuredContent"]["claim"]["owner"], "tester-a"
-        )
-        self.assertTrue(
-            self.call("game_release", {"owner": "tester-a"})["structuredContent"][
-                "released"
-            ]
-        )
-        self.assertFalse((self.folder / "eluvian.claim.json").exists())
-
     def test_a_claim_past_its_time_no_longer_stands(self) -> None:
         self.processes.pids.clear()
         path = self.folder / "game.claim.json"
