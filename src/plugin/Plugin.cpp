@@ -262,7 +262,8 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
         g->events = std::make_unique<EventLog>(dao::LogDirectory() / name);
         if (g->events->Open())
         {
-            g->bench.Events().SetRecorder([log = g->events.get()](const Event &event) { log->Write(event); });
+            g->bench.Events().SetRecorder(
+                [log = g->events.get()](const std::shared_ptr<const Event> &event) { log->Write(event); });
         }
         else
         {

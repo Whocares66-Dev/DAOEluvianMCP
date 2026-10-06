@@ -123,23 +123,26 @@ EventBus::EventBus(std::size_t capacity, FrameSource frame)
 
 std::uint64_t EventBus::Emit(std::string topic, Json payload)
 {
-    Event event;
-    event.frame = frame_ ? frame_() : 0;
-    event.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_).count();
-    event.topic = std::move(topic);
-    event.payload = std::move(payload);
+    auto event = std::make_shared<Event>();
+    event->frame = frame_ ? frame_() : 0;
+    event->ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_).count();
+    event->topic = std::move(topic);
+    event->payload = std::move(payload);
     std::uint64_t seq = 0;
+    std::shared_ptr<const Event> forgotten; // freed after the lock: a large payload's free is not the lock's to wait on
     {
         const std::lock_guard lock(mutex_);
         seq = next_++;
-        event.seq = seq;
+        event->seq = seq;
+        std::shared_ptr<const Event> shared = std::move(event);
         if (recorder_)
         {
-            recorder_(event); // under the lock, so the record keeps the bus's order
+            recorder_(shared); // under the lock, so the record keeps the bus's order
         }
-        events_.push_back(std::move(event));
+        events_.push_back(std::move(shared));
         if (events_.size() > capacity_)
         {
+            forgotten = std::move(events_.front());
             events_.pop_front();
         }
     }
@@ -161,47 +164,62 @@ std::uint64_t EventBus::Next() const
 
 EventBus::Page EventBus::Since(std::uint64_t cursor, const EventFilter &filter, std::size_t limit) const
 {
-    const std::lock_guard lock(mutex_);
-    Page page;
-    page.next = std::max(cursor, events_.empty() ? next_ : events_.front().seq);
-    if (!events_.empty() && cursor != 0 && cursor < events_.front().seq)
+    // The pointers under the lock; the filter and the copies after it, the
+    // events never changing (#73).
+    std::vector<std::shared_ptr<const Event>> held;
+    std::uint64_t next = 0;
+    std::optional<std::uint64_t> oldest;
     {
-        page.missed = events_.front().seq - cursor;
-    }
-    for (const Event &event : events_)
-    {
-        if (event.seq < cursor)
+        const std::lock_guard lock(mutex_);
+        next = next_;
+        if (!events_.empty())
         {
-            continue;
+            oldest = events_.front()->seq;
         }
-        if (filter.Accepts(event))
+        for (const auto &event : events_)
+        {
+            if (event->seq >= cursor)
+            {
+                held.push_back(event);
+            }
+        }
+    }
+    Page page;
+    page.next = std::max(cursor, oldest.value_or(next));
+    if (oldest && cursor != 0 && cursor < *oldest)
+    {
+        page.missed = *oldest - cursor;
+    }
+    for (const auto &event : held)
+    {
+        if (filter.Accepts(*event))
         {
             if (page.events.size() == limit)
             {
                 page.truncated = true;
                 break;
             }
-            page.events.push_back(event);
+            page.events.push_back(*event);
         }
-        page.next = event.seq + 1;
+        page.next = event->seq + 1;
     }
     if (!page.truncated)
     {
-        page.next = std::max(page.next, next_);
+        page.next = std::max(page.next, next);
     }
     return page;
 }
 
-std::optional<Event> EventBus::FirstMatch(std::uint64_t cursor, const EventFilter &filter) const
+std::shared_ptr<const Event> EventBus::FirstMatch(std::uint64_t cursor, const EventFilter &filter) const
 {
-    for (const Event &event : events_)
+    for (const auto &event : events_)
     {
-        if (event.seq >= cursor && filter.Accepts(event))
+        if (event->seq >= cursor && filter.Accepts(*event))
         {
             return event;
         }
     }
-    return std::nullopt;
+    return nullptr;
 }
 
 std::optional<Event> EventBus::WaitFor(std::uint64_t cursor, const EventFilter &filter,
@@ -213,7 +231,8 @@ std::optional<Event> EventBus::WaitFor(std::uint64_t cursor, const EventFilter &
     {
         if (auto found = FirstMatch(cursor, filter))
         {
-            return found;
+            lock.unlock(); // copied after the lock (#73)
+            return *found;
         }
         if (closed_ || (keepWaiting != nullptr && !keepWaiting->load()))
         {
@@ -225,7 +244,9 @@ std::optional<Event> EventBus::WaitFor(std::uint64_t cursor, const EventFilter &
         const auto wake = std::min(deadline, std::chrono::steady_clock::now() + std::chrono::milliseconds(100));
         if (changed_.wait_until(lock, wake) == std::cv_status::timeout && std::chrono::steady_clock::now() >= deadline)
         {
-            return FirstMatch(cursor, filter);
+            const auto found = FirstMatch(cursor, filter);
+            lock.unlock();
+            return found ? std::optional<Event>(*found) : std::nullopt;
         }
     }
 }

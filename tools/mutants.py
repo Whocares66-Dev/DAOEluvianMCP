@@ -524,14 +524,14 @@ MUTANTS = [
     Mutant(
         "the bus says a read from 0 missed events",
         BUS,
-        "cursor != 0 && cursor < events_.front().seq",
-        "cursor < events_.front().seq",
+        "oldest && cursor != 0 && cursor < *oldest",
+        "oldest && cursor < *oldest",
     ),
     Mutant(
         "the bus counts one missed event too many",
         BUS,
-        "page.missed = events_.front().seq - cursor;",
-        "page.missed = events_.front().seq - cursor + 1;",
+        "page.missed = *oldest - cursor;",
+        "page.missed = *oldest - cursor + 1;",
     ),
     Mutant(
         "the bus's limit lets one more through",
@@ -542,13 +542,13 @@ MUTANTS = [
     Mutant(
         "the bus's truncated read skips what it did not return",
         BUS,
-        "if (!page.truncated)\n    {\n        page.next = std::max(page.next, next_);",
-        "if (true)\n    {\n        page.next = std::max(page.next, next_);",
+        "if (!page.truncated)\n    {\n        page.next = std::max(page.next, next);",
+        "if (true)\n    {\n        page.next = std::max(page.next, next);",
     ),
     Mutant(
         "the bus's cursor does not pass the events read",
         BUS,
-        "page.next = event.seq + 1;",
+        "page.next = event->seq + 1;",
         "",
     ),
     Mutant(
@@ -572,8 +572,8 @@ MUTANTS = [
     Mutant(
         "the bus's wait misses the event at its cursor",
         BUS,
-        "if (event.seq >= cursor && filter.Accepts(event))",
-        "if (event.seq > cursor && filter.Accepts(event))",
+        "if (event->seq >= cursor && filter.Accepts(*event))",
+        "if (event->seq > cursor && filter.Accepts(*event))",
     ),
     Mutant(
         "the bus lists every topic whatever the filter",
@@ -950,8 +950,8 @@ MUTANTS = [
     Mutant(
         "the event log says it is full at every event after",
         EVENTLOG,
-        "if (!out_.is_open() || full_)",
-        "if (!out_.is_open())",
+        "if (full_)\n    {\n        return;",
+        "if (full_ && written_ == 0)\n    {\n        return;",
     ),
     Mutant(
         "the event log keeps the last game's events",
@@ -2158,6 +2158,25 @@ MUTANTS = [
         LEVELUP,
         'if (read->contains("abilityPage"))',
         'if (read->contains("abilityPages"))',
+    ),
+    # from c9a2cc5
+    Mutant(
+        "the event file's writer leaves half of each batch out",
+        EVENTLOG,
+        "            WriteNow(*event);\n        }",
+        "            if (event->seq % 2 == 1)\n            {\n                WriteNow(*event);\n            }\n        }",
+    ),
+    Mutant(
+        "the event file's writer stops with events still queued",
+        EVENTLOG,
+        "        if (queue_.empty())\n        {\n            return; // stopping, and everything given written",
+        "        if (stopping_)\n        {\n            return; // stopping, and everything given written",
+    ),
+    Mutant(
+        "the event file's Flush does not wait for the batch being written",
+        EVENTLOG,
+        "drained_.wait(lock, [this] { return queue_.empty() && !writing_; });",
+        "drained_.wait(lock, [this] { return queue_.empty(); });",
     ),
 ]
 

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace eluvian
 {
@@ -49,14 +50,82 @@ std::filesystem::path EventLog::PreviousOf(const std::filesystem::path &path)
     return path.parent_path() / (path.stem().string() + ".previous" + path.extension().string());
 }
 
-EventLog::EventLog(const std::filesystem::path &path, std::size_t most)
-    : out_(MovedAside(path), std::ios::binary | std::ios::trunc), most_(most)
+EventLog::EventLog(const std::filesystem::path &path, std::size_t most, std::function<void()> beforeBatch)
+    : out_(MovedAside(path), std::ios::binary | std::ios::trunc), open_(out_.is_open()), most_(most),
+      beforeBatch_(std::move(beforeBatch))
 {
+    if (open_)
+    {
+        writer_ = std::thread([this] { Run(); });
+    }
 }
 
-void EventLog::Write(const Event &event)
+EventLog::~EventLog()
 {
-    if (!out_.is_open() || full_)
+    {
+        const std::lock_guard lock(mutex_);
+        stopping_ = true;
+    }
+    wake_.notify_all();
+    if (writer_.joinable())
+    {
+        writer_.join();
+    }
+}
+
+void EventLog::Write(std::shared_ptr<const Event> event)
+{
+    if (!open_ || !event)
+    {
+        return;
+    }
+    {
+        const std::lock_guard lock(mutex_);
+        queue_.push_back(std::move(event));
+    }
+    wake_.notify_one();
+}
+
+void EventLog::Flush()
+{
+    std::unique_lock lock(mutex_);
+    drained_.wait(lock, [this] { return queue_.empty() && !writing_; });
+}
+
+void EventLog::Run()
+{
+    std::unique_lock lock(mutex_);
+    while (true)
+    {
+        wake_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+        if (queue_.empty())
+        {
+            return; // stopping, and everything given written
+        }
+        std::deque<std::shared_ptr<const Event>> batch;
+        batch.swap(queue_);
+        writing_ = true;
+        lock.unlock();
+        if (beforeBatch_)
+        {
+            beforeBatch_();
+        }
+        for (const auto &event : batch)
+        {
+            WriteNow(*event);
+        }
+        // Through to the system once a batch: what a crash after it keeps.
+        out_.flush();
+        batch.clear();
+        lock.lock();
+        writing_ = false;
+        drained_.notify_all();
+    }
+}
+
+void EventLog::WriteNow(const Event &event)
+{
+    if (full_)
     {
         return;
     }
@@ -72,7 +141,6 @@ void EventLog::Write(const Event &event)
                '\n';
     }
     out_ << line;
-    out_.flush();
     written_ += line.size();
 }
 

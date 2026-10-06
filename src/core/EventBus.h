@@ -12,7 +12,11 @@
 // read from a cursor before the oldest says how many it missed.
 //
 // Thread-safe: the frame thread and plugins emit, listener threads read and
-// wait.
+// wait. An event, once emitted, is shared and never changes: the buffer, a
+// recorder and a reader hold the one copy, and the lock is held only to
+// take pointers. Emit had serialized each event to the file, and readers
+// deep-copied pages of them, under the lock the frame thread waits on
+// (#73, after the hangs of 2026-10-05).
 #pragma once
 
 #include "core/Tool.h"
@@ -25,6 +29,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -98,9 +103,11 @@ class EventBus
     std::uint64_t Emit(std::string topic, Json payload);
 
     // Told of every event as it is emitted, in the bus's order, under its
-    // lock: it must be quick and must not call the bus. The buffer forgets;
-    // a recorder keeps (core/EventLog.h writes each to a file).
-    using Recorder = std::function<void(const Event &)>;
+    // lock: it must be quick and must not call the bus. It is handed the
+    // event itself, shared, to keep and do its work with elsewhere. The
+    // buffer forgets; a recorder keeps (core/EventLog.h queues each for a
+    // writer thread of its own).
+    using Recorder = std::function<void(const std::shared_ptr<const Event> &)>;
     void SetRecorder(Recorder recorder);
 
     // The sequence number the next event will have: a cursor for "from now".
@@ -127,14 +134,14 @@ class EventBus
     void Close();
 
   private:
-    [[nodiscard]] std::optional<Event> FirstMatch(std::uint64_t cursor, const EventFilter &filter) const;
+    [[nodiscard]] std::shared_ptr<const Event> FirstMatch(std::uint64_t cursor, const EventFilter &filter) const;
 
     const std::size_t capacity_;
     FrameSource frame_;
     const std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
     mutable std::mutex mutex_;
     mutable std::condition_variable changed_;
-    std::deque<Event> events_;
+    std::deque<std::shared_ptr<const Event>> events_;
     std::uint64_t next_ = 1; // 0 is never a sequence number, so 0 reads "from the oldest"
     bool closed_ = false;
     Recorder recorder_;

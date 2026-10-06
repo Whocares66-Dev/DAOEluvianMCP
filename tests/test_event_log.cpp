@@ -2,11 +2,16 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <memory>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace eluvian;
@@ -43,7 +48,7 @@ TEST_CASE("every event the bus emits is a line in the file, in the bus's order",
         EventLog log(path);
         REQUIRE(log.Open());
         EventBus bus(2); // a buffer of two: the file keeps what the buffer forgets
-        bus.SetRecorder([&log](const Event &event) { log.Write(event); });
+        bus.SetRecorder([&log](const std::shared_ptr<const Event> &event) { log.Write(event); });
         bus.Emit("eluvian.creature.died", Json{{"id", "0x3bf"}});
         bus.Emit("turnbased.turn.ended", Json{{"round", 1}});
         bus.Emit("eluvian.mode.changed", Json{{"mode", "explore"}});
@@ -69,7 +74,7 @@ TEST_CASE("a line in the file is the event as the events tool gives it, byte for
     {
         EventLog log(path);
         REQUIRE(log.Open());
-        log.Write(event);
+        log.Write(std::make_shared<const Event>(event));
     }
     std::ifstream in(path, std::ios::binary);
     std::string line;
@@ -86,9 +91,11 @@ TEST_CASE("an event is in the file as it is written, before the file closes", "[
     {
         EventLog log(path);
         EventBus bus;
-        bus.SetRecorder([&log](const Event &event) { log.Write(event); });
+        bus.SetRecorder([&log](const std::shared_ptr<const Event> &event) { log.Write(event); });
         bus.Emit("eluvian.creature.died", Json{{"id", "0x3bf"}});
-        // Read while the game would still be running: a crash now keeps it.
+        // Read while the game would still be running: a crash now keeps it,
+        // once the writer has it (#73), which Flush waits for.
+        log.Flush();
         const auto lines = Lines(path);
         REQUIRE(lines.size() == 1);
         CHECK(lines[0]["topic"] == "eluvian.creature.died");
@@ -102,7 +109,7 @@ TEST_CASE("a file at its most says so once and keeps nothing after", "[event-log
     {
         EventLog log(path, 200);
         EventBus bus;
-        bus.SetRecorder([&log](const Event &event) { log.Write(event); });
+        bus.SetRecorder([&log](const std::shared_ptr<const Event> &event) { log.Write(event); });
         for (int i = 0; i < 10; ++i)
         {
             bus.Emit("mod.tick", Json{{"i", i}, {"padding", std::string(40, 'x')}});
@@ -122,7 +129,7 @@ TEST_CASE("each game writes its file anew", "[event-log]")
     {
         EventLog log(path);
         EventBus bus;
-        bus.SetRecorder([&log](const Event &event) { log.Write(event); });
+        bus.SetRecorder([&log](const std::shared_ptr<const Event> &event) { log.Write(event); });
         bus.Emit("run", Json{{"run", run}});
     }
     const auto lines = Lines(path);
@@ -148,7 +155,7 @@ TEST_CASE("only one run before is kept, and an empty file is not kept over it", 
         if (run < 2)
         {
             EventBus bus;
-            bus.SetRecorder([&log](const Event &event) { log.Write(event); });
+            bus.SetRecorder([&log](const std::shared_ptr<const Event> &event) { log.Write(event); });
             bus.Emit("run", Json{{"run", run}});
         }
     }
@@ -167,6 +174,76 @@ TEST_CASE("only one run before is kept, and an empty file is not kept over it", 
     std::filesystem::remove(previous);
 }
 
+TEST_CASE("events emitted from many threads are all in the file, in the bus's order", "[event-log]")
+{
+    // The writer is a thread of its own (#73): the queue keeps the bus's
+    // order, and the log's end writes what is still queued.
+    const auto path = TempFile("eluvian-test-events-threads.jsonl");
+    constexpr int kThreads = 4;
+    constexpr int kEach = 500;
+    {
+        EventLog log(path);
+        EventBus bus(64); // a small buffer: the file keeps what it forgets
+        bus.SetRecorder([&log](const std::shared_ptr<const Event> &event) { log.Write(event); });
+        std::vector<std::thread> emitters;
+        for (int t = 0; t < kThreads; ++t)
+        {
+            emitters.emplace_back([&bus, t] {
+                for (int i = 0; i < kEach; ++i)
+                {
+                    bus.Emit("mod.tick", Json{{"thread", t}, {"i", i}, {"padding", std::string(200, 'x')}});
+                }
+            });
+        }
+        for (auto &emitter : emitters)
+        {
+            emitter.join();
+        }
+    }
+    const auto lines = Lines(path);
+    REQUIRE(lines.size() == kThreads * kEach);
+    for (std::size_t i = 0; i < lines.size(); ++i)
+    {
+        REQUIRE(lines[i]["seq"] == i + 1);
+    }
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Flush waits until every event given so far is in the file", "[event-log]")
+{
+    // The writer held as it takes its batch: the queue is empty then, and
+    // only the batch being written is left. A Flush that did not wait for it
+    // passed every test that raced the writer instead (tools/mutants.py,
+    // 2026-10-05).
+    const auto path = TempFile("eluvian-test-events-flush.jsonl");
+    std::promise<void> taken;
+    std::promise<void> go;
+    auto release = go.get_future().share();
+    std::atomic<bool> first = true;
+    {
+        EventLog log(path, 256U << 20, [&taken, release, &first] {
+            if (first.exchange(false))
+            {
+                taken.set_value();
+                release.wait();
+            }
+        });
+        auto event = std::make_shared<Event>();
+        event->seq = 1;
+        event->topic = "mod.state";
+        log.Write(event);
+        taken.get_future().wait(); // the writer has the batch, the queue is empty
+        auto flushed = std::async(std::launch::async, [&log] { log.Flush(); });
+        // Not done while the batch is held: the wait is long so that a
+        // Flush returning early is seen even on a busy machine.
+        CHECK(flushed.wait_for(std::chrono::seconds(2)) == std::future_status::timeout);
+        go.set_value();
+        flushed.get();
+        CHECK(Lines(path).size() == 1); // and after it, in the file
+    }
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("a run before's file held open is not kept, and the new run's is still its own", "[event-log]")
 {
     // An agent reading the previous run's file as a game starts holds it
@@ -177,13 +254,14 @@ TEST_CASE("a run before's file held open is not kept, and the new run's is still
     for (int run = 0; run < 2; ++run)
     {
         EventLog log(path);
-        log.Write(Event{static_cast<std::uint64_t>(run + 1), 0, 0, "run", Json{{"run", run}}});
+        log.Write(
+            std::make_shared<const Event>(Event{static_cast<std::uint64_t>(run + 1), 0, 0, "run", Json{{"run", run}}}));
     }
     {
         std::ifstream reading(previous, std::ios::binary); // run 0's, open
         REQUIRE(reading.is_open());
         EventLog log(path);
-        log.Write(Event{3, 0, 0, "run", Json{{"run", 2}}});
+        log.Write(std::make_shared<const Event>(Event{3, 0, 0, "run", Json{{"run", 2}}}));
     }
     const auto lines = Lines(path);
     REQUIRE(lines.size() == 1);
