@@ -134,9 +134,25 @@ Json ScriptEventPayload(ObjectId receiver, const dao::CScriptEvent &event)
 Json CommandPayload(ObjectId id, const dao::Command &command)
 {
     const auto name = dao::core::Name(command.Type());
-    return Json{{"id", IdJson(id)},
-                {"type", name.empty() ? Json(static_cast<int>(command.Type())) : Json(std::string(name))},
-                {"playerIssued", command.PlayerIssued()}};
+    Json payload = {{"id", IdJson(id)},
+                    {"type", name.empty() ? Json(static_cast<int>(command.Type())) : Json(std::string(name))},
+                    {"playerIssued", command.PlayerIssued()}};
+    // What it acts on and where it goes, from its own parameters: read back
+    // from the event file, a UseObject did not say which door it used
+    // (travel in the darkspawn tunnels, 2026-10-05, #75).
+    if (const auto target = command.Target(); target && *target != kInvalidObject)
+    {
+        payload["target"] = IdJson(*target);
+    }
+    if (const auto point = command.Position())
+    {
+        payload["point"] = Json::array({point->x, point->y, point->z});
+    }
+    if (const auto ability = command.Ability())
+    {
+        payload["ability"] = *ability;
+    }
+    return payload;
 }
 
 } // namespace
@@ -214,11 +230,17 @@ void DescribeTopics(EventCatalog &topics)
              "ability, a wait, an animation.",
              Json{{"id", "the creature"},
                   {"type", "the command (Attack, MoveToObject, UseAbility, ...)"},
-                  {"playerIssued", "whether the player gave it"}});
+                  {"playerIssued", "whether the player gave it"},
+                  {"target", "the object it acts on (an attack's, a use's, a move to an object's), if any"},
+                  {"point", "[x, y, z] it goes to or aims at (a move's, an ability's), if any"},
+                  {"ability", "a UseAbility's ability id"}});
     describe("eluvian.command.ended", "A creature's command ended, and how.",
              Json{{"id", "the creature"},
                   {"type", "the command"},
                   {"playerIssued", "whether the player gave it"},
+                  {"target", "as at its start"},
+                  {"point", "as at its start"},
+                  {"ability", "as at its start"},
                   {"result", "success, a COMMAND_FAILED_*, or cleared"},
                   {"success", "true when it succeeded"}});
     const Json scriptFields = {{"receiver", "the object the event was delivered to (not always the one it is about)"},

@@ -106,7 +106,7 @@ A game that is not running cannot serve anything, and a direct MCP connection di
 
 Every event carries a sequence number, the frame, real milliseconds and world milliseconds (so `ai_turn_speed` can be measured), a topic and a payload whose creatures are ids.
 
-- `eluvian.command.started` and `eluvian.command.ended` {id, type, playerIssued, result, success}: every creature's commands as its queue runs them (DAOLib `dao::commands`), what a test waits on after an order.
+- `eluvian.command.started` and `eluvian.command.ended` {id, type, playerIssued, target, point, ability, result, success}: every creature's commands as its queue runs them (DAOLib `dao::commands`), what a test waits on after an order; `target`, `point` and `ability` where the command has them (#75).
 - `eluvian.*`, from the engine through DAOLib: `area.loaded`, `mode.changed`, `paused`, `combat.began`, `combat.ended`, `creature.died`, `load.finished`, `save.finished`. Script events, messages, the game mode and `OnGameLoaded` cover these (below); a command's start and end is asked of DAOLib.
 - `eluvian.dialogue.line` {index, speaker, by, text}, `eluvian.dialogue.replies` {replies} and `eluvian.dialogue.chosen` {index, text}: a conversation as it goes, ambient lines among them.
 - A mod's, under its own prefix, documented by the mod. The turn-based mod's, the first (its names have changed since; its docs have them): `turn.started` (id, round, side, yours, movement), `turn.ended` (reason), `refused` (id, command, reason), `round.started`, `joined`, `fell`, `gone`, `up`, `condition.held`, `condition.ended`, `condition.still_held`, `cooldown.held`, `cooldown.released`, `speed.set`, `fight.began`, `fight.over` (reason).
