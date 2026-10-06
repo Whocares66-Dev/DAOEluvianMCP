@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -162,6 +163,31 @@ TEST_CASE("only one run before is kept, and an empty file is not kept over it", 
     const auto still = Lines(previous);
     REQUIRE(still.size() == 1);
     CHECK(still[0]["payload"]["run"] == 1);
+    std::filesystem::remove(path);
+    std::filesystem::remove(previous);
+}
+
+TEST_CASE("a run before's file held open is not kept, and the new run's is still its own", "[event-log]")
+{
+    // An agent reading the previous run's file as a game starts holds it
+    // open: it cannot be replaced, and the file before is written over, as
+    // before #74, not added to.
+    const auto path = TempFile("eluvian-test-events-held.jsonl");
+    const auto previous = EventLog::PreviousOf(path);
+    for (int run = 0; run < 2; ++run)
+    {
+        EventLog log(path);
+        log.Write(Event{static_cast<std::uint64_t>(run + 1), 0, 0, "run", Json{{"run", run}}});
+    }
+    {
+        std::ifstream reading(previous, std::ios::binary); // run 0's, open
+        REQUIRE(reading.is_open());
+        EventLog log(path);
+        log.Write(Event{3, 0, 0, "run", Json{{"run", 2}}});
+    }
+    const auto lines = Lines(path);
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0]["payload"]["run"] == 2);
     std::filesystem::remove(path);
     std::filesystem::remove(previous);
 }

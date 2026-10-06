@@ -2093,8 +2093,8 @@ MUTANTS = [
     Mutant(
         "travel gives the engine no move of its own where the search finds none",
         TRAVEL,
-        "if (EngineMove())",
-        "if (false)",
+        'if (EngineMove("the engine\'s own move, the search having found none"))',
+        'if (!engineTried_ && EngineMove("the engine\'s own move, the search having found none"))',
     ),
     Mutant(
         "travel tries the engine's own move again and again",
@@ -2132,14 +2132,14 @@ MUTANTS = [
     Mutant(
         "the event file does not keep the run before's",
         EVENTLOG,
-        'std::filesystem::rename(path, previous, error);',
-        '(void)previous;',
+        "std::filesystem::rename(path, previous, error);",
+        "(void)previous;",
     ),
     Mutant(
-        'the event file keeps an empty run over the one before',
+        "the event file keeps an empty run over the one before",
         EVENTLOG,
-        'if (std::filesystem::file_size(path, error) > 0 && !error)',
-        'if (std::filesystem::exists(path, error) && !error)',
+        "if (std::filesystem::file_size(path, error) > 0 && !error)",
+        "if (std::filesystem::exists(path, error) && !error)",
     ),
 ]
 
