@@ -272,12 +272,6 @@ MUTANTS = [
         "",
     ),
     Mutant(
-        "travel goes to the search's furthest point again and again",
-        TRAVEL,
-        'own word for it.\n        if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
-        'own word for it.\n        if (walk.contains("reached") && !walk.at("reached").is_null())',
-    ),
-    Mutant(
         "travel walks up to its target in its own way again and again",
         TRAVEL,
         'if (distance > kNearOwnWay)\n        {\n            if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
@@ -2216,6 +2210,31 @@ MUTANTS = [
         READY,
         'return "the " + gui->at("fullScreen").get<std::string>() + " screen";',
         'return std::string("a screen");',
+    ),
+    # a far way walked a leg at a time (#82)
+    Mutant(
+        "travel walks a far way's legs only once",
+        TRAVEL,
+        "if (end && (!wentToReached_ || (nearer && fresh)))",
+        "if (end && (!wentToReached_ || (nearer && fresh && !wentToReached_)))",
+    ),
+    Mutant(
+        "travel walks another leg that gets no nearer",
+        TRAVEL,
+        "const bool nearer = !legFrom_ || now < *legFrom_ - kLegGain;",
+        "const bool nearer = !legFrom_ || now <= *legFrom_;",
+    ),
+    Mutant(
+        "travel walks another leg to the same end",
+        TRAVEL,
+        "if (end && (!wentToReached_ || (nearer && fresh)))",
+        "if (end && (!wentToReached_ || (nearer && (fresh || !fresh))))",
+    ),
+    Mutant(
+        "travel counts no legs",
+        TRAVEL,
+        'answer_["legs"] = answer_.value("legs", 0) + 1;',
+        "",
     ),
 ]
 

@@ -29,6 +29,8 @@ constexpr double kNoNearer = 0.25;
 // How near the walker must be for the target named in its own way to count
 // as reached (#46): a thing is used from a few metres.
 constexpr double kNearOwnWay = 4.0;
+// How much nearer a leg to the search's end must bring the walker for another (#82).
+constexpr double kLegGain = 2.0;
 // Where the search finds no walk and names nothing, steps this long toward
 // the goal, at most this many, each at least kStraightGain nearer (#53).
 constexpr double kStraightStep = 0.5;
@@ -859,11 +861,25 @@ class Journey
     std::optional<Json> NoWalk(const Json &walk, const std::string &blocker, bool exitAhead, bool inertAhead)
     {
         // No walk and nothing named in the way: go as far as the search
-        // got, once, and ask from there; a creature standing at a door
-        // gets the pathfinder's own word for it.
-        if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)
+        // got and ask from there; a creature standing at a door gets the
+        // pathfinder's own word for it. Again while each leg gets nearer:
+        // a far goal's search runs out short of it (Ostagar's 314 m, the
+        // Arl's dungeon's 114 m, where from 61 m the same goal was found),
+        // and a driver walked on toward it by strides (turn-based-agent,
+        // 2026-10-06, #82). A leg that gains nothing ends it as before.
+        const double now = answer_.value("distance", 0.0);
+        const bool nearer = !legFrom_ || now < *legFrom_ - kLegGain;
+        // And to a new end: from where the last leg ended the search can
+        // answer that same point again, a leg of nothing.
+        const auto end = walk.contains("reached") ? Point(walk.at("reached")) : std::nullopt;
+        const bool fresh =
+            end && (!lastEnd_ || std::hypot((*end)[0] - (*lastEnd_)[0], (*end)[1] - (*lastEnd_)[1]) > kLegGain);
+        if (end && (!wentToReached_ || (nearer && fresh)))
         {
             wentToReached_ = true;
+            legFrom_ = now;
+            lastEnd_ = end;
+            answer_["legs"] = answer_.value("legs", 0) + 1;
             lastWalk_.reset();
             const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", walk.at("reached")}},
                                       "MoveToLocation", "move as far as the search got");
@@ -1293,6 +1309,8 @@ class Journey
     Json to_;               // `to`: a world map pin's name, tag or index
     std::string who_;
     bool byClick_ = false;
+    std::optional<double> legFrom_;                // the distance as the last leg to the search's end began (#82)
+    std::optional<std::array<double, 3>> lastEnd_; // where that leg was sent
     bool wentToReached_ = false;
     std::string lastBlocker_;        // the door used last, to tell one that did not open
     std::optional<double> lastWalk_; // the walk's length when the last move along it was given

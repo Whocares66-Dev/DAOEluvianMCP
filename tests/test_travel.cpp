@@ -54,18 +54,20 @@ struct World
     int loadFor = 100;    // health calls the load lasts: an autosave's is short, and the area stays
     std::string loadInto; // the area a load ends in, if another
     std::vector<Json> orders;
-    std::string area = "ruins"; // the area's tag
-    bool crosses = true;        // whether using the exit takes the party out
-    bool exitActive = true;     // whether the exit is active
-    bool loads = false;         // whether the crossing loads the other area over a health call
-    int loadingFor = 0;         // health calls an area's loading is still said for
-    int readsWhileLoading = 0;  // frame reads asked while it loads: each waits out the frame timeout in the game
-    bool asks = false;          // whether the game asks first, with a message box
-    bool blockerFirst = false;  // whether a text blocker to the same place is nearer than the exit
-    std::string exitNoWalk;     // the search's word for a walk to the exit it cannot make, if it cannot
-    double strip = -1;          // beyond this distance the search finds none, though straight steps cross
-    bool farFails = false;      // whether a move of more than a metre from within the strip fails INVALID_PATH
-    bool tooClose = false;      // whether the exit's use fails from closer than 2 m
+    std::string area = "ruins";     // the area's tag
+    bool crosses = true;            // whether using the exit takes the party out
+    bool exitActive = true;         // whether the exit is active
+    bool loads = false;             // whether the crossing loads the other area over a health call
+    int loadingFor = 0;             // health calls an area's loading is still said for
+    int readsWhileLoading = 0;      // frame reads asked while it loads: each waits out the frame timeout in the game
+    bool asks = false;              // whether the game asks first, with a message box
+    bool blockerFirst = false;      // whether a text blocker to the same place is nearer than the exit
+    std::string exitNoWalk;         // the search's word for a walk to the exit it cannot make, if it cannot
+    mutable double searchReach = 0; // how far toward the goal one search gets, if not all the way (#82)
+    mutable double searchGrows = 0; // and how much further each search gets than the last
+    double strip = -1;              // beyond this distance the search finds none, though straight steps cross
+    bool farFails = false;          // whether a move of more than a metre from within the strip fails INVALID_PATH
+    bool tooClose = false;          // whether the exit's use fails from closer than 2 m
     Json popup = nullptr;
     bool mapExit = false;              // whether the exit opens the world map instead of leading somewhere
     bool mapUp = false;                // whether the world map is on the screen
@@ -147,7 +149,13 @@ struct World
     Json FakeWalk(const Json &args) const
     {
         Json walk;
-        if (!exitNoWalk.empty() && args.value("target", "") == "0x1f5")
+        if (searchReach > 0 && at > searchReach)
+        {
+            // A far goal: the search runs out of time this far along.
+            walk = Json{{"found", false}, {"result", "not finished in time"}, {"reached", {at - searchReach, 0, 0}}};
+            searchReach += searchGrows;
+        }
+        else if (!exitNoWalk.empty() && args.value("target", "") == "0x1f5")
         {
             walk = Json{{"found", false}, {"result", exitNoWalk}};
         }
@@ -1377,4 +1385,43 @@ TEST_CASE("a fight before the party leaves stops the crossing, and says so", "[t
     const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 1500}}).data;
     CHECK(answer["arrived"] == false);
     CHECK(answer["reason"] == "a fight began before the party left");
+}
+
+TEST_CASE("a far goal is walked to a leg at a time, each as far as the search got", "[travel]")
+{
+    World world; // 100 m off, each search getting 25 m of the way
+    world.shut = false;
+    world.at = 100;
+    world.searchReach = 25;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["legs"] == 3); // to 75, 50, 25; from there the walk is found
+    REQUIRE(world.orders.size() == 4);
+    CHECK(world.orders[0]["point"][0] == 75);
+    CHECK(world.orders[2]["point"][0] == 25);
+}
+
+TEST_CASE("a leg that gets no nearer ends the far journey as before", "[travel]")
+{
+    World world; // the walker does not move: each leg gains nothing
+    world.shut = false;
+    world.at = 100;
+    world.searchReach = 25;
+    world.stuck = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["legs"] == 1); // one leg, then no other: it got no nearer
+}
+
+TEST_CASE("a leg that gets no nearer ends the far journey, though the search ends somewhere new", "[travel]")
+{
+    World world; // the walker does not move, while each search gets 5 m further than the last
+    world.shut = false;
+    world.at = 100;
+    world.searchReach = 25;
+    world.searchGrows = 5;
+    world.stuck = true;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["legs"] == 1); // the first got no nearer, so no other, though the search ends further on
 }
