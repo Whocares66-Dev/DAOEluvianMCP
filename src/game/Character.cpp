@@ -453,17 +453,58 @@ ToolResult KindCharacter(const Watch &watch, const Json &raw)
     return sheet;
 }
 
+// The items a creature carries that give an ability, by the ability (the
+// engine's GetItemAbilityId, as kind=item reads it): each item's id, tag,
+// name and stack, and how many in all. A driver joined kind=abilities'
+// items to kind=inventory by the item's name to find a poultice it could
+// drink, and told health from mana by the tag's prefix (turn-based-agent's
+// survey of its driver, 2026-10-06, #87).
+struct Giving
+{
+    Json items = Json::array();
+    std::int32_t held = 0;
+};
+
+std::map<std::int32_t, Giving> ItemsGiving(ObjectId id)
+{
+    std::map<std::int32_t, Giving> giving;
+    const auto items = api::GetItemsInInventory(id, k::GET_ITEMS_OPTION_ALL);
+    for (std::size_t i = 0; i < items.Size(); ++i)
+    {
+        const ObjectId item = items.Object(i);
+        const auto ability = api::GetItemAbilityId(item);
+        if (ability == 0 || ability == 200000) // the game's "no ability"
+        {
+            continue;
+        }
+        const auto stack = api::GetItemStackSize(item);
+        auto &entry = giving[ability];
+        entry.items.push_back(Json{{"id", FormatId(item)},
+                                   {"tag", Narrow(api::GetTag(item))},
+                                   {"name", Narrow(api::GetName(item))},
+                                   {"stack", stack}});
+        entry.held += stack;
+    }
+    return giving;
+}
+
 // The abilities kind's handler, registered by AddCharacter.
 ToolResult KindAbilities(const Watch &watch, const Json &raw)
 {
     RequireWorld(watch, "inspect");
     const Args args(raw, "inspect");
     const ObjectId id = CreatureOrControlled(args);
-    const auto list = [id](dao::abilities::Kind kind) {
+    const auto giving = ItemsGiving(id);
+    const auto list = [id, &giving](dao::abilities::Kind kind) {
         Json abilities = Json::array();
         for (const std::int32_t ability : dao::abilities::Known(id, kind))
         {
             Json entry = AbilityJson(ability);
+            if (const auto it = giving.find(ability); it != giving.end())
+            {
+                entry["items"] = it->second.items;
+                entry["held"] = it->second.held;
+            }
             const bool available = api::IsAbilityAvailable(id, ability) != 0;
             const auto cooldown = dao::abilities::GetCooldown(id, ability);
             UseInto(entry, id, ability, available && (!cooldown || cooldown->remaining <= 0));
@@ -635,7 +676,8 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "cost against its mana or stamina, the cooldown, what holds it; `why` says why not, as "
                  "\"Insufficient stamina\"), its `cost` in mana or stamina with its fatigue, and its cooldown. A "
                  "sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank "
-                 "it has. "
+                 "it has. An item's ability lists the `items` that give it (id, tag, name, stack) and how many "
+                 "are `held`, for order action=ability with `item` or `itemTag`. "
                  "`count` is the game's own count of them."},
         [&watch](const Json &raw) -> ToolResult { return KindAbilities(watch, raw); });
 
