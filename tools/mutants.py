@@ -94,7 +94,8 @@ TRAVEL = "src/core/Travel.cpp"
 LOOT = "src/core/Loot.cpp"
 PARTY = "src/core/Party.cpp"
 SCENARIO = "src/core/Scenario.cpp"
-READY = "src/core/Ready.cpp"
+EXPECT = "src/core/Expect.cpp"
+UNTIL = "src/core/Until.cpp"
 BUS = "src/core/EventBus.cpp"
 BENCH = "src/core/Bench.cpp"
 QUEUE = "src/core/FrameQueue.cpp"
@@ -462,19 +463,19 @@ MUTANTS = [
     ),
     Mutant(
         "scenario's equals passes another value",
-        SCENARIO,
+        EXPECT,
         "(!actual || *actual != *it)",
         "(!actual)",
     ),
     Mutant(
         "scenario's atLeast fails at its bound",
-        SCENARIO,
+        EXPECT,
         'std::string_view(bound) == "atLeast" ? have < limit : have > limit',
         'std::string_view(bound) == "atLeast" ? have <= limit : have > limit',
     ),
     Mutant(
         "scenario's atMost fails at its bound",
-        SCENARIO,
+        EXPECT,
         'std::string_view(bound) == "atLeast" ? have < limit : have > limit',
         'std::string_view(bound) == "atLeast" ? have < limit : have >= limit',
     ),
@@ -2174,67 +2175,41 @@ MUTANTS = [
         "drained_.wait(lock, [this] { return queue_.empty(); });",
     ),
     # wait_until and scenario's until step (#85)
-    # wait_ready (#84)
     Mutant(
-        "wait_ready takes a spoken line for a choice",
-        READY,
-        '!talk->value("replies", Json::array()).empty()',
-        'talk->value("replies", Json::array()).empty()',
+        "wait_until takes the first answer for the expectation met",
+        UNTIL,
+        "if (unmet.empty())",
+        "if (unmet.empty() || tries > 0)",
     ),
     Mutant(
-        "wait_ready takes an interface with nothing up for input",
-        READY,
-        'if (gui->contains("popup") && !gui->at("popup").is_null())',
-        'if (gui->contains("popup"))',
+        "wait_until gives up at the first failed call",
+        UNTIL,
+        'answer["lastError"] = e.what();',
+        'answer["lastError"] = e.what();\n            break;',
     ),
     Mutant(
-        "wait_ready takes a cutscene for input",
-        READY,
-        'if (mode == "explore" || mode == "combat")',
-        'if (mode == "explore" || mode == "combat" || mode == "cutscene")',
-    ),
-    Mutant(
-        "wait_ready says nothing of what passed",
-        READY,
-        "for (const auto &event : bench.Events().Since(since, filter, 200).events)",
-        "for (const auto &event : bench.Events().Since(since, filter, 0).events)",
-    ),
-    Mutant(
-        "wait_ready counts what passed before the wait",
-        READY,
-        "const auto since = bench.Events().Next();",
-        "const auto since = std::uint64_t{1};",
-    ),
-    Mutant(
-        "wait_ready names no full screen",
-        READY,
-        'return "the " + gui->at("fullScreen").get<std::string>() + " screen";',
-        'return std::string("a screen");',
-    ),
-    # a far way walked a leg at a time (#82)
-    Mutant(
-        "travel walks a far way's legs only once",
-        TRAVEL,
-        "if (end && (!wentToReached_ || (nearer && fresh)))",
-        "if (end && (!wentToReached_ || (nearer && fresh && !wentToReached_)))",
-    ),
-    Mutant(
-        "travel walks another leg that gets no nearer",
-        TRAVEL,
-        "const bool nearer = !legFrom_ || now < *legFrom_ - kLegGain;",
-        "const bool nearer = !legFrom_ || now <= *legFrom_;",
-    ),
-    Mutant(
-        "travel walks another leg to the same end",
-        TRAVEL,
-        "if (end && (!wentToReached_ || (nearer && fresh)))",
-        "if (end && (!wentToReached_ || (nearer && (fresh || !fresh))))",
-    ),
-    Mutant(
-        "travel counts no legs",
-        TRAVEL,
-        'answer_["legs"] = answer_.value("legs", 0) + 1;',
+        "wait_until waits a pointer that is not one out",
+        UNTIL,
+        '(void)expect::At(Json::object(), pointer, "wait_until");',
         "",
+    ),
+    Mutant(
+        "wait_until counts no tries",
+        UNTIL,
+        'answer["tries"] = tries;',
+        "",
+    ),
+    Mutant(
+        "wait_until waits for itself",
+        UNTIL,
+        'if (tool == "wait_until" || tool == "scenario")',
+        'if (tool == "scenario")',
+    ),
+    Mutant(
+        "a scenario's until step passes though it did not hold",
+        SCENARIO,
+        'if (answer.value("held", false))',
+        'if (answer.value("held", false) || !answer.value("held", false))',
     ),
 ]
 

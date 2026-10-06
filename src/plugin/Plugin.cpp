@@ -22,6 +22,7 @@
 #include "core/Rest.h"
 #include "core/Scenario.h"
 #include "core/Travel.h"
+#include "core/Until.h"
 #include "game/GameTools.h"
 #include "game/Health.h"
 #include "plugin/HostApi.h"
@@ -223,7 +224,7 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     AddEventTools(g->bench, whyNothing);
     AddLogTool(g->bench, dao::LogDirectory());
     AddScenarioTool(g->bench, whyNothing);
-    AddWaitReadyTool(g->bench);
+    AddWaitUntilTool(g->bench);
     AddTravelTool(g->bench);
     AddDialogueTool(g->bench);
     // A second on each screen a tool opens and closes in one call, so that

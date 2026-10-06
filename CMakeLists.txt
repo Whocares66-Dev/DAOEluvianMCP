@@ -142,6 +142,7 @@ add_library(
     src/core/Erf.cpp
     src/core/EventBus.cpp
     src/core/EventLog.cpp
+    src/core/Expect.cpp
     src/core/FrameQueue.cpp
     src/core/Http.cpp
     src/core/LevelUp.cpp
@@ -157,6 +158,7 @@ add_library(
     src/core/Scenario.cpp
     src/core/ToolRegistry.cpp
     src/core/Travel.cpp
+    src/core/Until.cpp
 )
 el_apply_warnings(el_core)
 target_include_directories(el_core PUBLIC "${PROJECT_SOURCE_DIR}/src")

@@ -135,7 +135,7 @@ TEST_CASE("mistakes in the steps are failed steps that say what is wrong", "[sce
     };
     CHECK_THAT(errorOf(Json{{"tool", "nothing"}}), ContainsSubstring("no tool \"nothing\""));
     CHECK_THAT(errorOf(Json{{"tool", "scenario"}}), ContainsSubstring("not scenario"));
-    CHECK_THAT(errorOf(Json{{"dance", true}}), ContainsSubstring("one of tool, waitFor, sleepMs or expect"));
+    CHECK_THAT(errorOf(Json{{"dance", true}}), ContainsSubstring("one of tool, waitFor, sleepMs, expect or until"));
     CHECK_THAT(errorOf(Json{{"expect", {{"from", "nobody"}}}}), ContainsSubstring("no earlier step is labelled"));
     CHECK_THAT(errorOf(Json{{"expect", {{"from", "x"}}}}), ContainsSubstring("labelled"));
     CHECK_THROWS_AS(f.Run(Json{{"steps", Json::array()}}), ToolError);

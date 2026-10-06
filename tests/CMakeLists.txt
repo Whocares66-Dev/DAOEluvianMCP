@@ -41,7 +41,7 @@ add_executable(
     test_requirements.cpp
     test_rest.cpp
     test_scenario.cpp
-    test_ready.cpp
+    test_until.cpp
     test_travel.cpp
 )
 el_apply_warnings(el_tests)

@@ -1,6 +1,8 @@
 #include "core/Scenario.h"
 
 #include "core/Args.h"
+#include "core/Expect.h"
+#include "core/Until.h"
 
 #include <algorithm>
 #include <chrono>
@@ -28,69 +30,9 @@ double MsSince(Clock::time_point start)
     return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
 }
 
-// The value at `pointer` (a JSON pointer, "/given", "/creatures/0/id") in a
-// step's answer; nullopt if there is none there.
-std::optional<Json> At(const Json &answer, const std::string &pointer)
-{
-    try
-    {
-        const Json::json_pointer path(pointer);
-        if (!answer.contains(path))
-        {
-            return std::nullopt;
-        }
-        return std::make_optional(answer.at(path));
-    }
-    catch (const Json::exception &)
-    {
-        throw ToolError(std::format(R"(scenario: `pointer` "{}" is not a JSON pointer like "/given")", pointer));
-    }
-}
-
-// One expectation over a value: equals, notEquals, exists, atLeast, atMost.
-// Returns what failed, or empty.
-std::string Check(const Json &expect, const std::optional<Json> &actual)
-{
-    const auto describe = [&actual] { return actual ? actual->dump() : std::string("nothing"); };
-    if (const auto it = expect.find("exists"); it != expect.end())
-    {
-        if (it->is_boolean() && actual.has_value() != it->get<bool>())
-        {
-            return std::format("expected it {}to exist; found {}", it->get<bool>() ? "" : "not ", describe());
-        }
-    }
-    if (const auto it = expect.find("equals"); it != expect.end() && (!actual || *actual != *it))
-    {
-        return std::format("expected {}; found {}", it->dump(), describe());
-    }
-    if (const auto it = expect.find("notEquals"); it != expect.end() && actual && *actual == *it)
-    {
-        return std::format("expected anything but {}", it->dump());
-    }
-    for (const auto *bound : {"atLeast", "atMost"})
-    {
-        const auto it = expect.find(bound);
-        if (it == expect.end())
-        {
-            continue;
-        }
-        if (!it->is_number() || !actual || !actual->is_number())
-        {
-            return std::format("expected a number {} {}; found {}", bound, it->dump(), describe());
-        }
-        const double have = actual->get<double>();
-        const double limit = it->get<double>();
-        if (std::string_view(bound) == "atLeast" ? have < limit : have > limit)
-        {
-            return std::format("expected {} {}; found {}", bound, it->dump(), describe());
-        }
-    }
-    return {};
-}
-
 std::string KindOf(const Json &step)
 {
-    for (const auto *kind : {"tool", "waitFor", "sleepMs", "expect"})
+    for (const auto *kind : {"tool", "waitFor", "sleepMs", "expect", "until"})
     {
         if (step.contains(kind))
         {
@@ -213,7 +155,11 @@ class Run
         {
             return Expect(step, line);
         }
-        throw ToolError("a step is one of tool, waitFor, sleepMs or expect");
+        if (kind == "until")
+        {
+            return Until(step, line, answer);
+        }
+        throw ToolError("a step is one of tool, waitFor, sleepMs, expect or until");
     }
 
     void CallTool(const Json &step, Json &line, Json &answer)
@@ -301,9 +247,31 @@ class Run
             throw ToolError(std::format("no earlier step is labelled \"{}\"", expect["from"].get<std::string>()));
         }
         const std::string pointer = expect.value("pointer", "");
-        const auto actual = At(from->second, pointer);
+        const auto actual = expect::At(from->second, pointer);
         line["actual"] = actual ? *actual : Json(nullptr);
-        return Check(expect, actual);
+        return expect::Check(expect, actual);
+    }
+
+    // A tool asked again and again until an expectation on its answer holds
+    // (core/Until.h, #85), within the time left.
+    std::string Until(const Json &step, Json &line, Json &answer)
+    {
+        const Args stepArgs(step, "scenario");
+        const auto asked = std::chrono::milliseconds(stepArgs.Integer("timeoutMs", 30000, 0, 300000));
+        const auto within = std::min(asked, Left());
+        answer = PollUntil(bench_, step.at("until"), within);
+        line["until"] = answer;
+        if (answer.value("held", false))
+        {
+            return {};
+        }
+        if (within < asked)
+        {
+            timedOut_ = true;
+            return std::format("the scenario's time ran out {} ms into a wait of {} ms", within.count(), asked.count());
+        }
+        return std::format("it did not hold within {} ms: {}", within.count(),
+                           answer.value("unmet", answer.value("lastError", std::string("no answer"))));
     }
 
     Bench &bench_;
@@ -329,7 +297,8 @@ void AddScenarioTool(Bench &bench, std::function<Json()> whyNothing)
              "Each one of: {\"tool\": name, \"args\": {...}, \"as\": label}; {\"waitFor\": {\"topic\": ..., "
              "\"match\": {...}}, \"timeoutMs\": n, \"since\": cursor, \"as\": label}; {\"sleepMs\": n}; "
              "{\"expect\": {\"from\": label, \"pointer\": \"/given\", \"equals\" | \"notEquals\" | \"exists\" | "
-             "\"atLeast\" | \"atMost\": value}}"}}},
+             "\"atLeast\" | \"atMost\": value}}; {\"until\": {\"tool\", \"args\", \"pointer\", an expectation, "
+             "\"intervalMs\"}, \"timeoutMs\": n, \"as\": label}, as wait_until"}}},
           {"continueOnError", {{"type", "boolean"}, {"description", "Run on past a failed step; default false"}}},
           {"budgetMs",
            {{"type", "integer"},
