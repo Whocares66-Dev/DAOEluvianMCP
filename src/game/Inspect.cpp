@@ -1188,7 +1188,8 @@ void AddInspect(Bench &bench, const Watch &watch)
         "inspect",
         KindSpec{"creatures",
                  "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
-                 "(party, hostile, neutral: the hero's view), its `group` (the game's own: 0 the player's, 1 "
+                 "(party, hostile, neutral: from the creature controlled, the hero where none is), its `group` (the "
+                 "game's own: 0 the player's, 1 "
                  "hostile, 2 friendly), position, distance, dead, health and mana or stamina, combat state, "
                  "whom it attacks, its `room` (number; `seen` by the party: never, which the game draws "
                  "black with what stands in it, in view, or before; `shown`; and how much the game wants "

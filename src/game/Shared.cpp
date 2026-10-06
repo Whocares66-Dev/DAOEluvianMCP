@@ -57,15 +57,24 @@ Json Depletable(ObjectId id, std::int32_t property)
                 {"max", api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL)}};
 }
 
-// Whose side a creature is on, from the hero's view: the party, hostile, or
-// neither.
+// Whose side a creature is on: the party, hostile to it, or neither. Judged
+// from the creature the player controls while that one is in the party, the
+// hero where none is: the story can take the hero out of the party, and in
+// Fort Drakon's rescue, Leliana and Dog the party and the hero a captive,
+// every guard attacking them read neutral from the hero's view
+// (turn-based-agent, 2026-10-06, #94).
 std::string Side(ObjectId id, ObjectId hero, const std::set<ObjectId> &party)
 {
     if (party.contains(id))
     {
         return "party";
     }
-    if (hero != kInvalidObject && api::IsObjectHostile(hero, id) != 0)
+    ObjectId from = api::GetMainControlled();
+    if (from == kInvalidObject || !party.contains(from))
+    {
+        from = hero;
+    }
+    if (from != kInvalidObject && api::IsObjectHostile(from, id) != 0)
     {
         return "hostile";
     }
