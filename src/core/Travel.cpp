@@ -208,6 +208,14 @@ class Journey
         {
             return std::move(*refused);
         }
+        // The pin of the area the party is in: the game closes the map
+        // and loads nothing, so no other area comes to wait for
+        // (turn-based-agent, the market's own pin, 2026-10-06, #95).
+        if (!startArea_.empty() && pin->value("area", std::string()) == startArea_)
+        {
+            answer_["already"] = true;
+            return End(true, "the party is in " + name + " already: its pin only closed the map");
+        }
         return Arrive(since, *pin, name);
     }
 

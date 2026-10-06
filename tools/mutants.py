@@ -2249,6 +2249,38 @@ MUTANTS = [
         'return "the " + gui->at("fullScreen").get<std::string>() + " screen";',
         'return std::string("a screen");',
     ),
+    # a far way walked a leg at a time (#82)
+    Mutant(
+        "travel walks a far way's legs only once",
+        TRAVEL,
+        "if (end && (!wentToReached_ || (nearer && fresh)))",
+        "if (end && (!wentToReached_ || (nearer && fresh && !wentToReached_)))",
+    ),
+    Mutant(
+        "travel walks another leg that gets no nearer",
+        TRAVEL,
+        "const bool nearer = !legFrom_ || now < *legFrom_ - kLegGain;",
+        "const bool nearer = !legFrom_ || now <= *legFrom_;",
+    ),
+    Mutant(
+        "travel walks another leg to the same end",
+        TRAVEL,
+        "if (end && (!wentToReached_ || (nearer && fresh)))",
+        "if (end && (!wentToReached_ || (nearer && (fresh || !fresh))))",
+    ),
+    Mutant(
+        "travel counts no legs",
+        TRAVEL,
+        'answer_["legs"] = answer_.value("legs", 0) + 1;',
+        "",
+    ),
+    # the pin of the area the party is in (#95)
+    Mutant(
+        "travel waits out its time at the pin of the area the party is in",
+        TRAVEL,
+        'if (!startArea_.empty() && pin->value("area", std::string()) == startArea_)',
+        'if (!startArea_.empty() && pin->value("area", std::string()) == "" + name)',
+    ),
 ]
 
 

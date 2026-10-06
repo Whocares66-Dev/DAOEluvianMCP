@@ -440,7 +440,13 @@ struct World
         if (mapUp && message.starts_with(click))
         {
             const Json &pin = pins.at(std::stoi(message.substr(click.size())));
-            if (pin.value("state", "") == "active")
+            if (pin.value("state", "") == "active" && pin.value("area", "") == area)
+            {
+                // The pin of the area the party is in: the map closes,
+                // nothing loads (#95).
+                mapUp = false;
+            }
+            else if (pin.value("state", "") == "active")
             {
                 // At camp, a map closed not by travel sends the
                 // followers home and the hero goes alone.
@@ -1424,4 +1430,16 @@ TEST_CASE("a leg that gets no nearer ends the far journey, though the search end
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == false);
     CHECK(answer["legs"] == 1); // the first got no nearer, so no other, though the search ends further on
+}
+
+TEST_CASE("the pin of the area the party is in closes the map and is said at once", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.area = "lot100ar"; // in Lothering, its pin asked
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["already"] == true);
+    CHECK(answer["reason"] == "the party is in Lothering already: its pin only closed the map");
+    CHECK_FALSE(world.mapUp);
 }
