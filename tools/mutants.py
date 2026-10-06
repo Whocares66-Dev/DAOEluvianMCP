@@ -96,6 +96,7 @@ PARTY = "src/core/Party.cpp"
 SCENARIO = "src/core/Scenario.cpp"
 EXPECT = "src/core/Expect.cpp"
 UNTIL = "src/core/Until.cpp"
+READY = "src/core/Ready.cpp"
 BUS = "src/core/EventBus.cpp"
 BENCH = "src/core/Bench.cpp"
 QUEUE = "src/core/FrameQueue.cpp"
@@ -2210,6 +2211,43 @@ MUTANTS = [
         SCENARIO,
         'if (answer.value("held", false))',
         'if (answer.value("held", false) || !answer.value("held", false))',
+    ),
+    # wait_ready (#84)
+    Mutant(
+        "wait_ready takes a spoken line for a choice",
+        READY,
+        '!talk->value("replies", Json::array()).empty()',
+        'talk->value("replies", Json::array()).empty()',
+    ),
+    Mutant(
+        "wait_ready takes an interface with nothing up for input",
+        READY,
+        'if (gui->contains("popup") && !gui->at("popup").is_null())',
+        'if (gui->contains("popup"))',
+    ),
+    Mutant(
+        "wait_ready takes a cutscene for input",
+        READY,
+        'if (mode == "explore" || mode == "combat")',
+        'if (mode == "explore" || mode == "combat" || mode == "cutscene")',
+    ),
+    Mutant(
+        "wait_ready says nothing of what passed",
+        READY,
+        "for (const auto &event : bench.Events().Since(since, filter, 200).events)",
+        "for (const auto &event : bench.Events().Since(since, filter, 0).events)",
+    ),
+    Mutant(
+        "wait_ready counts what passed before the wait",
+        READY,
+        "const auto since = bench.Events().Next();",
+        "const auto since = std::uint64_t{1};",
+    ),
+    Mutant(
+        "wait_ready names no full screen",
+        READY,
+        'return "the " + gui->at("fullScreen").get<std::string>() + " screen";',
+        'return std::string("a screen");',
     ),
 ]
 

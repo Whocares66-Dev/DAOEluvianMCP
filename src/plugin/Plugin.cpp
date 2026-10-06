@@ -225,6 +225,7 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     AddLogTool(g->bench, dao::LogDirectory());
     AddScenarioTool(g->bench, whyNothing);
     AddWaitUntilTool(g->bench);
+    AddWaitReadyTool(g->bench);
     AddTravelTool(g->bench);
     AddDialogueTool(g->bench);
     // A second on each screen a tool opens and closes in one call, so that
