@@ -39,6 +39,8 @@ struct Picker
     bool sticky = false;      // whether the name stays when the cursor leaves a follower
     std::vector<int> pointed; // the last pixel held, empty when released
     int settling = 0;         // reads of the party after Accept that still show the hero alone
+    int status = 2;           // GetPartyPickerGUIStatus: PP_GUI_STATUS_USE, the party changeable
+    std::string kept;         // one the story keeps: unchoosing them takes no one out
     std::vector<std::string> sent;
 
     Picker()
@@ -66,6 +68,13 @@ struct Picker
                 values.push_back(Read(path.get<std::string>()));
             }
             return Json{{"values", values}};
+        });
+        bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
+            if (status < 0)
+            {
+                throw ToolError("script: not now"); // the status unread
+            }
+            return Json{{"value", status}}; // GetPartyPickerGUIStatus
         });
         bench.Tools().Add(ToolSpec{"screen", "", {}, Thread::Listener}, [](const Json &) -> ToolResult {
             return Json{{"view", {{"width", 1600}, {"height", 1000}}}};
@@ -107,7 +116,11 @@ struct Picker
             }
             else if (text.starts_with("GameModeController.UnselectPartyMember "))
             {
-                chosen.erase(chosen.begin() + std::stoi(text.substr(text.rfind(' ') + 1)));
+                const auto at = chosen.begin() + std::stoi(text.substr(text.rfind(' ') + 1));
+                if (at->name != kept)
+                {
+                    chosen.erase(at);
+                }
             }
             else if (text == "GameModeController.SubmitPartyChanges")
             {
@@ -145,6 +158,50 @@ struct Picker
 };
 
 } // namespace
+
+TEST_CASE("a picker not open to change the party refuses choose, unchoose and clear, saying how", "[party]")
+{
+    Picker picker;
+    picker.status = 0; // shown by ShowPartyPickerGUI alone
+    for (const Json &args : {Json{{"action", "choose"}, {"name", "Leliana"}},
+                             Json{{"action", "unchoose"}, {"name", "Morrigan"}}, Json{{"action", "clear"}}})
+    {
+        CHECK_THROWS_WITH(picker.Party(args), ContainsSubstring("status \"noUse\" (GetPartyPickerGUIStatus 0)"));
+    }
+    CHECK_THROWS_WITH(picker.Party(Json{{"action", "clear"}}), ContainsSubstring("SetPartyPickerGUIStatus [2]"));
+    CHECK(picker.sent.empty());
+    // A look is answered, its status said.
+    CHECK(picker.Party(Json{{"action", "look"}})["status"] == "noUse");
+    picker.status = 1;
+    CHECK_THROWS_WITH(picker.Party(Json{{"action", "clear"}}), ContainsSubstring("status \"readOnly\""));
+}
+
+TEST_CASE("a picker whose status cannot be read is worked as before", "[party]")
+{
+    Picker picker;
+    picker.status = -1;
+    const auto answer = picker.Party(Json{{"action", "unchoose"}, {"name", "Morrigan"}});
+    CHECK(answer["chosen"].size() == 2);
+    CHECK(answer["status"] == -1);
+}
+
+TEST_CASE("an unchoose the picker does not take is said, not answered as done", "[party]")
+{
+    Picker picker;
+    picker.kept = "Morrigan";
+    CHECK_THROWS_WITH(picker.Party(Json{{"action", "unchoose"}, {"name", "Morrigan"}}),
+                      ContainsSubstring("Morrigan was not taken out"));
+}
+
+TEST_CASE("a clear that takes no one out says so", "[party]")
+{
+    Picker picker;
+    picker.chosen.resize(1); // the hero alone, whom the story keeps
+    const auto answer = picker.Party(Json{{"action", "clear"}});
+    CHECK_THAT(answer["note"].get<std::string>(), ContainsSubstring("clear took no one out"));
+    picker.chosen.push_back(picker.scene[0]);
+    CHECK_FALSE(picker.Party(Json{{"action", "clear"}}).contains("note"));
+}
 
 TEST_CASE("look says who is chosen, slot by slot", "[party]")
 {

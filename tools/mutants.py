@@ -2033,6 +2033,49 @@ MUTANTS = [
         'if (answer_["closed"].get<bool>())',
         'if (!answer_["closed"].get<bool>())',
     ),
+    # the party picker's status, and an unchoose or clear that changed nothing (#62)
+    Mutant(
+        "party changes the party in any picker status",
+        PARTY,
+        "status != kUse &&",
+        "status == 99 &&",
+    ),
+    Mutant(
+        "party refuses a look outside the choosing status",
+        PARTY,
+        'action_ != "look" && action_ != "accept"',
+        'action_ != "never" && action_ != "accept"',
+    ),
+    Mutant(
+        "party refuses where the status could not be read",
+        PARTY,
+        "status >= 0 && status != kUse",
+        "status != kUse",
+    ),
+    Mutant(
+        "party answers an unchoose the picker kept as done",
+        PARTY,
+        "if (SlotOf(Chosen()))",
+        "if (false)",
+    ),
+    Mutant(
+        "party says nothing of a clear that took no one out",
+        PARTY,
+        'if (Chosen() == answer_.at("before"))',
+        "if (false)",
+    ),
+    Mutant(
+        "party says a clear took no one out when it did",
+        PARTY,
+        'if (Chosen() == answer_.at("before"))',
+        "if (true)",
+    ),
+    Mutant(
+        "party names the picker's statuses wrongly",
+        PARTY,
+        '{"noUse", "readOnly", "use"}',
+        '{"readOnly", "noUse", "use"}',
+    ),
 ]
 
 

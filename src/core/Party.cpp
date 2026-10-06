@@ -33,6 +33,12 @@ constexpr milliseconds kCloseWait{5000};
 // How long the party may take to hold everyone chosen once the picker closed.
 constexpr milliseconds kSettleWait{3000};
 
+// The picker's status, as the scripts set it before showing it
+// (SetPartyPickerGUIStatus; script.ldf's PP_GUI_STATUS_*): only with USE
+// can the party be changed in it.
+constexpr std::array<std::string_view, 3> kStatusNames = {"noUse", "readOnly", "use"};
+constexpr int kUse = 2;
+
 std::string Lower(std::string text)
 {
     std::ranges::transform(text, text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -62,6 +68,21 @@ class Picker
             throw ToolError("party: the party picker is not up (the game is in mode " + mode +
                             "); the game opens it after a follower joins, and at camp");
         }
+        // Opened by ShowPartyPickerGUI alone it came up with status 0, and
+        // no one could be chosen or taken out, the calls answering as if
+        // done (turn-based-agent, 2026-10-05, #62); the game's own callers
+        // set USE first.
+        const int status = Status();
+        answer_["status"] = status >= 0 && status < static_cast<int>(kStatusNames.size())
+                                ? Json(std::string(kStatusNames[static_cast<std::size_t>(status)]))
+                                : Json(status);
+        if (status >= 0 && status != kUse && action_ != "look" && action_ != "accept")
+        {
+            throw ToolError("party: the picker is up with status " + answer_["status"].dump() +
+                            " (GetPartyPickerGUIStatus " + std::to_string(status) +
+                            "), in which no one can be chosen or taken out. The game opens it to change the party "
+                            "with status use: script SetPartyPickerGUIStatus [2], then ShowPartyPickerGUI again");
+        }
         answer_["before"] = Chosen();
         if (action_ == "choose")
         {
@@ -74,6 +95,11 @@ class Picker
         else if (action_ == "clear")
         {
             Send("GameModeController.ClearPartyPicker");
+            std::this_thread::sleep_for(settle_);
+            if (Chosen() == answer_.at("before"))
+            {
+                answer_["note"] = "clear took no one out: those chosen are the ones the story keeps in the party";
+            }
         }
         else if (action_ == "accept")
         {
@@ -235,6 +261,29 @@ class Picker
             throw ToolError("party: " + name_ + " is not chosen; the chosen: " + answer_.at("before").dump());
         }
         Send("GameModeController.UnselectPartyMember " + std::to_string(*slot));
+        std::this_thread::sleep_for(settle_);
+        if (SlotOf(Chosen()))
+        {
+            throw ToolError("party: " + name_ +
+                            " was not taken out: the picker keeps them, as it keeps those the "
+                            "story wants in the party");
+        }
+    }
+
+    // The picker's status (GetPartyPickerGUIStatus); -1 if it cannot be
+    // read, which refuses nothing.
+    int Status()
+    {
+        try
+        {
+            const Json read = bench_.Invoke("script", Json{{"command", "GetPartyPickerGUIStatus"}}).data;
+            const Json value = read.value("value", Json());
+            return value.is_number() ? value.get<int>() : -1;
+        }
+        catch (const ToolError &)
+        {
+            return -1;
+        }
     }
 
     // Accept, and the party it made once the picker has closed.
@@ -301,7 +350,10 @@ void AddPartyTool(Bench &bench, std::chrono::milliseconds settle)
                  "`name`, a chosen one, as a click on their portrait; clear, all but those the story keeps; "
                  "accept, the party as chosen, answering the `party` once the picker has closed. Four may be "
                  "chosen: unchoose one before choosing a fifth. Refused when the picker is not up (health "
-                 "says mode partypicker when it is).",
+                 "says mode partypicker when it is), and choose, unchoose and clear when it is up with a "
+                 "`status` other than use (the scripts' GetPartyPickerGUIStatus: one opened by "
+                 "ShowPartyPickerGUI alone may be noUse; SetPartyPickerGUIStatus 2 before it opens it to "
+                 "change the party).",
                  Json{{"type", "object"},
                       {"properties",
                        {{"action", {{"type", "string"}, {"enum", {"look", "choose", "unchoose", "accept", "clear"}}}},
