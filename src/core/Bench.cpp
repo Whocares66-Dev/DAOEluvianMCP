@@ -65,9 +65,16 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
             result = frames_.RunAndWait([handler, arguments] { return (*handler)(*arguments); }, options_.frameTimeout);
         }
         record({});
+        // First, where it is read: after a long list it went unseen
+        // (turn-based-agent, 2026-10-05, #66).
         if (!ignored.empty() && result.data.is_object())
         {
-            result.data["ignored"] = ignored;
+            Json said = {{"ignored", ignored}};
+            for (auto it = result.data.begin(); it != result.data.end(); ++it)
+            {
+                said[it.key()] = std::move(*it);
+            }
+            result.data = std::move(said);
         }
         return result;
     }
@@ -112,10 +119,10 @@ void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
 
     Json eventsSchema = {{"type", "object"}, {"properties", kFilterProperties}};
     eventsSchema["properties"]["since"] = {
-        {"type", "integer"},
-        {"minimum", 0},
+        {"oneOf", Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"const", "end"}}})},
         {"description", "The cursor to read from: `next` from the last read, or `cursor` from an answer. 0, the "
-                        "default: the oldest event still held."}};
+                        "default: the oldest event still held. \"end\": no events, and `next` the cursor now, a "
+                        "mark to read from after acting."}};
     eventsSchema["properties"]["limit"] = {
         {"type", "integer"}, {"minimum", 1}, {"maximum", 1000}, {"description", "At most this many; 100 by default."}};
     eventsSchema["properties"]["describe"] = {
@@ -128,7 +135,9 @@ void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
                  "own prefix), in "
                  "order, each with its sequence number, frame and time. Returns `next`, the cursor to read from "
                  "next time (pass it as `since`; other tools' answers call theirs `cursor`), and `missed`, how many "
-                 "were too old to keep. Filter with `topic`: one, a prefix or an array of them.",
+                 "were too old to keep. Filter with `topic`: one, a prefix or an array of them. With no `since` it "
+                 "reads from the oldest held, not from now: take `since: \"end\"` before acting, then read from "
+                 "its `next` after.",
                  eventsSchema, Thread::Listener, true},
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "events");
@@ -136,6 +145,13 @@ void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
             if (args.Bool("describe", false))
             {
                 return Json{{"topics", bench.Topics().List(filter)}};
+            }
+            // A mark taken before acting: the first hundred held, read for
+            // now, were taken as new (turn-based-agent, 2026-10-05, #66).
+            if (args.Has("since") && args.Raw().at("since") == "end")
+            {
+                return Json{
+                    {"events", Json::array()}, {"next", bench.Events().Next()}, {"missed", 0}, {"truncated", false}};
             }
             const auto since = static_cast<std::uint64_t>(args.Integer("since", 0, 0, kNoLimit));
             const auto limit = static_cast<std::size_t>(args.Integer("limit", 100, 1, 1000));

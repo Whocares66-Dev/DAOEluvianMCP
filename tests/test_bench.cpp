@@ -58,6 +58,8 @@ TEST_CASE("an argument a tool does not have is named in its answer, with the one
                       [](const Json &) -> ToolResult { return Json{{"events", Json::array()}}; });
     const auto answer = bench.Invoke("read", Json{{"since", 0}, {"topics", {"eluvian.gui.message"}}}).data;
     REQUIRE(answer.contains("ignored"));
+    CHECK(answer.begin().key() == "ignored"); // said first, not after a long list (#66)
+    CHECK(answer["events"].is_array());
     CHECK(answer["ignored"].size() == 1);
     CHECK(answer["ignored"]["topics"] == "not an argument of read; did you mean `topic`?");
     // Far from any it has: what it takes is said instead.
@@ -95,6 +97,21 @@ TEST_CASE("a tool whose schema lists no arguments, and a kind's own, are not sai
                           [](const Json &) -> ToolResult { return Json::object(); });
     CHECK_FALSE(bench.Invoke("look", Json{{"kind", "game"}, {"id", "0x82"}}).data.contains("ignored"));
     CHECK(bench.Invoke("look", Json{{"kind", "game"}, {"idd", "0x82"}}).data.contains("ignored"));
+}
+
+TEST_CASE("events from the end answers the cursor now, to read from after acting", "[bench]")
+{
+    Bench bench;
+    AddEventTools(bench);
+    bench.Events().Emit("eluvian.old", Json::object());
+    bench.Events().Emit("eluvian.old", Json::object());
+    const auto mark = bench.Invoke("events", Json{{"since", "end"}}).data;
+    CHECK(mark["events"].empty());
+    CHECK(mark["next"] == bench.Events().Next());
+    bench.Events().Emit("eluvian.new", Json::object());
+    const auto after = bench.Invoke("events", Json{{"since", mark["next"]}}).data;
+    REQUIRE(after["events"].size() == 1);
+    CHECK(after["events"][0]["topic"] == "eluvian.new");
 }
 
 TEST_CASE("events returns the bus from a cursor, filtered", "[bench]")

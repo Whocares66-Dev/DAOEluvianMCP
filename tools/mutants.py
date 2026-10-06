@@ -1717,10 +1717,10 @@ MUTANTS = [
     # #54: each kind's points counted by levelup itself.
     # what a call ignored is said (#61)
     Mutant(
-        "the bench says nothing of an argument it ignored",
+        "an answer with an argument ignored loses its own fields",
         BENCH,
-        'result.data["ignored"] = ignored;',
-        'result.data["kept"] = ignored;',
+        "said[it.key()] = std::move(*it);",
+        "(void)it;",
     ),
     Mutant(
         "a refusal keeps quiet of what it ignored",
@@ -2075,6 +2075,19 @@ MUTANTS = [
         PARTY,
         '{"noUse", "readOnly", "use"}',
         '{"readOnly", "noUse", "use"}',
+    ),
+    # events from now; an answer's ignored said first (#66)
+    Mutant(
+        "events from the end reads from the start",
+        BENCH,
+        '{"events", Json::array()}, {"next", bench.Events().Next()}, {"missed", 0}, {"truncated", false}};',
+        '{"events", Json::array()}, {"next", 0}, {"missed", 0}, {"truncated", false}};',
+    ),
+    Mutant(
+        "an answer's ignored is said last, after the rest",
+        BENCH,
+        'Json said = {{"ignored", ignored}};',
+        "Json said = Json::object();",
     ),
 ]
 
