@@ -14,11 +14,15 @@ namespace
 
 const bool kQuiet = [] {
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    // The report functions are the debug runtime's: in a release build they
+    // are macros of nothing, and `kind` went unused (#76).
+#if defined(_DEBUG)
     for (const int kind : {_CRT_WARN, _CRT_ERROR, _CRT_ASSERT})
     {
         _CrtSetReportMode(kind, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
         _CrtSetReportFile(kind, _CRTDBG_FILE_STDERR);
     }
+#endif
     return true;
 }();
 

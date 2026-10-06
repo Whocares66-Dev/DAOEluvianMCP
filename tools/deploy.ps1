@@ -24,16 +24,20 @@
     -Remove deletes the eluvian folder (and a loose eluvian.dll and .pdb); the loader and
     other plugins stay.
 
+    The game plays the release build: optimised, the release runtime, its pdb kept (#76). The
+    debug runtime's heap checks validate every allocation and free under the process heap's
+    lock, and both hang samples of 2026-10-05 stood in them. The checks stay in the gate.
+
 .EXAMPLE
-    .\tools\deploy.ps1                 # debug build into the GOG install
-    .\tools\deploy.ps1 -Preset release
+    .\tools\deploy.ps1                 # the release build into the GOG install
+    .\tools\deploy.ps1 -Preset debug   # the debug build, to step through
     .\tools\deploy.ps1 -Loader         # replace the loader with this build's too
     .\tools\deploy.ps1 -Remove
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('debug', 'release')]
-    [string] $Preset = 'debug',
+    [string] $Preset = 'release',
     [switch] $Remove,
     [switch] $Loader,
     [string] $Game = 'C:\Program Files (x86)\GOG Galaxy\Games\Dragon Age Origins\bin_ship',

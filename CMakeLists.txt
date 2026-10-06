@@ -47,6 +47,14 @@ function(el_apply_warnings target)
                 ${target}
                 PRIVATE /external:anglebrackets /external:W0
             )
+            # C4702, unreachable code, is the optimiser's word after
+            # inlining: a test's function that always throws made
+            # FrameQueue's set_value after it unreachable in the release
+            # build only (#76, 2026-10-05). The debug gate keeps it.
+            target_compile_options(
+                ${target}
+                PRIVATE $<$<NOT:$<CONFIG:Debug>>:/wd4702>
+            )
         endif()
         if(EL_ANALYZE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
             target_compile_options(

@@ -41,7 +41,8 @@ As DAOLib: Visual Studio 2022 with the C++ workload, [vcpkg](https://github.com/
 ```powershell
 git submodule update --init --recursive         # extern\DAOLib, and its address library
 .\tools\build.ps1 -Preset debug -Test           # the plugin, DAOLib's loader, the tests
-.\tools\deploy.ps1                              # into the game's bin_ship (game closed)
+.\tools\build.ps1 -Preset release -Test         # what the game plays: optimised, its pdb kept (#76)
+.\tools\deploy.ps1                              # the release build into the game's bin_ship (game closed)
 .\tools\deploy.ps1 -Remove                      # the plugin out again
 .\tools\build.ps1 -Preset core; python tools\mutants.py   # src/core broken on purpose: each mutant must be caught
 ```

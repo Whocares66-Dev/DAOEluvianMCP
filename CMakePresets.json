@@ -36,8 +36,8 @@
         {
             "name": "release",
             "inherits": ["x86"],
-            "displayName": "Release (plugin and tests)",
-            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+            "displayName": "Release with symbols (plugin and tests; what the game plays, #76)",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
         },
         {
             "name": "debug-asan",

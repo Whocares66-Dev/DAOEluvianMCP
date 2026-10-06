@@ -58,8 +58,11 @@ extern/DAOLib the submodule
 .\tools\build.ps1 -Preset core -Test            # src/core and its tests only: the fast loop
 .\tools\build.ps1 -Preset debug -Test           # eluvian.dll, DAOLib's loader, all tests
 .\tools\build.ps1 -Preset debug -Format -Lint   # formatters, then clang-tidy, ruff and PSScriptAnalyzer
-.\tools\deploy.ps1                              # into the game (closed); -Remove takes it out
+.\tools\build.ps1 -Preset release -Test         # what the game plays (RelWithDebInfo)
+.\tools\deploy.ps1                              # the release build into the game (closed); -Remove takes it out
 ```
+
+**The game plays the release build** (#76): optimised, the release runtime, its pdb kept so crash and hang logs name our frames. The debug runtime validates every allocation and free under the process heap's lock, and both hang samples of 2026-10-05 stood there (lib-agent). The mod moves with it, at one restart agreed with turn-based-agent. The gate below stays debug.
 
 ## Before every commit
 
