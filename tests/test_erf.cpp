@@ -16,11 +16,11 @@ namespace
 std::vector<std::byte> Archive(const std::string &magic, std::size_t header, std::size_t entry,
                                const std::vector<std::string> &names)
 {
-    std::vector<std::byte> bytes(header + names.size() * entry);
+    std::vector<std::byte> bytes(header + (names.size() * entry));
     const auto put16 = [&bytes](std::size_t at, const std::string &text) {
         for (std::size_t i = 0; i < text.size(); ++i)
         {
-            bytes[at + 2 * i] = static_cast<std::byte>(text[i]);
+            bytes[at + (2 * i)] = static_cast<std::byte>(text[i]);
         }
     };
     put16(0, magic);
@@ -31,7 +31,7 @@ std::vector<std::byte> Archive(const std::string &magic, std::size_t header, std
     }
     for (std::size_t i = 0; i < names.size(); ++i)
     {
-        put16(header + i * entry, names[i]);
+        put16(header + (i * entry), names[i]);
     }
     return bytes;
 }
@@ -41,14 +41,14 @@ std::vector<std::byte> Archive(const std::string &magic, std::size_t header, std
 TEST_CASE("an ERF V2.0 index gives its names and its length", "[erf]")
 {
     const auto bytes = Archive("ERF V2.0", 32, 72, {"ogre_default.utc", "hurlock_emissary_off.utc"});
-    REQUIRE(ErfIndexBytes(bytes) == 32 + 2 * 72);
+    REQUIRE(ErfIndexBytes(bytes) == 32 + (2 * 72));
     CHECK(ErfNames(bytes) == std::vector<std::string>{"ogre_default.utc", "hurlock_emissary_off.utc"});
 }
 
 TEST_CASE("an ERF V2.2 index, the DLC's, has a longer header and entries", "[erf]")
 {
     const auto bytes = Archive("ERF V2.2", 56, 76, {"a.uti", "b.plo", "c.utc"});
-    REQUIRE(ErfIndexBytes(bytes) == 56 + 3 * 76);
+    REQUIRE(ErfIndexBytes(bytes) == 56 + (3 * 76));
     CHECK(ErfNames(bytes) == std::vector<std::string>{"a.uti", "b.plo", "c.utc"});
 }
 

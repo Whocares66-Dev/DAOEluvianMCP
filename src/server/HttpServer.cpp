@@ -117,7 +117,8 @@ std::uint16_t HttpServer::Start(std::uint16_t first, int tries)
     {
         const auto port = static_cast<std::uint16_t>(first == 0 ? 0 : first + i);
         const SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (listener == INVALID_SOCKET)
+        // INVALID_SOCKET is Winsock's macro, ~0 cast to SOCKET, read as signed by clang (#77).
+        if (listener == INVALID_SOCKET) // NOLINT(modernize-use-integer-sign-comparison)
         {
             return 0;
         }
@@ -157,7 +158,8 @@ void HttpServer::Accept()
             continue; // stopping, or no one came for a while
         }
         const SOCKET client = accept(listener, nullptr, nullptr);
-        if (client == INVALID_SOCKET)
+        // INVALID_SOCKET is Winsock's macro, ~0 cast to SOCKET, read as signed by clang (#77).
+        if (client == INVALID_SOCKET) // NOLINT(modernize-use-integer-sign-comparison)
         {
             Sleep(10); // out of resources for a moment; try again
             continue;

@@ -100,6 +100,59 @@ const Catalog &Resources()
 
 } // namespace
 
+namespace
+{
+
+// The resources kind's handler, registered by AddResources.
+ToolResult KindResources(const Json &raw)
+{
+    const Args args(raw, "inspect");
+    const std::string type = Lower(args.String("type", ""));
+    std::vector<std::string> words;
+    {
+        const std::string match = Lower(args.String("match", ""));
+        std::size_t at = 0;
+        while (at < match.size())
+        {
+            const auto end = std::min(match.find(' ', at), match.size());
+            if (end > at)
+            {
+                words.push_back(match.substr(at, end - at));
+            }
+            at = end + 1;
+        }
+    }
+    const auto most = static_cast<std::size_t>(args.Integer("most", 100, 1, 2000));
+    const Catalog &catalog = Resources();
+    Json found = Json::array();
+    std::size_t count = 0;
+    for (const auto &[name, archive] : catalog.where)
+    {
+        const auto dot = name.rfind('.');
+        if (!type.empty() && (dot == std::string::npos || name.substr(dot + 1) != type))
+        {
+            continue;
+        }
+        if (!std::ranges::all_of(words,
+                                 [&name](const std::string &word) { return name.find(word) != std::string::npos; }))
+        {
+            continue;
+        }
+        if (++count <= most)
+        {
+            found.push_back(Json{{"name", dot == std::string::npos ? name : name.substr(0, dot)},
+                                 {"type", dot == std::string::npos ? "" : name.substr(dot + 1)},
+                                 {"in", archive}});
+        }
+    }
+    return Json{{"count", count},
+                {"resources", std::move(found)},
+                {"archives", catalog.archives},
+                {"folder", catalog.root.string()}};
+}
+
+} // namespace
+
 void AddResources(Bench &bench)
 {
     bench.Tools().AddKind(
@@ -113,51 +166,7 @@ void AddResources(Bench &bench)
                  "are loaded in any game; an add-in's only where it runs. Read from disk on the first call (a "
                  "few seconds), then kept.",
                  Thread::Listener},
-        [](const Json &raw) -> ToolResult {
-            const Args args(raw, "inspect");
-            const std::string type = Lower(args.String("type", ""));
-            std::vector<std::string> words;
-            {
-                const std::string match = Lower(args.String("match", ""));
-                std::size_t at = 0;
-                while (at < match.size())
-                {
-                    const auto end = std::min(match.find(' ', at), match.size());
-                    if (end > at)
-                    {
-                        words.push_back(match.substr(at, end - at));
-                    }
-                    at = end + 1;
-                }
-            }
-            const auto most = static_cast<std::size_t>(args.Integer("most", 100, 1, 2000));
-            const Catalog &catalog = Resources();
-            Json found = Json::array();
-            std::size_t count = 0;
-            for (const auto &[name, archive] : catalog.where)
-            {
-                const auto dot = name.rfind('.');
-                if (!type.empty() && (dot == std::string::npos || name.substr(dot + 1) != type))
-                {
-                    continue;
-                }
-                if (!std::ranges::all_of(
-                        words, [&name](const std::string &word) { return name.find(word) != std::string::npos; }))
-                {
-                    continue;
-                }
-                if (++count <= most)
-                {
-                    found.push_back(Json{{"name", dot == std::string::npos ? name : name.substr(0, dot)},
-                                         {"type", dot == std::string::npos ? "" : name.substr(dot + 1)},
-                                         {"in", archive}});
-                }
-            }
-            return Json{{"count", count},
-                        {"resources", std::move(found)},
-                        {"archives", catalog.archives},
-                        {"folder", catalog.root.string()}};
-        });
+        [](const Json &raw) -> ToolResult { return KindResources(raw); });
 }
 
 } // namespace eluvian::game

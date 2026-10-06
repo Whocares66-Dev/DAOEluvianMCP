@@ -31,6 +31,74 @@ Json CameraJson(const dao::CameraController &camera)
 
 } // namespace
 
+namespace
+{
+
+// The camera tool's handler, registered by AddCamera.
+ToolResult ToolCamera(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "camera");
+    const Args args(raw, "camera");
+    const auto action = args.Choice("action", {"read", "face", "follow", "turn"}, "read");
+    auto *camera = dao::camera::Current();
+    if (camera == nullptr)
+    {
+        throw ToolError("camera: there is no camera to move now: it moves in explore and combat mode, not "
+                        "in a menu, a conversation, a cutscene or while loading (health says the mode)");
+    }
+    auto *scene = camera->Scene();
+    if (action == "follow")
+    {
+        const ObjectId target = args.Id("target", kCreatureHint);
+        camera->Follow(target);
+        camera->SnapToTarget();
+    }
+    else if (action == "face" || action == "turn")
+    {
+        if (scene == nullptr)
+        {
+            throw ToolError("camera: the game has no scene camera to turn now");
+        }
+        float yaw = 0;
+        if (action == "turn")
+        {
+            if (!args.Has("yawDegrees"))
+            {
+                throw ToolError("camera: turn needs `yawDegrees`");
+            }
+            yaw = static_cast<float>(args.Number("yawDegrees", 0)) * std::numbers::pi_v<float> / 180.0F;
+        }
+        else
+        {
+            const auto target = args.OptionalId("target", kCreatureHint);
+            if (!target && !args.Has("point"))
+            {
+                throw ToolError("camera: face needs a `target` or a `point`");
+            }
+            const auto to = target ? api::GetPosition(*target) : VectorOf(args.Raw().at("point"), "camera: `point`");
+            const auto focus = camera->Focus();
+            if (Distance(focus, to) < 0.1F)
+            {
+                throw ToolError("camera: the focus is on that point already, so there is no direction to "
+                                "face; follow another creature first, or turn to `yawDegrees`");
+            }
+            // The yaw is the direction from the focus to the camera:
+            // the far side of the focus from what is to be seen.
+            yaw = std::atan2(focus.y - to.y, focus.x - to.x);
+        }
+        scene->SetYaw(yaw);
+    }
+    Json answer = CameraJson(*camera);
+    answer["action"] = action;
+    if (action != "read")
+    {
+        answer["note"] = "the view is as asked from the next frame: screenshot after this call";
+    }
+    return answer;
+}
+
+} // namespace
+
 void AddCamera(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
@@ -52,67 +120,7 @@ void AddCamera(Bench &bench, const Watch &watch)
                           {"description", "action=turn: the direction from the focus to the camera, from +x "
                                           "toward +y"}}}}}},
                  Thread::Frame},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "camera");
-            const Args args(raw, "camera");
-            const auto action = args.Choice("action", {"read", "face", "follow", "turn"}, "read");
-            auto *camera = dao::camera::Current();
-            if (camera == nullptr)
-            {
-                throw ToolError("camera: there is no camera to move now: it moves in explore and combat mode, not "
-                                "in a menu, a conversation, a cutscene or while loading (health says the mode)");
-            }
-            auto *scene = camera->Scene();
-            if (action == "follow")
-            {
-                const ObjectId target = args.Id("target", kCreatureHint);
-                camera->Follow(target);
-                camera->SnapToTarget();
-            }
-            else if (action == "face" || action == "turn")
-            {
-                if (scene == nullptr)
-                {
-                    throw ToolError("camera: the game has no scene camera to turn now");
-                }
-                float yaw = 0;
-                if (action == "turn")
-                {
-                    if (!args.Has("yawDegrees"))
-                    {
-                        throw ToolError("camera: turn needs `yawDegrees`");
-                    }
-                    yaw = static_cast<float>(args.Number("yawDegrees", 0)) * std::numbers::pi_v<float> / 180.0F;
-                }
-                else
-                {
-                    const auto target = args.OptionalId("target", kCreatureHint);
-                    if (!target && !args.Has("point"))
-                    {
-                        throw ToolError("camera: face needs a `target` or a `point`");
-                    }
-                    const auto to =
-                        target ? api::GetPosition(*target) : VectorOf(args.Raw().at("point"), "camera: `point`");
-                    const auto focus = camera->Focus();
-                    if (Distance(focus, to) < 0.1F)
-                    {
-                        throw ToolError("camera: the focus is on that point already, so there is no direction to "
-                                        "face; follow another creature first, or turn to `yawDegrees`");
-                    }
-                    // The yaw is the direction from the focus to the camera:
-                    // the far side of the focus from what is to be seen.
-                    yaw = std::atan2(focus.y - to.y, focus.x - to.x);
-                }
-                scene->SetYaw(yaw);
-            }
-            Json answer = CameraJson(*camera);
-            answer["action"] = action;
-            if (action != "read")
-            {
-                answer["note"] = "the view is as asked from the next frame: screenshot after this call";
-            }
-            return answer;
-        });
+        [&watch](const Json &raw) -> ToolResult { return ToolCamera(watch, raw); });
 }
 
 } // namespace eluvian::game

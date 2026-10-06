@@ -235,6 +235,746 @@ Json Lines(const Json &things, std::string (*line)(const Json &))
 
 } // namespace
 
+namespace
+{
+
+// The game kind's handler, registered by AddInspect.
+ToolResult KindGame(Bench &bench, const Watch &watch, const Json & /*args*/)
+{
+    Json answer = {{"mode", ModeName(watch.Mode())}, {"cursor", bench.Events().Next()}};
+    const auto *app = dao::CClientExoApp::Get();
+    answer["paused"] = app != nullptr && app->IsPaused();
+    answer["popup"] = PopupJson();
+    RequireWorld(watch, "inspect");
+    const ObjectId hero = api::GetHero();
+    answer["hero"] = Brief(hero);
+    answer["controlled"] = Brief(api::GetMainControlled());
+    answer["area"] = hero == kInvalidObject ? Json(nullptr) : Brief(api::GetArea(hero));
+    Json party = Json::array();
+    for (const ObjectId member : PartyOf(hero))
+    {
+        party.push_back(Brief(member));
+    }
+    answer["party"] = std::move(party);
+    Json selected = Json::array();
+    for (const ObjectId member : dao::party::Selected())
+    {
+        selected.push_back(Brief(member));
+    }
+    answer["selected"] = std::move(selected);
+    return answer;
+}
+
+// The data kind's handler, registered by AddInspect.
+ToolResult KindData(const Watch &watch, const Json &raw)
+{
+    const Args args(raw, "inspect");
+    if (watch.Mode() < 0)
+    {
+        throw ToolError("inspect: the game is still starting; health says when it runs");
+    }
+    const auto read = [](const std::string &path) {
+        Json value = {{"path", path}};
+        const auto *attribute = dao::data::Find(Wide(path));
+        value["found"] = attribute != nullptr;
+        if (attribute != nullptr)
+        {
+            using Type = dao::data::Attribute::Type;
+            const auto type = attribute->Kind();
+            value["type"] = Label(type, {{Type::Bool, "bool"},
+                                         {Type::Int, "int"},
+                                         {Type::UnsignedInt, "unsigned"},
+                                         {Type::Short, "short"},
+                                         {Type::Byte, "byte"},
+                                         {Type::Float, "float"}});
+            value["text"] = Narrow(attribute->Text());
+            value["number"] = attribute->Number();
+        }
+        return value;
+    };
+    // A list, as the screens read one (DAOLib 5e10b31, Members): each
+    // member's path, to read the same way (#5's level-up chains).
+    if (args.Bool("members", false))
+    {
+        const auto path = args.String("path");
+        const auto count = dao::data::MemberCount(Wide(path));
+        if (!count)
+        {
+            return Json{{"path", path}, {"found", false}};
+        }
+        Json members = Json::array();
+        for (const auto &member : dao::data::Members(Wide(path)))
+        {
+            members.push_back(Narrow(member));
+        }
+        return Json{{"path", path}, {"found", true}, {"count", *count}, {"members", std::move(members)}};
+    }
+    if (args.Has("paths"))
+    {
+        const auto &paths = args.Raw().at("paths");
+        if (!paths.is_array() || paths.size() > 64)
+        {
+            throw ToolError("inspect: `paths` is a list of up to 64 dotted paths");
+        }
+        Json values = Json::array();
+        for (const auto &path : paths)
+        {
+            if (!path.is_string())
+            {
+                throw ToolError("inspect: each of `paths` is a string, like \"GUI.SelectedChar\"");
+            }
+            values.push_back(read(path.get<std::string>()));
+        }
+        return Json{{"values", std::move(values)}};
+    }
+    return read(args.String("path"));
+}
+
+// A plot named by its resource, or given by its GUID: its GUID.
+std::wstring PlotGuid(const std::string &asked)
+{
+    std::wstring guid = api::GetPlotGUID(Wide(asked));
+    if (guid.empty() && !api::GetPlotResRef(Wide(asked)).empty())
+    {
+        guid = Wide(asked); // given by its GUID
+    }
+    if (guid.empty())
+    {
+        throw ToolError(std::format("inspect: the game has no plot \"{}\"; a plot is named by its "
+                                    "resource, like bed000pt_main",
+                                    asked));
+    }
+    return guid;
+}
+
+// One of a plot's flags: its number and name, whether the party has it
+// set, and its journal line where it is.
+Json PlotFlag(ObjectId party, const std::wstring &guid, std::int32_t flag, const std::wstring &name)
+{
+    Json entry = {{"flag", flag}, {"name", Narrow(name)}};
+    const bool set = api::GetPartyPlotFlag(party, guid, flag, 0) != 0;
+    entry["set"] = set;
+    if (set)
+    {
+        if (auto journal = Narrow(api::GetPlotSummary(guid, flag)); !journal.empty())
+        {
+            entry["journal"] = std::move(journal);
+        }
+    }
+    return entry;
+}
+
+// The plot kind's handler, registered by AddInspect.
+ToolResult KindPlot(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const std::string asked = args.String("plot");
+    const std::wstring guid = PlotGuid(asked);
+    const ObjectId party = api::GetParty(api::GetHero());
+    Json answer = {{"plot", Narrow(api::GetPlotResRef(guid))}, {"guid", Narrow(guid)}};
+    if (const auto entry = api::GetPlotEntryName(guid); entry > 0)
+    {
+        if (auto name = Narrow(dao::tlk::String(static_cast<std::uint32_t>(entry))); !name.empty())
+        {
+            answer["name"] = std::move(name);
+        }
+    }
+    // The flags are numbered from 0 with gaps (a plot's main flags, then
+    // its defined ones from 256), so every number is asked.
+    constexpr std::int32_t kMostFlags = 512;
+    const bool one = args.Has("flag");
+    const Json wanted = one ? args.Raw().at("flag") : Json(nullptr);
+    if (one && !wanted.is_number_integer() && !wanted.is_string())
+    {
+        throw ToolError("inspect: `flag` is a flag's number or its name, as kind=plot lists them");
+    }
+    Json flags = Json::array();
+    Json set = Json::array();
+    for (std::int32_t flag = 0; flag < kMostFlags; ++flag)
+    {
+        const std::wstring name = api::GetPlotFlagName(guid, flag);
+        if (name.empty())
+        {
+            continue;
+        }
+        if (one)
+        {
+            const bool match =
+                wanted.is_string() ? Narrow(name) == wanted.get<std::string>() : wanted.get<std::int64_t>() == flag;
+            if (match)
+            {
+                answer["flag"] = PlotFlag(party, guid, flag, name);
+                return answer;
+            }
+            continue;
+        }
+        Json entry = PlotFlag(party, guid, flag, name);
+        if (entry["set"].get<bool>())
+        {
+            set.push_back(entry["name"]);
+        }
+        flags.push_back(std::move(entry));
+    }
+    if (one)
+    {
+        throw ToolError(std::format("inspect: plot \"{}\" has no flag {}; kind=plot without `flag` lists them", asked,
+                                    wanted.dump()));
+    }
+    answer["flags"] = std::move(flags);
+    answer["set"] = std::move(set);
+    return answer;
+}
+
+// The cursor kind's handler, registered by AddInspect.
+ToolResult KindCursor(const Watch &watch, const Json & /*args*/)
+{
+    RequireWorld(watch, "inspect");
+    const auto *explore = dao::CClientExoApp::CurrentExplore();
+    if (explore == nullptr)
+    {
+        throw ToolError("inspect: the cursor picks in explore and combat mode only (health says the mode)");
+    }
+    const auto object = explore->CursorObject();
+    const auto ground = explore->CursorGround();
+    Json hits = Json::array();
+    for (const auto &hit : explore->CursorHits())
+    {
+        if (hits.size() == 8)
+        {
+            break;
+        }
+        hits.push_back(Json{{"kind", Label(hit.kind, {{dao::world::Hit::Kind::Object, "object"},
+                                                      {dao::world::Hit::Kind::Ground, "ground"},
+                                                      {dao::world::Hit::Kind::Nothing, "nothing"}})},
+                            {"object", Brief(hit.object)},
+                            {"position", VectorJson(hit.position)}});
+    }
+    return Json{{"object", object ? Brief(*object) : Json(nullptr)},
+                {"ground", ground ? VectorJson(*ground) : Json(nullptr)},
+                {"walkable", explore->CursorGroundWalkable()},
+                {"hits", std::move(hits)}};
+}
+
+// The window kind's handler, registered by AddInspect.
+ToolResult KindWindow(const Json & /*args*/)
+{
+    const auto place = GameWindowPlace();
+    if (!place.found)
+    {
+        throw ToolError("inspect: the game has no window yet");
+    }
+    return Json{{"client", {{"x", place.x}, {"y", place.y}, {"width", place.width}, {"height", place.height}}},
+                {"minimised", place.minimised},
+                {"foreground", place.foreground}};
+}
+
+// The dialogue kind's handler, registered by AddInspect.
+ToolResult KindDialogue(const Watch &watch, const Json & /*args*/)
+{
+    RequireWorld(watch, "inspect");
+    const auto *conversation = dao::dialogue::Current();
+    Json answer = {{"active", conversation != nullptr},
+                   {"cutscene", dao::dialogue::InCutscene()},
+                   {"movie", dao::dialogue::InMovie()}};
+    if (conversation == nullptr)
+    {
+        answer["note"] = "no conversation is on the screen";
+        return answer;
+    }
+    const bool female = HeroIsFemale();
+    const auto current = conversation->CurrentLine();
+    const auto line = current ? conversation->LineAt(*current) : std::nullopt;
+    answer["line"] = line ? LineJson(*line, female, conversation) : Json(nullptr);
+    answer["replies"] = RepliesJson(dao::dialogue::Replies(), female, conversation);
+    // Whose conversation it is (DAOLib's Owner, #23).
+    const ObjectId owner = conversation->Owner();
+    answer["owner"] = owner != kInvalidObject ? Brief(owner) : Json(nullptr);
+    return answer;
+}
+
+// The placeables kind's handler, registered by AddInspect.
+ToolResult KindPlaceables(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+    if (around == kInvalidObject)
+    {
+        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+    }
+    const auto from = api::GetPosition(around);
+    const auto radius = args.Number("radius", -1);
+    const bool includeInactive = args.Bool("includeInactive", false);
+    const auto interactive = args.Has("interactive") ? std::optional{args.Bool("interactive", true)} : std::nullopt;
+    std::vector<std::pair<float, Json>> found;
+    for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
+    {
+        if (api::GetObjectType(id) != k::OBJECT_TYPE_PLACEABLE ||
+            (interactive && (api::GetObjectInteractive(id) != 0) != *interactive))
+        {
+            continue;
+        }
+        const bool active = api::GetObjectActive(id) != 0;
+        const auto position = api::GetPosition(id);
+        const float distance = Distance(from, position);
+        if ((!includeInactive && !active) || (radius >= 0 && distance > radius))
+        {
+            continue;
+        }
+        Json placeable = Brief(id);
+        placeable["template"] = Narrow(api::GetResRef(id));
+        placeable["position"] = VectorJson(position);
+        placeable["distance"] = distance;
+        placeable["state"] = api::GetPlaceableState(id);
+        placeable["stateName"] = PlaceableStateWord(id);
+        placeable["active"] = active;
+        placeable["interactive"] = api::GetObjectInteractive(id) != 0;
+        placeable["popup"] = Narrow(api::GetPlaceablePopupText(id));
+        placeable["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
+                                 {"keyTag", Narrow(api::GetPlaceableKeyTag(id))},
+                                 {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
+        if (auto leads = LeadsTo(id, false); !leads.is_null())
+        {
+            placeable["leadsTo"] = std::move(leads);
+        }
+        found.emplace_back(distance, std::move(placeable));
+    }
+    std::ranges::sort(found, {}, &std::pair<float, Json>::first);
+    Json placeables = Json::array();
+    for (auto &[distance, placeable] : found)
+    {
+        placeables.push_back(std::move(placeable));
+    }
+    if (args.Bool("brief", false))
+    {
+        return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"lines", Lines(placeables, PlaceableLine)}};
+    }
+    return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"placeables", std::move(placeables)}};
+}
+
+// The surroundings kind's handler, registered by AddInspect.
+ToolResult KindSurroundings(Bench &bench, const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const double radius = args.Number("radius", 30);
+    // The other kinds' own handlers, on this thread: one read of the
+    // area as they read it, each in brief.
+    const auto look = [&bench, &raw, radius](const char *kind, Json call) {
+        call["kind"] = kind;
+        call["brief"] = true;
+        call["radius"] = radius;
+        if (raw.contains("near"))
+        {
+            call["near"] = raw.at("near");
+        }
+        return bench.Tools().Resolve("inspect", call)->handler(call).data;
+    };
+    const Json creatures = look("creatures", Json::object());
+    const Json usable = look("placeables", Json{{"interactive", true}});
+    const Json exits = look("exits", Json::object());
+    return Json{{"near", creatures.value("near", Json())},
+                {"radius", radius},
+                {"creatures", creatures.value("lines", Json::array())},
+                {"usable", usable.value("lines", Json::array())},
+                {"exits", exits.value("lines", Json::array())}};
+}
+
+// The exits kind's handler, registered by AddInspect.
+ToolResult KindExits(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+    if (around == kInvalidObject)
+    {
+        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+    }
+    const auto from = api::GetPosition(around);
+    std::vector<std::pair<float, Json>> found;
+    for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
+    {
+        const auto type = api::GetObjectType(id);
+        if (type != k::OBJECT_TYPE_PLACEABLE && type != k::OBJECT_TYPE_TRIGGER)
+        {
+            continue;
+        }
+        Json leads = LeadsTo(id, type == k::OBJECT_TYPE_TRIGGER);
+        if (leads.is_null())
+        {
+            continue;
+        }
+        const auto position = api::GetPosition(id);
+        const float distance = Distance(from, position);
+        if (const auto radius = args.Number("radius", -1); radius >= 0 && distance > radius)
+        {
+            continue;
+        }
+        Json exit = Brief(id);
+        exit["kind"] = type == k::OBJECT_TYPE_TRIGGER ? "trigger" : "placeable";
+        exit["leadsTo"] = std::move(leads);
+        exit["position"] = VectorJson(position);
+        exit["distance"] = distance;
+        exit["active"] = api::GetObjectActive(id) != 0;
+        // A text blocker has a destination as an exit does, but its
+        // use shows a line instead of leaving: "Return Path"
+        // (wmt_rand_enc_text_blocker) in random encounters and at
+        // Lothering's south end, taken for the way to the world map
+        // (turn-based-agent, 2026-10-03, #32). Its tag says what it is.
+        if (exit.value("tag", std::string()).find("blocker") != std::string::npos)
+        {
+            exit["blocker"] = true;
+        }
+        found.emplace_back(distance, std::move(exit));
+    }
+    std::ranges::sort(found, {}, &std::pair<float, Json>::first);
+    Json exits = Json::array();
+    for (auto &[distance, exit] : found)
+    {
+        exits.push_back(std::move(exit));
+    }
+    if (args.Bool("brief", false))
+    {
+        return Json{{"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"lines", Lines(exits, ExitLine)}};
+    }
+    return Json{{"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"exits", std::move(exits)}};
+}
+
+// `ints`: the local int names to read on each trigger, up to 32.
+std::vector<std::wstring> IntNames(const Args &args)
+{
+    std::vector<std::wstring> ints;
+    if (args.Has("ints"))
+    {
+        const Json &names = args.Raw().at("ints");
+        if (!names.is_array() || names.size() > 32)
+        {
+            throw ToolError("inspect: `ints` is a list of up to 32 local int names");
+        }
+        for (const auto &name : names)
+        {
+            if (!name.is_string())
+            {
+                throw ToolError("inspect: each of `ints` is a local's name, a string");
+            }
+            ints.push_back(Wide(name.get<std::string>()));
+        }
+    }
+    return ints;
+}
+
+// A trigger's place, distance, whether it is active, where it leads
+// and the locals asked for.
+void Described(ObjectId id, const dao::Vector &position, float distance, const std::vector<std::wstring> &ints,
+               Json &trigger)
+{
+    trigger["position"] = VectorJson(position);
+    trigger["distance"] = distance;
+    trigger["active"] = api::GetObjectActive(id) != 0;
+    if (Json leads = LeadsTo(id, true); !leads.is_null())
+    {
+        trigger["leadsTo"] = std::move(leads);
+    }
+    if (!ints.empty())
+    {
+        Json locals = Json::object();
+        for (const auto &name : ints)
+        {
+            locals[Narrow(name)] = api::GetLocalInt(id, name);
+        }
+        trigger["ints"] = std::move(locals);
+    }
+}
+
+// The triggers kind's handler, registered by AddInspect.
+ToolResult KindTriggers(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+    if (around == kInvalidObject)
+    {
+        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+    }
+    const std::vector<std::wstring> ints = IntNames(args);
+    std::string want = args.Has("tag") ? args.String("tag") : std::string();
+    std::ranges::transform(want, want.begin(),
+                           [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); });
+    const auto from = api::GetPosition(around);
+    const double radius = args.Number("radius", -1);
+    std::vector<std::pair<float, Json>> found;
+    for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
+    {
+        if (api::GetObjectType(id) != k::OBJECT_TYPE_TRIGGER)
+        {
+            continue;
+        }
+        const auto position = api::GetPosition(id);
+        const float distance = Distance(from, position);
+        if (radius >= 0 && distance > radius)
+        {
+            continue;
+        }
+        Json trigger = Brief(id);
+        std::string tag = trigger.value("tag", std::string());
+        std::ranges::transform(tag, tag.begin(),
+                               [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); });
+        if (!want.empty() && tag.find(want) == std::string::npos)
+        {
+            continue;
+        }
+        Described(id, position, distance, ints, trigger);
+        found.emplace_back(distance, std::move(trigger));
+    }
+    std::ranges::sort(found, {}, &std::pair<float, Json>::first);
+    Json triggers = Json::array();
+    for (auto &[distance, trigger] : found)
+    {
+        triggers.push_back(std::move(trigger));
+    }
+    return Json{{"area", Brief(api::GetArea(around))}, {"count", triggers.size()}, {"triggers", std::move(triggers)}};
+}
+
+// The journal kind's handler, registered by AddInspect.
+ToolResult KindJournal(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    Json done = JournalList(L"CompletedPlots");
+    Json answer = {{"active", JournalEntry(L"Journal.ActivePlot.")},
+                   {"quests", JournalList(L"PlotList")},
+                   {"completedCount", done.size()}};
+    if (args.Bool("completed", false))
+    {
+        answer["completed"] = std::move(done);
+    }
+    return answer;
+}
+
+// The creatures kind's handler, registered by AddInspect.
+ToolResult KindCreatures(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId hero = api::GetHero();
+    const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
+    if (around == kInvalidObject)
+    {
+        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+    }
+    const auto from = api::GetPosition(around);
+    const auto radius = args.Number("radius", -1);
+    const auto side =
+        args.Has("side") ? std::optional{args.Choice("side", {"party", "hostile", "neutral"})} : std::nullopt;
+    const bool includeDead = args.Bool("includeDead", true);
+    const bool includeInactive = args.Bool("includeInactive", false);
+    const auto party = PartyOf(hero);
+
+    std::vector<std::pair<float, Json>> found;
+    for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
+    {
+        if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE || (!includeInactive && api::GetObjectActive(id) == 0))
+        {
+            continue;
+        }
+        const float distance = Distance(from, api::GetPosition(id));
+        if (radius >= 0 && distance > radius)
+        {
+            continue;
+        }
+        Json creature = Summary(id, hero, party);
+        if ((side && creature["side"] != *side) || (!includeDead && creature["dead"] == true))
+        {
+            continue;
+        }
+        creature["distance"] = distance;
+        found.emplace_back(distance, std::move(creature));
+    }
+    std::ranges::sort(found, {}, &std::pair<float, Json>::first);
+    Json creatures = Json::array();
+    for (auto &[distance, creature] : found)
+    {
+        creatures.push_back(std::move(creature));
+    }
+    if (args.Bool("brief", false))
+    {
+        return Json{{"near", Brief(around)}, {"count", creatures.size()}, {"lines", Lines(creatures, CreatureLine)}};
+    }
+    return Json{{"near", Brief(around)}, {"count", creatures.size()}, {"creatures", std::move(creatures)}};
+}
+
+// The creature kind's handler, registered by AddInspect.
+ToolResult KindCreature(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
+    if (id == kInvalidObject || api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
+    {
+        throw ToolError(std::format("inspect: {} is not a creature; inspect kind=creatures lists them",
+                                    id == kInvalidObject ? "nothing" : FormatId(id)));
+    }
+    const ObjectId hero = api::GetHero();
+    Json creature = Summary(id, hero, PartyOf(hero));
+    creature["active"] = api::GetObjectActive(id) != 0;
+    creature["facing"] = api::GetFacing(id);
+    creature["appearance"] = api::GetAppearanceType(id);
+    creature["effects"] = Effects(id);
+    creature["abilities"] = Abilities(id);
+    creature["path"] = PathNow(id, api::GetPosition(id), false);
+    return creature;
+}
+
+// What the walk's search answered, in words.
+const char *SearchResult(const dao::world::PathSearch &search)
+{
+    switch (search.result)
+    {
+    case 1:
+        return search.path ? "found" : "gave up part way";
+    case 5:
+        return "none";
+    case 6:
+        return "something is in the way";
+    case 8:
+        return "no walkable ground there";
+    default:
+        return "not finished in time";
+    }
+}
+
+// A walk's search as kind=geometry answers it (#77): what it found, how
+// far it got, what stands in the way, and with `trace`, DAOLib's own
+// reading of it.
+Json WalkJson(const dao::world::PathSearch &search, bool waypoints, bool trace)
+{
+    Json walk = {{"found", search.path.has_value()}};
+    walk["result"] = SearchResult(search);
+    // How many searches it took: one, or more for a long walk the
+    // search went on with from where it gave up (DAOLib dac5e99, #19).
+    walk["legs"] = search.legs;
+    if (search.path)
+    {
+        walk["length"] = search.path->Length();
+        walk["waypointCount"] = search.path->waypoints.size();
+        if (waypoints)
+        {
+            Json points = Json::array();
+            for (const auto &point : search.path->waypoints)
+            {
+                points.push_back(VectorJson(point));
+            }
+            walk["waypoints"] = std::move(points);
+        }
+    }
+    else if (search.partial)
+    {
+        walk["reached"] =
+            search.partial->waypoints.empty() ? Json(nullptr) : VectorJson(search.partial->waypoints.back());
+        walk["lengthSoFar"] = search.partial->Length();
+    }
+    if (search.result == 6)
+    {
+        walk["blocker"] = BlockerJson(search.blocker);
+        walk["note"] = search.blocker == kInvalidObject
+                           ? "a door or the like stands in the way and was not found by name; inspect "
+                             "kind=placeables near `reached` lists what is there"
+                           : "a move there ends COMMAND_FAILED_PATH_ACTION_REQUIRED; order action=use "
+                             "on `blocker` first (a shut door opens), then move";
+    }
+    else if (!search.path && search.blocker != kInvalidObject)
+    {
+        // Not the pathfinder's own word: where a search gives up
+        // part way, DAOLib names the placeable lying across the
+        // way just ahead of where it stopped (c8d7270). A strong
+        // hint, not a fact.
+        walk["blocker"] = BlockerJson(search.blocker);
+        walk["note"] = "the search gave up short of something lying across the way: likely `blocker`, "
+                       "a shut door perhaps. order action=use on it, then ask again or move";
+    }
+    // For DAOLib's own reading of a search that went wrong: each
+    // slice's answer and the search's line for a log.
+    if (trace)
+    {
+        if (search.partial)
+        {
+            Json tail = Json::array();
+            const auto &points = search.partial->waypoints;
+            for (std::size_t i = points.size() > 3 ? points.size() - 3 : 0; i < points.size(); ++i)
+            {
+                tail.push_back(VectorJson(points[i]));
+            }
+            walk["partialTail"] = std::move(tail);
+            walk["partialWaypoints"] = points.size();
+        }
+        walk["answers"] = search.answers;
+        walk["slices"] = search.slices;
+        walk["trace"] = search.trace;
+    }
+    return walk;
+}
+
+// The geometry kind's handler, registered by AddInspect.
+ToolResult KindGeometry(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
+    if (id == kInvalidObject)
+    {
+        throw ToolError("inspect: no creature is controlled and no `id` was given");
+    }
+    const bool waypoints = args.Bool("waypoints", false);
+    const auto from = api::GetPosition(id);
+    Json answer = {{"from", Brief(id)}, {"position", VectorJson(from)}};
+
+    dao::Vector to;
+    dao::world::Sight sight;
+    if (const auto target = args.OptionalId("target", kCreatureHint))
+    {
+        to = api::GetPosition(*target);
+        answer["target"] = Brief(*target);
+        sight = dao::world::LineOfSight(id, *target);
+    }
+    else if (args.Has("point"))
+    {
+        to = VectorOf(args.Raw().at("point"), "inspect: `point`");
+        const auto eye = [](dao::Vector v) {
+            v.z += dao::world::kEyeHeight;
+            return v;
+        };
+        sight = dao::world::LineOfSight(eye(from), eye(to), id);
+    }
+    else
+    {
+        throw ToolError("inspect: kind=geometry needs a `target` (a creature id) or a `point`");
+    }
+    answer["to"] = VectorJson(to);
+    answer["distance"] = Distance(from, to);
+    answer["lineOfSight"] =
+        Json{{"clear", sight.clear}, {"blockedAt", sight.blockedAt ? VectorJson(*sight.blockedAt) : Json()}};
+    answer["path"] = PathNow(id, from, waypoints);
+    // The walk there, when asked for. DAOLib's first FindPath drove the
+    // creature's own search and left creatures unable to walk (in play,
+    // 2026-09-30); its Pathfind since searches apart from any creature's
+    // and was seen in play with the creature walking as before
+    // throughout (lib-agent, 2026-10-01, 1fe01a3 on). It names what is
+    // in the way of a walk, which a move's COMMAND_FAILED_PATH_ACTION_
+    // REQUIRED does not: a test's walk across the Elven Ruins failed
+    // ten times on a shut door it could not name. Still the caller's
+    // to choose: a search is up to 30 ms of the frame.
+    if (args.Bool("walk", false))
+    {
+        const auto search =
+            dao::world::Pathfind(id, to, args.OptionalId("target", kCreatureHint).value_or(kInvalidObject));
+        answer["walk"] = WalkJson(search, waypoints, args.Bool("trace", false));
+    }
+    return answer;
+}
+
+} // namespace
+
 void AddInspect(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(ToolSpec{
@@ -313,30 +1053,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "The game mode, pause, the area, the hero, the creature controlled, the party and who of it is "
                  "selected in the party bar, the game's message box if one is up (`popup`: its text and "
                  "buttons), and the event cursor."},
-        [&bench, &watch](const Json &) -> ToolResult {
-            Json answer = {{"mode", ModeName(watch.Mode())}, {"cursor", bench.Events().Next()}};
-            const auto *app = dao::CClientExoApp::Get();
-            answer["paused"] = app != nullptr && app->IsPaused();
-            answer["popup"] = PopupJson();
-            RequireWorld(watch, "inspect");
-            const ObjectId hero = api::GetHero();
-            answer["hero"] = Brief(hero);
-            answer["controlled"] = Brief(api::GetMainControlled());
-            answer["area"] = hero == kInvalidObject ? Json(nullptr) : Brief(api::GetArea(hero));
-            Json party = Json::array();
-            for (const ObjectId member : PartyOf(hero))
-            {
-                party.push_back(Brief(member));
-            }
-            answer["party"] = std::move(party);
-            Json selected = Json::array();
-            for (const ObjectId member : dao::party::Selected())
-            {
-                selected.push_back(Brief(member));
-            }
-            answer["selected"] = std::move(selected);
-            return answer;
-        });
+        [&bench, &watch](const Json &args) -> ToolResult { return KindGame(bench, watch, args); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -348,69 +1065,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "`members: true` reads the list at `path` (a container's Container.Inventory, the level-up "
                  "screen's chains): `count` and each member's path, to read the same way. "
                  "Reading only. Answers in any mode."},
-        [&watch](const Json &raw) -> ToolResult {
-            const Args args(raw, "inspect");
-            if (watch.Mode() < 0)
-            {
-                throw ToolError("inspect: the game is still starting; health says when it runs");
-            }
-            const auto read = [](const std::string &path) {
-                Json value = {{"path", path}};
-                const auto *attribute = dao::data::Find(Wide(path));
-                value["found"] = attribute != nullptr;
-                if (attribute != nullptr)
-                {
-                    using Type = dao::data::Attribute::Type;
-                    const auto type = attribute->Kind();
-                    value["type"] = type == Type::Bool          ? "bool"
-                                    : type == Type::Int         ? "int"
-                                    : type == Type::UnsignedInt ? "unsigned"
-                                    : type == Type::Short       ? "short"
-                                    : type == Type::Byte        ? "byte"
-                                    : type == Type::Float       ? "float"
-                                                                : "other";
-                    value["text"] = Narrow(attribute->Text());
-                    value["number"] = attribute->Number();
-                }
-                return value;
-            };
-            // A list, as the screens read one (DAOLib 5e10b31, Members): each
-            // member's path, to read the same way (#5's level-up chains).
-            if (args.Bool("members", false))
-            {
-                const auto path = args.String("path");
-                const auto count = dao::data::MemberCount(Wide(path));
-                if (!count)
-                {
-                    return Json{{"path", path}, {"found", false}};
-                }
-                Json members = Json::array();
-                for (const auto &member : dao::data::Members(Wide(path)))
-                {
-                    members.push_back(Narrow(member));
-                }
-                return Json{{"path", path}, {"found", true}, {"count", *count}, {"members", std::move(members)}};
-            }
-            if (args.Has("paths"))
-            {
-                const auto &paths = args.Raw().at("paths");
-                if (!paths.is_array() || paths.size() > 64)
-                {
-                    throw ToolError("inspect: `paths` is a list of up to 64 dotted paths");
-                }
-                Json values = Json::array();
-                for (const auto &path : paths)
-                {
-                    if (!path.is_string())
-                    {
-                        throw ToolError("inspect: each of `paths` is a string, like \"GUI.SelectedChar\"");
-                    }
-                    values.push_back(read(path.get<std::string>()));
-                }
-                return Json{{"values", std::move(values)}};
-            }
-            return read(args.String("path"));
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindData(watch, raw); });
 
     // A plot is a quest's or a story's set of flags, named by its resource
     // (the toolset's plot file: bed000pt_main, gen00pt_party). The scripts'
@@ -432,88 +1087,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "`flag` (a number or a name) asks for one. Flags numbered from 256 are computed by the plot's "
                  "script, which a read here does not run: take those as the game's answer without it. "
                  "Reading only."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const std::string asked = args.String("plot");
-            std::wstring guid = api::GetPlotGUID(Wide(asked));
-            if (guid.empty() && !api::GetPlotResRef(Wide(asked)).empty())
-            {
-                guid = Wide(asked); // given by its GUID
-            }
-            if (guid.empty())
-            {
-                throw ToolError(std::format("inspect: the game has no plot \"{}\"; a plot is named by its "
-                                            "resource, like bed000pt_main",
-                                            asked));
-            }
-            const ObjectId party = api::GetParty(api::GetHero());
-            const auto flagJson = [&](std::int32_t flag, const std::wstring &name) {
-                Json entry = {{"flag", flag}, {"name", Narrow(name)}};
-                const bool set = api::GetPartyPlotFlag(party, guid, flag, 0) != 0;
-                entry["set"] = set;
-                if (set)
-                {
-                    if (auto journal = Narrow(api::GetPlotSummary(guid, flag)); !journal.empty())
-                    {
-                        entry["journal"] = std::move(journal);
-                    }
-                }
-                return entry;
-            };
-            Json answer = {{"plot", Narrow(api::GetPlotResRef(guid))}, {"guid", Narrow(guid)}};
-            if (const auto entry = api::GetPlotEntryName(guid); entry > 0)
-            {
-                if (auto name = Narrow(dao::tlk::String(static_cast<std::uint32_t>(entry))); !name.empty())
-                {
-                    answer["name"] = std::move(name);
-                }
-            }
-            // The flags are numbered from 0 with gaps (a plot's main flags, then
-            // its defined ones from 256), so every number is asked.
-            constexpr std::int32_t kMostFlags = 512;
-            const bool one = args.Has("flag");
-            const Json wanted = one ? args.Raw().at("flag") : Json(nullptr);
-            if (one && !wanted.is_number_integer() && !wanted.is_string())
-            {
-                throw ToolError("inspect: `flag` is a flag's number or its name, as kind=plot lists them");
-            }
-            Json flags = Json::array();
-            Json set = Json::array();
-            for (std::int32_t flag = 0; flag < kMostFlags; ++flag)
-            {
-                const std::wstring name = api::GetPlotFlagName(guid, flag);
-                if (name.empty())
-                {
-                    continue;
-                }
-                if (one)
-                {
-                    const bool match = wanted.is_string() ? Narrow(name) == wanted.get<std::string>()
-                                                          : wanted.get<std::int64_t>() == flag;
-                    if (match)
-                    {
-                        answer["flag"] = flagJson(flag, name);
-                        return answer;
-                    }
-                    continue;
-                }
-                Json entry = flagJson(flag, name);
-                if (entry["set"].get<bool>())
-                {
-                    set.push_back(entry["name"]);
-                }
-                flags.push_back(std::move(entry));
-            }
-            if (one)
-            {
-                throw ToolError(std::format("inspect: plot \"{}\" has no flag {}; kind=plot without `flag` lists them",
-                                            asked, wanted.dump()));
-            }
-            answer["flags"] = std::move(flags);
-            answer["set"] = std::move(set);
-            return answer;
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindPlot(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -525,33 +1099,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "again 15 times a second. No `hits` at all, not even ground, means the game cast no ray: the "
                  "cursor is over a piece of the interface (a creature's name label among them) or outside "
                  "the picture."},
-        [&watch](const Json &) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const auto *explore = dao::CClientExoApp::CurrentExplore();
-            if (explore == nullptr)
-            {
-                throw ToolError("inspect: the cursor picks in explore and combat mode only (health says the mode)");
-            }
-            const auto object = explore->CursorObject();
-            const auto ground = explore->CursorGround();
-            Json hits = Json::array();
-            for (const auto &hit : explore->CursorHits())
-            {
-                if (hits.size() == 8)
-                {
-                    break;
-                }
-                hits.push_back(Json{{"kind", hit.kind == dao::world::Hit::Kind::Object   ? "object"
-                                             : hit.kind == dao::world::Hit::Kind::Ground ? "ground"
-                                                                                         : "nothing"},
-                                    {"object", Brief(hit.object)},
-                                    {"position", VectorJson(hit.position)}});
-            }
-            return Json{{"object", object ? Brief(*object) : Json(nullptr)},
-                        {"ground", ground ? VectorJson(*ground) : Json(nullptr)},
-                        {"walkable", explore->CursorGroundWalkable()},
-                        {"hits", std::move(hits)}};
-        });
+        [&watch](const Json &args) -> ToolResult { return KindCursor(watch, args); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -560,16 +1108,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "picture's top left corner in desktop pixels and its size, and whether it is minimised or the "
                  "`foreground` window (the one the mouse and keys go to). A place in a screenshot, as a fraction "
                  "of the picture, times the size, plus the corner, is where to click. Answers in any mode."},
-        [](const Json &) -> ToolResult {
-            const auto place = GameWindowPlace();
-            if (!place.found)
-            {
-                throw ToolError("inspect: the game has no window yet");
-            }
-            return Json{{"client", {{"x", place.x}, {"y", place.y}, {"width", place.width}, {"height", place.height}}},
-                        {"minimised", place.minimised},
-                        {"foreground", place.foreground}};
-        });
+        [](const Json &args) -> ToolResult { return KindWindow(args); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -582,27 +1121,7 @@ void AddInspect(Bench &bench, const Watch &watch)
             "each with its `place`, text and icon. No replies while the other speaks. The same comes as "
             "events: eluvian.dialogue.line, .replies and .chosen. `cutscene` and `movie` say whether one is playing. "
             "The dialogue tool answers."},
-        [&watch](const Json &) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const auto *conversation = dao::dialogue::Current();
-            Json answer = {{"active", conversation != nullptr},
-                           {"cutscene", dao::dialogue::InCutscene()},
-                           {"movie", dao::dialogue::InMovie()}};
-            if (conversation == nullptr)
-            {
-                answer["note"] = "no conversation is on the screen";
-                return answer;
-            }
-            const bool female = HeroIsFemale();
-            const auto current = conversation->CurrentLine();
-            const auto line = current ? conversation->LineAt(*current) : std::nullopt;
-            answer["line"] = line ? LineJson(*line, female, conversation) : Json(nullptr);
-            answer["replies"] = RepliesJson(dao::dialogue::Replies(), female, conversation);
-            // Whose conversation it is (DAOLib's Owner, #23).
-            const ObjectId owner = conversation->Owner();
-            answer["owner"] = owner != kInvalidObject ? Brief(owner) : Json(nullptr);
-            return answer;
-        });
+        [&watch](const Json &args) -> ToolResult { return KindDialogue(watch, args); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -614,65 +1133,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "and the level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
                  "waypoint's there). order action=use uses one. `interactive: true` keeps only those that can be "
                  "used; `brief: true` answers a line each (`lines`) instead."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
-            if (around == kInvalidObject)
-            {
-                throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
-            }
-            const auto from = api::GetPosition(around);
-            const auto radius = args.Number("radius", -1);
-            const bool includeInactive = args.Bool("includeInactive", false);
-            const auto interactive =
-                args.Has("interactive") ? std::optional{args.Bool("interactive", true)} : std::nullopt;
-            std::vector<std::pair<float, Json>> found;
-            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
-            {
-                if (api::GetObjectType(id) != k::OBJECT_TYPE_PLACEABLE ||
-                    (interactive && (api::GetObjectInteractive(id) != 0) != *interactive))
-                {
-                    continue;
-                }
-                const bool active = api::GetObjectActive(id) != 0;
-                const auto position = api::GetPosition(id);
-                const float distance = Distance(from, position);
-                if ((!includeInactive && !active) || (radius >= 0 && distance > radius))
-                {
-                    continue;
-                }
-                Json placeable = Brief(id);
-                placeable["template"] = Narrow(api::GetResRef(id));
-                placeable["position"] = VectorJson(position);
-                placeable["distance"] = distance;
-                placeable["state"] = api::GetPlaceableState(id);
-                placeable["stateName"] = PlaceableStateWord(id);
-                placeable["active"] = active;
-                placeable["interactive"] = api::GetObjectInteractive(id) != 0;
-                placeable["popup"] = Narrow(api::GetPlaceablePopupText(id));
-                placeable["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
-                                         {"keyTag", Narrow(api::GetPlaceableKeyTag(id))},
-                                         {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
-                if (auto leads = LeadsTo(id, false); !leads.is_null())
-                {
-                    placeable["leadsTo"] = std::move(leads);
-                }
-                found.emplace_back(distance, std::move(placeable));
-            }
-            std::ranges::sort(found, {}, &std::pair<float, Json>::first);
-            Json placeables = Json::array();
-            for (auto &[distance, placeable] : found)
-            {
-                placeables.push_back(std::move(placeable));
-            }
-            if (args.Bool("brief", false))
-            {
-                return Json{
-                    {"near", Brief(around)}, {"count", placeables.size()}, {"lines", Lines(placeables, PlaceableLine)}};
-            }
-            return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"placeables", std::move(placeables)}};
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindPlaceables(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -682,31 +1143,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "(default 30 m) of `near` (default the creature controlled), nearest first, each as "
                  "kind=creatures, placeables and exits give it with `brief: true`. The read on arriving "
                  "anywhere; inspect a thing's kind in full for more."},
-        [&bench, &watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const double radius = args.Number("radius", 30);
-            // The other kinds' own handlers, on this thread: one read of the
-            // area as they read it, each in brief.
-            const auto look = [&bench, &raw, radius](const char *kind, Json call) {
-                call["kind"] = kind;
-                call["brief"] = true;
-                call["radius"] = radius;
-                if (raw.contains("near"))
-                {
-                    call["near"] = raw.at("near");
-                }
-                return bench.Tools().Resolve("inspect", call)->handler(call).data;
-            };
-            const Json creatures = look("creatures", Json::object());
-            const Json usable = look("placeables", Json{{"interactive", true}});
-            const Json exits = look("exits", Json::object());
-            return Json{{"near", creatures.value("near", Json())},
-                        {"radius", radius},
-                        {"creatures", creatures.value("lines", Json::array())},
-                        {"usable", usable.value("lines", Json::array())},
-                        {"exits", exits.value("lines", Json::array())}};
-        });
+        [&bench, &watch](const Json &raw) -> ToolResult { return KindSurroundings(bench, watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -718,64 +1155,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "they lead only when used, so their `leadsTo` may be empty or the last use's. Going through "
                  "one loads the other area, and the game may autosave. `radius` keeps those within it; `brief: "
                  "true` answers a line each (`lines`)."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
-            if (around == kInvalidObject)
-            {
-                throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
-            }
-            const auto from = api::GetPosition(around);
-            std::vector<std::pair<float, Json>> found;
-            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
-            {
-                const auto type = api::GetObjectType(id);
-                if (type != k::OBJECT_TYPE_PLACEABLE && type != k::OBJECT_TYPE_TRIGGER)
-                {
-                    continue;
-                }
-                Json leads = LeadsTo(id, type == k::OBJECT_TYPE_TRIGGER);
-                if (leads.is_null())
-                {
-                    continue;
-                }
-                const auto position = api::GetPosition(id);
-                const float distance = Distance(from, position);
-                if (const auto radius = args.Number("radius", -1); radius >= 0 && distance > radius)
-                {
-                    continue;
-                }
-                Json exit = Brief(id);
-                exit["kind"] = type == k::OBJECT_TYPE_TRIGGER ? "trigger" : "placeable";
-                exit["leadsTo"] = std::move(leads);
-                exit["position"] = VectorJson(position);
-                exit["distance"] = distance;
-                exit["active"] = api::GetObjectActive(id) != 0;
-                // A text blocker has a destination as an exit does, but its
-                // use shows a line instead of leaving: "Return Path"
-                // (wmt_rand_enc_text_blocker) in random encounters and at
-                // Lothering's south end, taken for the way to the world map
-                // (turn-based-agent, 2026-10-03, #32). Its tag says what it is.
-                if (exit.value("tag", std::string()).find("blocker") != std::string::npos)
-                {
-                    exit["blocker"] = true;
-                }
-                found.emplace_back(distance, std::move(exit));
-            }
-            std::ranges::sort(found, {}, &std::pair<float, Json>::first);
-            Json exits = Json::array();
-            for (auto &[distance, exit] : found)
-            {
-                exits.push_back(std::move(exit));
-            }
-            if (args.Bool("brief", false))
-            {
-                return Json{
-                    {"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"lines", Lines(exits, ExitLine)}};
-            }
-            return Json{{"area", Brief(api::GetArea(around))}, {"count", exits.size()}, {"exits", std::move(exits)}};
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindExits(watch, raw); });
 
     // The area's triggers, which no other kind lists: the Gauntlet's bridge
     // turns on twelve tile triggers, found by script GetNearestObject and
@@ -791,86 +1171,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "`radius` and `near` keep those within reach of a creature, `tag` those whose tag holds it; "
                  "`ints` (names) reads those local ints on each, as its scripts set them (a puzzle's state, a "
                  "switch's number)."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
-            if (around == kInvalidObject)
-            {
-                throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
-            }
-            std::vector<std::wstring> ints;
-            if (args.Has("ints"))
-            {
-                const Json &names = args.Raw().at("ints");
-                if (!names.is_array() || names.size() > 32)
-                {
-                    throw ToolError("inspect: `ints` is a list of up to 32 local int names");
-                }
-                for (const auto &name : names)
-                {
-                    if (!name.is_string())
-                    {
-                        throw ToolError("inspect: each of `ints` is a local's name, a string");
-                    }
-                    ints.push_back(Wide(name.get<std::string>()));
-                }
-            }
-            std::string want = args.Has("tag") ? args.String("tag") : std::string();
-            std::ranges::transform(want, want.begin(), [](char c) {
-                return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            });
-            const auto from = api::GetPosition(around);
-            const double radius = args.Number("radius", -1);
-            std::vector<std::pair<float, Json>> found;
-            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
-            {
-                if (api::GetObjectType(id) != k::OBJECT_TYPE_TRIGGER)
-                {
-                    continue;
-                }
-                const auto position = api::GetPosition(id);
-                const float distance = Distance(from, position);
-                if (radius >= 0 && distance > radius)
-                {
-                    continue;
-                }
-                Json trigger = Brief(id);
-                std::string tag = trigger.value("tag", std::string());
-                std::ranges::transform(tag, tag.begin(), [](char c) {
-                    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                });
-                if (!want.empty() && tag.find(want) == std::string::npos)
-                {
-                    continue;
-                }
-                trigger["position"] = VectorJson(position);
-                trigger["distance"] = distance;
-                trigger["active"] = api::GetObjectActive(id) != 0;
-                if (Json leads = LeadsTo(id, true); !leads.is_null())
-                {
-                    trigger["leadsTo"] = std::move(leads);
-                }
-                if (!ints.empty())
-                {
-                    Json locals = Json::object();
-                    for (const auto &name : ints)
-                    {
-                        locals[Narrow(name)] = api::GetLocalInt(id, name);
-                    }
-                    trigger["ints"] = std::move(locals);
-                }
-                found.emplace_back(distance, std::move(trigger));
-            }
-            std::ranges::sort(found, {}, &std::pair<float, Json>::first);
-            Json triggers = Json::array();
-            for (auto &[distance, trigger] : found)
-            {
-                triggers.push_back(std::move(trigger));
-            }
-            return Json{
-                {"area", Brief(api::GetArea(around))}, {"count", triggers.size()}, {"triggers", std::move(triggers)}};
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindTriggers(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -881,19 +1182,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "`completed`, and `parent` for a quest within another (one done may stay listed here, with "
                  "`completed` true). `completed: true` "
                  "lists the quests done too; otherwise only their count. Reading only."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            Json done = JournalList(L"CompletedPlots");
-            Json answer = {{"active", JournalEntry(L"Journal.ActivePlot.")},
-                           {"quests", JournalList(L"PlotList")},
-                           {"completedCount", done.size()}};
-            if (args.Bool("completed", false))
-            {
-                answer["completed"] = std::move(done);
-            }
-            return answer;
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindJournal(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -905,57 +1194,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "black with what stands in it, in view, or before; `shown`; and how much the game wants "
                  "the room and whether it is in memory), and the command it is carrying out. `brief: true` "
                  "answers a line each (`lines`: id, name, tag, side, health, dead, distance) instead."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId hero = api::GetHero();
-            const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
-            if (around == kInvalidObject)
-            {
-                throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
-            }
-            const auto from = api::GetPosition(around);
-            const auto radius = args.Number("radius", -1);
-            const auto side =
-                args.Has("side") ? std::optional{args.Choice("side", {"party", "hostile", "neutral"})} : std::nullopt;
-            const bool includeDead = args.Bool("includeDead", true);
-            const bool includeInactive = args.Bool("includeInactive", false);
-            const auto party = PartyOf(hero);
-
-            std::vector<std::pair<float, Json>> found;
-            for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
-            {
-                if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE ||
-                    (!includeInactive && api::GetObjectActive(id) == 0))
-                {
-                    continue;
-                }
-                const float distance = Distance(from, api::GetPosition(id));
-                if (radius >= 0 && distance > radius)
-                {
-                    continue;
-                }
-                Json creature = Summary(id, hero, party);
-                if ((side && creature["side"] != *side) || (!includeDead && creature["dead"] == true))
-                {
-                    continue;
-                }
-                creature["distance"] = distance;
-                found.emplace_back(distance, std::move(creature));
-            }
-            std::ranges::sort(found, {}, &std::pair<float, Json>::first);
-            Json creatures = Json::array();
-            for (auto &[distance, creature] : found)
-            {
-                creatures.push_back(std::move(creature));
-            }
-            if (args.Bool("brief", false))
-            {
-                return Json{
-                    {"near", Brief(around)}, {"count", creatures.size()}, {"lines", Lines(creatures, CreatureLine)}};
-            }
-            return Json{{"near", Brief(around)}, {"count", creatures.size()}, {"creatures", std::move(creatures)}};
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindCreatures(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -966,25 +1205,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "movement's path (`beingWalked` says whether it is walking it now), and every effect "
                  "on it: its type (EFFECT_TYPE_*), creator, ability (id and name) and time left (seconds; null "
                  "for effects that do not run out)."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
-            if (id == kInvalidObject || api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
-            {
-                throw ToolError(std::format("inspect: {} is not a creature; inspect kind=creatures lists them",
-                                            id == kInvalidObject ? "nothing" : FormatId(id)));
-            }
-            const ObjectId hero = api::GetHero();
-            Json creature = Summary(id, hero, PartyOf(hero));
-            creature["active"] = api::GetObjectActive(id) != 0;
-            creature["facing"] = api::GetFacing(id);
-            creature["appearance"] = api::GetAppearanceType(id);
-            creature["effects"] = Effects(id);
-            creature["abilities"] = Abilities(id);
-            creature["path"] = PathNow(id, api::GetPosition(id), false);
-            return creature;
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindCreature(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -997,129 +1218,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                  "path it would walk there, as the game's pathfinder finds it now: `found` with its `length`, or "
                  "why not, and for a shut door or the like in the way, `blocker`: use that first, then move. The "
                  "creature is left as it is."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
-            if (id == kInvalidObject)
-            {
-                throw ToolError("inspect: no creature is controlled and no `id` was given");
-            }
-            const bool waypoints = args.Bool("waypoints", false);
-            const auto from = api::GetPosition(id);
-            Json answer = {{"from", Brief(id)}, {"position", VectorJson(from)}};
-
-            dao::Vector to;
-            dao::world::Sight sight;
-            if (const auto target = args.OptionalId("target", kCreatureHint))
-            {
-                to = api::GetPosition(*target);
-                answer["target"] = Brief(*target);
-                sight = dao::world::LineOfSight(id, *target);
-            }
-            else if (args.Has("point"))
-            {
-                to = VectorOf(args.Raw().at("point"), "inspect: `point`");
-                const auto eye = [](dao::Vector v) {
-                    v.z += dao::world::kEyeHeight;
-                    return v;
-                };
-                sight = dao::world::LineOfSight(eye(from), eye(to), id);
-            }
-            else
-            {
-                throw ToolError("inspect: kind=geometry needs a `target` (a creature id) or a `point`");
-            }
-            answer["to"] = VectorJson(to);
-            answer["distance"] = Distance(from, to);
-            answer["lineOfSight"] =
-                Json{{"clear", sight.clear}, {"blockedAt", sight.blockedAt ? VectorJson(*sight.blockedAt) : Json()}};
-            answer["path"] = PathNow(id, from, waypoints);
-            // The walk there, when asked for. DAOLib's first FindPath drove the
-            // creature's own search and left creatures unable to walk (in play,
-            // 2026-09-30); its Pathfind since searches apart from any creature's
-            // and was seen in play with the creature walking as before
-            // throughout (lib-agent, 2026-10-01, 1fe01a3 on). It names what is
-            // in the way of a walk, which a move's COMMAND_FAILED_PATH_ACTION_
-            // REQUIRED does not: a test's walk across the Elven Ruins failed
-            // ten times on a shut door it could not name. Still the caller's
-            // to choose: a search is up to 30 ms of the frame.
-            if (args.Bool("walk", false))
-            {
-                const auto search =
-                    dao::world::Pathfind(id, to, args.OptionalId("target", kCreatureHint).value_or(kInvalidObject));
-                Json walk = {{"found", search.path.has_value()}};
-                const char *said = search.result == 1   ? (search.path ? "found" : "gave up part way")
-                                   : search.result == 5 ? "none"
-                                   : search.result == 6 ? "something is in the way"
-                                   : search.result == 8 ? "no walkable ground there"
-                                                        : "not finished in time";
-                walk["result"] = said;
-                // How many searches it took: one, or more for a long walk the
-                // search went on with from where it gave up (DAOLib dac5e99, #19).
-                walk["legs"] = search.legs;
-                if (search.path)
-                {
-                    walk["length"] = search.path->Length();
-                    walk["waypointCount"] = search.path->waypoints.size();
-                    if (waypoints)
-                    {
-                        Json points = Json::array();
-                        for (const auto &point : search.path->waypoints)
-                        {
-                            points.push_back(VectorJson(point));
-                        }
-                        walk["waypoints"] = std::move(points);
-                    }
-                }
-                else if (search.partial)
-                {
-                    walk["reached"] = search.partial->waypoints.empty() ? Json(nullptr)
-                                                                        : VectorJson(search.partial->waypoints.back());
-                    walk["lengthSoFar"] = search.partial->Length();
-                }
-                if (search.result == 6)
-                {
-                    walk["blocker"] = BlockerJson(search.blocker);
-                    walk["note"] = search.blocker == kInvalidObject
-                                       ? "a door or the like stands in the way and was not found by name; inspect "
-                                         "kind=placeables near `reached` lists what is there"
-                                       : "a move there ends COMMAND_FAILED_PATH_ACTION_REQUIRED; order action=use "
-                                         "on `blocker` first (a shut door opens), then move";
-                }
-                else if (!search.path && search.blocker != kInvalidObject)
-                {
-                    // Not the pathfinder's own word: where a search gives up
-                    // part way, DAOLib names the placeable lying across the
-                    // way just ahead of where it stopped (c8d7270). A strong
-                    // hint, not a fact.
-                    walk["blocker"] = BlockerJson(search.blocker);
-                    walk["note"] = "the search gave up short of something lying across the way: likely `blocker`, "
-                                   "a shut door perhaps. order action=use on it, then ask again or move";
-                }
-                // For DAOLib's own reading of a search that went wrong: each
-                // slice's answer and the search's line for a log.
-                if (args.Bool("trace", false))
-                {
-                    if (search.partial)
-                    {
-                        Json tail = Json::array();
-                        const auto &points = search.partial->waypoints;
-                        for (std::size_t i = points.size() > 3 ? points.size() - 3 : 0; i < points.size(); ++i)
-                        {
-                            tail.push_back(VectorJson(points[i]));
-                        }
-                        walk["partialTail"] = std::move(tail);
-                        walk["partialWaypoints"] = points.size();
-                    }
-                    walk["answers"] = search.answers;
-                    walk["slices"] = search.slices;
-                    walk["trace"] = search.trace;
-                }
-                answer["walk"] = std::move(walk);
-            }
-            return answer;
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindGeometry(watch, raw); });
 }
 
 } // namespace eluvian::game

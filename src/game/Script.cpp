@@ -70,6 +70,154 @@ std::string LongestWord(std::string_view name)
 
 } // namespace
 
+namespace
+{
+
+// The commands whose name holds `name`, any case: action find.
+Json FindCommands(const std::string &name)
+{
+    const auto needle = Lower(name);
+    Json found = Json::array();
+    for (const auto &command : dao::script::table::kCommands)
+    {
+        if (Lower(command.name).find(needle) != std::string::npos)
+        {
+            found.push_back(Json{{"name", command.name},
+                                 {"signature", command.signature},
+                                 {"callableByName", command.CallableByName()}});
+        }
+    }
+    return Json{{"count", found.size()}, {"commands", std::move(found)}};
+}
+
+// No command of that name: refused with the near names at once.
+[[noreturn]] void NoSuchCommand(const std::string &name)
+{
+    // The near names at once: those holding the name's longest
+    // word, SetImmortal's "Immortal" (#52).
+    const std::string word = LongestWord(name);
+    std::string near;
+    int shown = 0;
+    for (const auto &candidate : dao::script::table::kCommands)
+    {
+        if (!word.empty() && Lower(candidate.name).find(Lower(word)) != std::string::npos && shown < 8)
+        {
+            near += (shown++ == 0 ? "" : ", ") + std::string(candidate.name);
+        }
+    }
+    throw ToolError(
+        std::format("script: no command \"{}\"{}; {{\"action\": \"find\", \"command\": \"{}\"}} lists those "
+                    "whose name holds a part",
+                    name, near.empty() ? std::string() : "; near it: " + near, word.empty() ? name : word));
+}
+
+// `args` as an array, in parameter order.
+std::vector<dao::script::Value> InOrder(const dao::core::ScriptCommandInfo &command, const Json &given)
+{
+    std::vector<dao::script::Value> values;
+    values.reserve(given.size());
+    if (given.size() > command.params.size())
+    {
+        throw ToolError(
+            std::format("script: {} takes {} arguments: {}", command.name, command.params.size(), command.signature));
+    }
+    for (std::size_t i = 0; i < given.size(); ++i)
+    {
+        values.push_back(ValueOf(given[i], command.params[i].type, command.params[i].name));
+    }
+    return values;
+}
+
+// `args` as an object, by parameter name.
+std::vector<dao::script::Value> ByName(const dao::core::ScriptCommandInfo &command, const Json &given)
+{
+    std::vector<dao::script::Value> values;
+    // By name: up to the last one given; those before it left off take their defaults.
+    std::size_t last = 0;
+    for (const auto &[key, value] : given.items())
+    {
+        const auto it = std::ranges::find(command.params, key, &dao::core::ScriptParam::name);
+        if (it == command.params.end())
+        {
+            throw ToolError(std::format("script: {} has no parameter `{}`: {}", command.name, key, command.signature));
+        }
+        last = std::max(last, static_cast<std::size_t>(it - command.params.begin()) + 1);
+    }
+    for (std::size_t i = 0; i < last; ++i)
+    {
+        const auto &param = command.params[i];
+        const auto it = given.find(param.name);
+        if (it != given.end())
+        {
+            values.push_back(ValueOf(*it, param.type, param.name));
+        }
+        else if (const auto fallback = param.Default())
+        {
+            values.push_back(*fallback);
+        }
+        else if (param.defaultKind == dao::core::DefaultKind::Self)
+        {
+            values.push_back(dao::script::Value::Self());
+        }
+        else
+        {
+            throw ToolError(
+                std::format("script: `{}` has no default and must be given: {}", param.name, command.signature));
+        }
+    }
+    return values;
+}
+
+// The script tool's handler, registered by AddScript.
+ToolResult ToolScript(const Watch &watch, const Json &raw)
+{
+    const Args args(raw, "script");
+    const auto action = args.Choice("action", {"call", "find", "describe"}, "call");
+    // find's search is `command`, as is any action's name; a caller
+    // who tried `name` and `match` was told only that `command` must
+    // be given (turn-based-agent's driver, 2026-10-04, #52).
+    if (action == "find" && !args.Has("command"))
+    {
+        throw ToolError("script: action find searches for the part of a name given in `command`: "
+                        "{\"action\": \"find\", \"command\": \"Immortal\"}");
+    }
+    const auto name = args.String("command");
+    if (action == "find")
+    {
+        return FindCommands(name);
+    }
+    const auto *command = dao::script::table::Find(name);
+    if (command == nullptr)
+    {
+        NoSuchCommand(name);
+    }
+    if (action == "describe")
+    {
+        return Describe(*command);
+    }
+    if (!command->CallableByName())
+    {
+        throw ToolError(std::format("script: {} cannot be called by name ({}): a location, effect, event or "
+                                    "command moves only through the typed wrappers",
+                                    command->name, command->signature));
+    }
+    RequireWorld(watch, "script");
+    const Json given = args.Has("args") ? args.Raw().at("args") : Json::array();
+    if (!given.is_array() && !given.is_object())
+    {
+        throw ToolError("script: `args` is an array in parameter order, or an object by parameter name");
+    }
+    const auto values = given.is_array() ? InOrder(*command, given) : ByName(*command, given);
+    const auto result = dao::script::Call(*command, values);
+    if (!result)
+    {
+        throw ToolError(std::format("script: {}: {}", command->name, result.error));
+    }
+    return Json{{"command", command->name}, {"value", JsonOf(result.value)}};
+}
+
+} // namespace
+
 void AddScript(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
@@ -89,127 +237,7 @@ void AddScript(Bench &bench, const Watch &watch)
                    {"args", {{"description", "An array in parameter order, or an object by parameter name"}}}}},
                  {"required", {"command"}}},
             Thread::Frame},
-        [&watch](const Json &raw) -> ToolResult {
-            const Args args(raw, "script");
-            const auto action = args.Choice("action", {"call", "find", "describe"}, "call");
-            // find's search is `command`, as is any action's name; a caller
-            // who tried `name` and `match` was told only that `command` must
-            // be given (turn-based-agent's driver, 2026-10-04, #52).
-            if (action == "find" && !args.Has("command"))
-            {
-                throw ToolError("script: action find searches for the part of a name given in `command`: "
-                                "{\"action\": \"find\", \"command\": \"Immortal\"}");
-            }
-            const auto name = args.String("command");
-            if (action == "find")
-            {
-                const auto needle = Lower(name);
-                Json found = Json::array();
-                for (const auto &command : dao::script::table::kCommands)
-                {
-                    if (Lower(command.name).find(needle) != std::string::npos)
-                    {
-                        found.push_back(Json{{"name", command.name},
-                                             {"signature", command.signature},
-                                             {"callableByName", command.CallableByName()}});
-                    }
-                }
-                return Json{{"count", found.size()}, {"commands", std::move(found)}};
-            }
-            const auto *command = dao::script::table::Find(name);
-            if (command == nullptr)
-            {
-                // The near names at once: those holding the name's longest
-                // word, SetImmortal's "Immortal" (#52).
-                const std::string word = LongestWord(name);
-                std::string near;
-                int shown = 0;
-                for (const auto &candidate : dao::script::table::kCommands)
-                {
-                    if (!word.empty() && Lower(candidate.name).find(Lower(word)) != std::string::npos && shown < 8)
-                    {
-                        near += (shown++ == 0 ? "" : ", ") + std::string(candidate.name);
-                    }
-                }
-                throw ToolError(std::format(
-                    "script: no command \"{}\"{}; {{\"action\": \"find\", \"command\": \"{}\"}} lists those "
-                    "whose name holds a part",
-                    name, near.empty() ? std::string() : "; near it: " + near, word.empty() ? name : word));
-            }
-            if (action == "describe")
-            {
-                return Describe(*command);
-            }
-            if (!command->CallableByName())
-            {
-                throw ToolError(std::format("script: {} cannot be called by name ({}): a location, effect, event or "
-                                            "command moves only through the typed wrappers",
-                                            command->name, command->signature));
-            }
-            RequireWorld(watch, "script");
-
-            std::vector<dao::script::Value> values;
-            const Json given = args.Has("args") ? args.Raw().at("args") : Json::array();
-            if (given.is_array())
-            {
-                if (given.size() > command->params.size())
-                {
-                    throw ToolError(std::format("script: {} takes {} arguments: {}", command->name,
-                                                command->params.size(), command->signature));
-                }
-                for (std::size_t i = 0; i < given.size(); ++i)
-                {
-                    values.push_back(ValueOf(given[i], command->params[i].type, command->params[i].name));
-                }
-            }
-            else if (given.is_object())
-            {
-                // By name: up to the last one given; those before it left off take their defaults.
-                std::size_t last = 0;
-                for (const auto &[key, value] : given.items())
-                {
-                    const auto it = std::ranges::find(command->params, key, &dao::core::ScriptParam::name);
-                    if (it == command->params.end())
-                    {
-                        throw ToolError(std::format("script: {} has no parameter `{}`: {}", command->name, key,
-                                                    command->signature));
-                    }
-                    last = std::max(last, static_cast<std::size_t>(it - command->params.begin()) + 1);
-                }
-                for (std::size_t i = 0; i < last; ++i)
-                {
-                    const auto &param = command->params[i];
-                    const auto it = given.find(param.name);
-                    if (it != given.end())
-                    {
-                        values.push_back(ValueOf(*it, param.type, param.name));
-                    }
-                    else if (const auto fallback = param.Default())
-                    {
-                        values.push_back(*fallback);
-                    }
-                    else if (param.defaultKind == dao::core::DefaultKind::Self)
-                    {
-                        values.push_back(dao::script::Value::Self());
-                    }
-                    else
-                    {
-                        throw ToolError(std::format("script: `{}` has no default and must be given: {}", param.name,
-                                                    command->signature));
-                    }
-                }
-            }
-            else
-            {
-                throw ToolError("script: `args` is an array in parameter order, or an object by parameter name");
-            }
-            const auto result = dao::script::Call(*command, values);
-            if (!result)
-            {
-                throw ToolError(std::format("script: {}: {}", command->name, result.error));
-            }
-            return Json{{"command", command->name}, {"value", JsonOf(result.value)}};
-        });
+        [&watch](const Json &raw) -> ToolResult { return ToolScript(watch, raw); });
 }
 
 } // namespace eluvian::game

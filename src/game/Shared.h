@@ -43,6 +43,7 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -53,11 +54,35 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace eluvian::game
 {
+
+// A value's name from a short table, or the value itself where the table has
+// none: for the engine's enumerations, which a value of a later build may
+// not be in. Read where nested ?: chains were (#77).
+template <typename T>
+Json Label(T value, std::initializer_list<std::pair<std::type_identity_t<T>, std::string_view>> names)
+{
+    for (const auto &[known, name] : names)
+    {
+        if (value == known)
+        {
+            return Json(std::string(name));
+        }
+    }
+    if constexpr (std::is_enum_v<T>)
+    {
+        return Json(static_cast<std::underlying_type_t<T>>(value));
+    }
+    else
+    {
+        return Json(value);
+    }
+}
 
 namespace api = dao::script::api;
 namespace k = dao::script::constants;
@@ -106,7 +131,7 @@ Json PressLootButton(Bench &bench, std::size_t index);
 // inventory holds, its backpack's.
 std::optional<ObjectId> TreeId(std::wstring_view path);
 ObjectId Selected();
-std::vector<ObjectId> ItemsIn(ObjectId owner);
+std::vector<ObjectId> ItemsIn(ObjectId container);
 
 // The store screen (Store.cpp): its store object if one is up, and the
 // store as inspect kind=gui gives it, null with none.

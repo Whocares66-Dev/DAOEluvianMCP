@@ -88,297 +88,363 @@ struct World
     World()
     {
         // Every tool here answers on the caller's thread: no frame is pumped.
-        bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
-            if (mode == "loading" && loadingFor-- <= 0)
-            {
-                mode = "explore";
-            }
-            return Json{{"mode", mode}, {"paused", paused}};
-        });
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            if (mode == "loading")
-            {
-                ++readsWhileLoading;
-                throw FrameTimeout("no frame took the call within 2000 ms"); // as a frame tool's, while frames stop
-            }
-            if (args.value("kind", "") == "creatures")
-            {
-                // Hostiles within the radius asked for, nearest first.
-                Json near = Json::array();
-                if (hostileAt >= 0 && hostileAt <= args.value("radius", 1e9))
-                {
-                    near.push_back(Json{{"id", "0x5a1"}, {"name", "Shade"}, {"distance", hostileAt}});
-                }
-                return Json{{"creatures", near}};
-            }
-            if (args.value("kind", "") == "creature")
-            {
-                return Json{{"command", {{"current", unseen ? Json(nullptr) : Json("MoveToLocation")}, {"queued", 0}}}};
-            }
-            if (args.value("kind", "") == "game")
-            {
-                return Json{{"controlled", {{"id", "0x82"}}},
-                            {"area",
-                             {{"tag", area},
-                              {"name", area == "forest" ? "Forest Clearing" : (area == "ruins" ? "Ruins" : area)}}},
-                            {"popup", popup}};
-            }
-            if (args.value("kind", "") == "gui")
-            {
-                return Json{{"popup", popup}};
-            }
-            if (args.value("kind", "") == "worldmap")
-            {
-                if (mapExit && !mapUp && mapLate-- == 0)
-                {
-                    mapUp = true;
-                }
-                return Json{{"up", mapUp},
-                            {"screen", fadeMap ? "FadeMap" : "WorldMap"},
-                            {"map", fadeMap ? "fade" : "world"},
-                            {"shown", shownMap},
-                            {"other", otherMap.empty() ? Json(nullptr) : Json(otherMap)},
-                            {"at", area},
-                            {"pins", pins}};
-            }
-            if (args.value("kind", "") == "exits")
-            {
-                Json exits = Json::array({Json{
-                    {"id", "0x1f5"}, {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}}, {"active", exitActive}}});
-                if (blockerFirst)
-                {
-                    // Nearer, to the same place, and only a line of text.
-                    exits.insert(exits.begin(), Json{{"id", "0x1f9"},
-                                                     {"tag", "wmt_rand_enc_text_blocker"},
-                                                     {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
-                                                     {"active", true},
-                                                     {"blocker", true}});
-                }
-                return Json{{"exits", exits}};
-            }
-            Json walk;
-            if (!exitNoWalk.empty() && args.value("target", "") == "0x1f5")
-            {
-                walk = Json{{"found", false}, {"result", exitNoWalk}};
-            }
-            else if (strip >= 0 && at > strip)
-            {
-                walk = Json{{"found", false}, {"result", "none"}};
-            }
-            else if (!shut || at <= door || hidden)
-            {
-                walk = Json{{"found", true}, {"length", at - shortBy}};
-                if (shortBy > 0)
-                {
-                    walk["waypoints"] = Json::array({Json::array({shortBy, 0, 0})});
-                }
-            }
-            else if (inert && shut && at > door)
-            {
-                // A thing no use opens, across the way: as far as the search
-                // got, short of it.
-                walk = Json{{"found", false},
-                            {"result", "something is in the way"},
-                            {"reached", {door + reach, 0, 0}},
-                            {"blocker", {{"id", "0x2a1b4"}, {"name", "Invisible Object"}, {"interactive", false}}}};
-            }
-            else if (exitAhead)
-            {
-                // Where the search gives up, the placeable just ahead: here
-                // the World Map exit beside the door.
-                walk = Json{{"found", false},
-                            {"result", "gave up part way"},
-                            {"reached", {door + reach, 0, 0}},
-                            {"blocker", {{"id", "0x240e9"}, {"name", "World Map"}, {"leadsTo", {{"area", ""}}}}}};
-            }
-            else if (named || at - door < 1.5)
-            {
-                walk = Json{{"found", false},
-                            {"result", "something is in the way"},
-                            {"reached", blocksItself ? Json::array({door + reach, 0, 0}) : Json(nullptr)},
-                            {"blocker",
-                             {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")},
-                              {"name", "Metal Door"},
-                              {"state", doorState},
-                              {"lock",
-                               {{"pickLevel", pickLevel},
-                                {"keyRequired", keyRequired},
-                                {"keyTag", "DoesNotExist"},
-                                {"keyHeld", keyHeld}}}}}};
-            }
-            else
-            {
-                walk = Json{{"found", false}, {"result", "gave up part way"}, {"reached", {door + reach, 0, 0}}};
-            }
-            return Json{{"from", {{"id", args.value("id", "")}}},
-                        {"position", {{"x", at}, {"y", 0}, {"z", 0}}},
-                        {"to", {0, 0, 0}},
-                        {"distance", at},
-                        {"walk", walk}};
-        });
-        bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            if (doorLoads && !shut)
-            {
-                throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
-            }
-            orders.push_back(args);
-            const auto cursor = bench.Events().Next();
-            const std::string action = args.value("action", "");
-            if (action == "move" && clears > 0)
-            {
-                --clears; // the settling after a load: the move cleared, nothing in its place
-                bench.Events().Emit("eluvian.command.ended", Json{{"id", args.value("id", "")},
-                                                                  {"type", "MoveToLocation"},
-                                                                  {"result", "COMMAND_FAILED_COMMAND_CLEARED"}});
-                return Json{{"given", true}, {"cursor", cursor}};
-            }
-            std::string result = "success";
-            if (action == "move")
-            {
-                const double to = args.at("point").at(0).get<double>();
-                if (!moveFails.empty())
-                {
-                    result = moveFails; // and the walker stays where it is, or where it got
-                    if (failsAt >= 0)
-                    {
-                        at = failsAt;
-                    }
-                }
-                else if (shut && to < door && at > door)
-                {
-                    at = door + 0.5; // stops at the door
-                    hidden = false;  // which the search names from now on
-                    result = "COMMAND_FAILED_PATH_ACTION_REQUIRED";
-                }
-                else if (farFails && at > strip && std::abs(at - to) > 1.0)
-                {
-                    result = "COMMAND_FAILED_INVALID_PATH"; // from within the strip the engine finds none either
-                }
-                else if (!stuck)
-                {
-                    at = partway > 0 ? partway : to;
-                }
-            }
-            else if (action == "use" && args.value("target", "") == "0x1f5")
-            {
-                if (tooClose && at < 2)
-                {
-                    result = "COMMAND_FAILED";
-                }
-                else if (asks)
-                {
-                    popup = Json{{"text", "Leave the area?"}};
-                }
-                else if (mapExit)
-                {
-                    mode = "gui"; // the map comes up a moment later, read by its reads
-                }
-                else if (loads)
-                {
-                    // The other area loads: its scripts are told it is in
-                    // place, the area's and the module's, while the game
-                    // still says loading for one more health call.
-                    area = "forest";
-                    mode = "loading";
-                    loadingFor = 1;
-                    bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "area"}});
-                    bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "module"}});
-                }
-                else if (crosses)
-                {
-                    area = "forest";
-                    bench.Events().Emit("eluvian.script.area_loaded", Json::object());
-                }
-            }
-            else if (action == "use" && opens)
-            {
-                if (unlocksFirst && doorState == 1 && keyHeld)
-                {
-                    doorState = 0; // unlocked, still shut; the key leaves the pack
-                    keyHeld = false;
-                }
-                else
-                {
-                    shut = false;
-                }
-            }
-            if (action == "move" && inert && !inertStays && at <= door + reach + 0.01)
-            {
-                shut = false; // walked into the trigger beside it, whose script removes it
-            }
-            if (action == fightOn)
-            {
-                mode = "combat";
-                hostileAt = 3; // the fight is at hand
-            }
-            if (action == loadOn)
-            {
-                mode = "loading";
-                loadingFor = loadFor;
-                if (!loadInto.empty())
-                {
-                    area = loadInto;
-                }
-            }
-            const std::string type = action == "move" ? "MoveToLocation" : "UseObject";
-            if (chatter)
-            {
-                // A companion's command of the same kind ends, and the
-                // walker's last, which this order cleared.
-                bench.Events().Emit("eluvian.command.ended",
-                                    Json{{"id", "0x10d"}, {"type", type}, {"result", "COMMAND_FAILED_INVALID_PATH"}});
-                bench.Events().Emit(
-                    "eluvian.command.ended",
-                    Json{{"id", args.value("id", "")}, {"type", type}, {"result", "COMMAND_FAILED_COMMAND_CLEARED"}});
-            }
-            if ((!silent || action != "move") && !(silentUse && action == "use"))
-            {
-                bench.Events().Emit("eluvian.command.ended",
-                                    Json{{"id", args.value("id", "")}, {"type", type}, {"result", result}});
-            }
-            return Json{{"given", true}, {"cursor", cursor}};
-        });
-        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            if (args.contains("screen"))
-            {
-                // The map movie's own calls: its closed-by-travel mark and
-                // the pin's index, as the pin's click sets them.
-                screenCalls.push_back(args);
-                if (args.value("set", "") == "WorldMap.m_bClosedByTravel")
-                {
-                    closedByTravel = args.value("value", false);
-                    return Json{{"screen", "WorldMap"}, {"set", args.value("set", "")}, {"done", true}};
-                }
-                return Json{{"screen", "WorldMap"}, {"call", args.value("call", "")}, {"ran", true}};
-            }
-            const std::string message = args.value("message", "");
-            messages.push_back(message);
-            if (message == "WorldMap.WorldMapSwapMaps" && !otherMap.empty())
-            {
-                std::swap(shownMap, otherMap);
-                std::swap(pins, otherPins);
-            }
-            // A pin's click: the party goes there, or into an encounter on
-            // the way, over a load.
-            const std::string click = "GameModeController.AreaTransition " + area + " ";
-            if (mapUp && message.starts_with(click))
-            {
-                const Json &pin = pins.at(std::stoi(message.substr(click.size())));
-                if (pin.value("state", "") == "active")
-                {
-                    // At camp, a map closed not by travel sends the
-                    // followers home and the hero goes alone.
-                    partyKept = closedByTravel;
-                    mapUp = false;
-                    area = encounter.empty() ? pin.value("area", "") : encounter;
-                    mode = "loading";
-                    loadingFor = 1;
-                    bench.Events().Emit("eluvian.script.area_loaded", Json::object());
-                }
-            }
-            return Json{{"message", message}, {"sent", true}};
-        });
+        bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeHealth(args); });
+        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeOrder(args); });
+        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInput(args); });
         AddTravelTool(bench);
+    }
+
+    // The stand-in's health.
+    ToolResult FakeHealth(const Json & /*args*/)
+    {
+        if (mode == "loading" && loadingFor-- <= 0)
+        {
+            mode = "explore";
+        }
+        return Json{{"mode", mode}, {"paused", paused}};
+    }
+
+    // The world map as the stand-in shows it: up a few reads after its exit.
+    Json FakeWorldMap()
+    {
+        if (mapExit && !mapUp && mapLate-- == 0)
+        {
+            mapUp = true;
+        }
+        return Json{{"up", mapUp},
+                    {"screen", fadeMap ? "FadeMap" : "WorldMap"},
+                    {"map", fadeMap ? "fade" : "world"},
+                    {"at", area},
+                    {"shown", shownMap},
+                    {"other", otherMap.empty() ? Json(nullptr) : Json(otherMap)},
+                    {"pins", pins}};
+    }
+
+    // The area's exits: the forest's, behind a text blocker if asked.
+    Json FakeExits() const
+    {
+        Json exits = Json::array(
+            {Json{{"id", "0x1f5"}, {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}}, {"active", exitActive}}});
+        if (blockerFirst)
+        {
+            // Nearer, to the same place, and only a line of text.
+            exits.insert(exits.begin(), Json{{"id", "0x1f9"},
+                                             {"tag", "wmt_rand_enc_text_blocker"},
+                                             {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}},
+                                             {"active", true},
+                                             {"blocker", true}});
+        }
+        return Json{{"exits", exits}};
+    }
+
+    // The walk's search as the stand-in answers it, by where the walker
+    // stands and what is shut.
+    Json FakeWalk(const Json &args) const
+    {
+        Json walk;
+        if (!exitNoWalk.empty() && args.value("target", "") == "0x1f5")
+        {
+            walk = Json{{"found", false}, {"result", exitNoWalk}};
+        }
+        else if (strip >= 0 && at > strip)
+        {
+            walk = Json{{"found", false}, {"result", "none"}};
+        }
+        else if (!shut || at <= door || hidden)
+        {
+            walk = Json{{"found", true}, {"length", at - shortBy}};
+            if (shortBy > 0)
+            {
+                walk["waypoints"] = Json::array({Json::array({shortBy, 0, 0})});
+            }
+        }
+        else if (inert && shut && at > door)
+        {
+            // A thing no use opens, across the way: as far as the search
+            // got, short of it.
+            walk = Json{{"found", false},
+                        {"result", "something is in the way"},
+                        {"reached", {door + reach, 0, 0}},
+                        {"blocker", {{"id", "0x2a1b4"}, {"name", "Invisible Object"}, {"interactive", false}}}};
+        }
+        else if (exitAhead)
+        {
+            // Where the search gives up, the placeable just ahead: here
+            // the World Map exit beside the door.
+            walk = Json{{"found", false},
+                        {"result", "gave up part way"},
+                        {"reached", {door + reach, 0, 0}},
+                        {"blocker", {{"id", "0x240e9"}, {"name", "World Map"}, {"leadsTo", {{"area", ""}}}}}};
+        }
+        else if (named || at - door < 1.5)
+        {
+            walk = Json{{"found", false},
+                        {"result", "something is in the way"},
+                        {"reached", blocksItself ? Json::array({door + reach, 0, 0}) : Json(nullptr)},
+                        {"blocker",
+                         {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")},
+                          {"name", "Metal Door"},
+                          {"state", doorState},
+                          {"lock",
+                           {{"pickLevel", pickLevel},
+                            {"keyRequired", keyRequired},
+                            {"keyTag", "DoesNotExist"},
+                            {"keyHeld", keyHeld}}}}}};
+        }
+        else
+        {
+            walk = Json{{"found", false}, {"result", "gave up part way"}, {"reached", {door + reach, 0, 0}}};
+        }
+        return walk;
+    }
+
+    // A move's end: where the walker gets to, and the command's result.
+    std::string FakeMove(const Json &args)
+    {
+        const double to = args.at("point").at(0).get<double>();
+        if (!moveFails.empty())
+        {
+            // And the walker stays where it is, or where it got.
+            if (failsAt >= 0)
+            {
+                at = failsAt;
+            }
+            return moveFails;
+        }
+        if (shut && to < door && at > door)
+        {
+            at = door + 0.5; // stops at the door
+            hidden = false;  // which the search names from now on
+            return "COMMAND_FAILED_PATH_ACTION_REQUIRED";
+        }
+        if (farFails && at > strip && std::abs(at - to) > 1.0)
+        {
+            return "COMMAND_FAILED_INVALID_PATH"; // from within the strip the engine finds none either
+        }
+        if (!stuck)
+        {
+            at = partway > 0 ? partway : to;
+        }
+        return "success";
+    }
+
+    // The exit's use: a refusal, a question, the map, or the crossing.
+    std::string FakeUseExit()
+    {
+        if (tooClose && at < 2)
+        {
+            return "COMMAND_FAILED";
+        }
+        if (asks)
+        {
+            popup = Json{{"text", "Leave the area?"}};
+        }
+        else if (mapExit)
+        {
+            mode = "gui"; // the map comes up a moment later, read by its reads
+        }
+        else if (loads)
+        {
+            // The other area loads: its scripts are told it is in
+            // place, the area's and the module's, while the game
+            // still says loading for one more health call.
+            area = "forest";
+            mode = "loading";
+            loadingFor = 1;
+            bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "area"}});
+            bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "module"}});
+        }
+        else if (crosses)
+        {
+            area = "forest";
+            bench.Events().Emit("eluvian.script.area_loaded", Json::object());
+        }
+        return "success";
+    }
+
+    // A door's use: unlocked by its key first, or opened.
+    void FakeUseDoor()
+    {
+        if (unlocksFirst && doorState == 1 && keyHeld)
+        {
+            doorState = 0; // unlocked, still shut; the key leaves the pack
+            keyHeld = false;
+        }
+        else
+        {
+            shut = false;
+        }
+    }
+
+    // The stand-in's inspect.
+    ToolResult FakeInspect(const Json &args)
+    {
+        if (mode == "loading")
+        {
+            ++readsWhileLoading;
+            throw FrameTimeout("no frame took the call within 2000 ms"); // as a frame tool's, while frames stop
+        }
+        if (args.value("kind", "") == "creatures")
+        {
+            // Hostiles within the radius asked for, nearest first.
+            Json near = Json::array();
+            if (hostileAt >= 0 && hostileAt <= args.value("radius", 1e9))
+            {
+                near.push_back(Json{{"id", "0x5a1"}, {"name", "Shade"}, {"distance", hostileAt}});
+            }
+            return Json{{"creatures", near}};
+        }
+        if (args.value("kind", "") == "creature")
+        {
+            return Json{{"command", {{"current", unseen ? Json(nullptr) : Json("MoveToLocation")}, {"queued", 0}}}};
+        }
+        if (args.value("kind", "") == "game")
+        {
+            std::string name = area;
+            if (area == "forest")
+            {
+                name = "Forest Clearing";
+            }
+            else if (area == "ruins")
+            {
+                name = "Ruins";
+            }
+            return Json{{"controlled", {{"id", "0x82"}}}, {"area", {{"tag", area}, {"name", name}}}, {"popup", popup}};
+        }
+        if (args.value("kind", "") == "gui")
+        {
+            return Json{{"popup", popup}};
+        }
+        if (args.value("kind", "") == "worldmap")
+        {
+            return FakeWorldMap();
+        }
+        if (args.value("kind", "") == "exits")
+        {
+            return FakeExits();
+        }
+        const Json walk = FakeWalk(args);
+        return Json{{"from", {{"id", args.value("id", "")}}},
+                    {"position", {{"x", at}, {"y", 0}, {"z", 0}}},
+                    {"to", {0, 0, 0}},
+                    {"distance", at},
+                    {"walk", walk}};
+    }
+
+    // The stand-in's order.
+    ToolResult FakeOrder(const Json &args)
+    {
+        if (doorLoads && !shut)
+        {
+            throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
+        }
+        orders.push_back(args);
+        const auto cursor = bench.Events().Next();
+        const std::string action = args.value("action", "");
+        if (action == "move" && clears > 0)
+        {
+            --clears; // the settling after a load: the move cleared, nothing in its place
+            bench.Events().Emit("eluvian.command.ended", Json{{"id", args.value("id", "")},
+                                                              {"type", "MoveToLocation"},
+                                                              {"result", "COMMAND_FAILED_COMMAND_CLEARED"}});
+            return Json{{"given", true}, {"cursor", cursor}};
+        }
+        std::string result = "success";
+        if (action == "move")
+        {
+            result = FakeMove(args);
+        }
+        else if (action == "use" && args.value("target", "") == "0x1f5")
+        {
+            result = FakeUseExit();
+        }
+        else if (action == "use" && opens)
+        {
+            FakeUseDoor();
+        }
+        if (action == "move" && inert && !inertStays && at <= door + reach + 0.01)
+        {
+            shut = false; // walked into the trigger beside it, whose script removes it
+        }
+        if (action == fightOn)
+        {
+            mode = "combat";
+            hostileAt = 3; // the fight is at hand
+        }
+        if (action == loadOn)
+        {
+            mode = "loading";
+            loadingFor = loadFor;
+            if (!loadInto.empty())
+            {
+                area = loadInto;
+            }
+        }
+        const std::string type = action == "move" ? "MoveToLocation" : "UseObject";
+        if (chatter)
+        {
+            // A companion's command of the same kind ends, and the
+            // walker's last, which this order cleared.
+            bench.Events().Emit("eluvian.command.ended",
+                                Json{{"id", "0x10d"}, {"type", type}, {"result", "COMMAND_FAILED_INVALID_PATH"}});
+            bench.Events().Emit(
+                "eluvian.command.ended",
+                Json{{"id", args.value("id", "")}, {"type", type}, {"result", "COMMAND_FAILED_COMMAND_CLEARED"}});
+        }
+        if ((!silent || action != "move") && !(silentUse && action == "use"))
+        {
+            bench.Events().Emit("eluvian.command.ended",
+                                Json{{"id", args.value("id", "")}, {"type", type}, {"result", result}});
+        }
+        return Json{{"given", true}, {"cursor", cursor}};
+    }
+
+    // The stand-in's input.
+    ToolResult FakeInput(const Json &args)
+    {
+        if (args.contains("screen"))
+        {
+            // The map movie's own calls: its closed-by-travel mark and
+            // the pin's index, as the pin's click sets them.
+            screenCalls.push_back(args);
+            if (args.value("set", "") == "WorldMap.m_bClosedByTravel")
+            {
+                closedByTravel = args.value("value", false);
+                return Json{{"screen", "WorldMap"}, {"set", args.value("set", "")}, {"done", true}};
+            }
+            return Json{{"screen", "WorldMap"}, {"call", args.value("call", "")}, {"ran", true}};
+        }
+        const std::string message = args.value("message", "");
+        messages.push_back(message);
+        if (message == "WorldMap.WorldMapSwapMaps" && !otherMap.empty())
+        {
+            std::swap(shownMap, otherMap);
+            std::swap(pins, otherPins);
+        }
+        // A pin's click: the party goes there, or into an encounter on
+        // the way, over a load.
+        const std::string click = "GameModeController.AreaTransition " + area + " ";
+        if (mapUp && message.starts_with(click))
+        {
+            const Json &pin = pins.at(std::stoi(message.substr(click.size())));
+            if (pin.value("state", "") == "active")
+            {
+                // At camp, a map closed not by travel sends the
+                // followers home and the hero goes alone.
+                partyKept = closedByTravel;
+                mapUp = false;
+                area = encounter.empty() ? pin.value("area", "") : encounter;
+                mode = "loading";
+                loadingFor = 1;
+                bench.Events().Emit("eluvian.script.area_loaded", Json::object());
+            }
+        }
+        return Json{{"message", message}, {"sent", true}};
     }
 
     Json Travel(Json args = Json::object())

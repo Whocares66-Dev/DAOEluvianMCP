@@ -187,7 +187,71 @@ class Journey
                               "the world map, inspect kind=exits) and `to` goes there and on; in the Fade, a "
                               "Fade Pedestal's use opens its map");
         }
-        const Json pins = map->value("pins", Json::array());
+        std::string others;
+        const Json *pin = PinNamed(*map, others);
+        if (pin == nullptr)
+        {
+            return NoPin(*map, others);
+        }
+        answer_["pin"] = *pin;
+        const std::string name = pin->value("name", std::string());
+        const std::string state = pin->value("state", std::string());
+        if (state != "active")
+        {
+            return End(false,
+                       name + " is " + state + " on the world map, not a place to go now; the active ones: " + others);
+        }
+        auto since = bench_.Events().Next();
+        if (auto refused = ClickPin(*map, *pin, name))
+        {
+            return std::move(*refused);
+        }
+        return Arrive(since, *pin, name);
+    }
+
+    // No pin `to` names on the map shown. In a city, where the map up may
+    // be the city's and the world's the other, swapped to as the map's
+    // toggle button does and looked for again there, once (#42); else said,
+    // of both maps when swapped.
+    Json NoPin(const Json &map, const std::string &others)
+    {
+        const std::string shown = map.value("shown", Json()).is_string() ? map.at("shown").get<std::string>() : "";
+        const std::string other = map.value("other", Json()).is_string() ? map.at("other").get<std::string>() : "";
+        if (!other.empty() && !swapped_)
+        {
+            swapped_ = true;
+            if (!Ask("input", Json{{"message", "WorldMap.WorldMapSwapMaps"}}))
+            {
+                return End(false, *stopped_);
+            }
+            steps_.push_back(Json{{"did", "swap to the " + other + " map"}, {"result", "asked"}});
+            const auto swapUntil = Clock::now() + std::min(Left(), milliseconds(3000));
+            while (Clock::now() < swapUntil)
+            {
+                const auto again = Ask("inspect", Json{{"kind", "worldmap"}});
+                if (again && again->value("shown", Json()) != map.value("shown", Json()))
+                {
+                    break;
+                }
+                std::this_thread::sleep_for(milliseconds(250));
+            }
+            answer_["swapped"] = true;
+            return Map(false);
+        }
+        std::string where = shown.empty() ? std::string("the world map") : "the " + shown + " map";
+        if (swapped_)
+        {
+            where += " or the other";
+        }
+        return End(false, "no pin " + to_.dump() + " on " + where + "; the active ones: " + others);
+    }
+
+    // The pin `to` names, the active one where two share a name; the
+    // active ones' names in `others`, for a refusal.
+    const Json *PinNamed(const Json &map, std::string &others) const
+    {
+        static const Json kNone = Json::array();
+        const Json &pins = map.contains("pins") ? map.at("pins") : kNone;
         const Json *pin = nullptr;
         std::string active;
         for (const auto &candidate : pins)
@@ -205,51 +269,13 @@ class Journey
                 active += (active.empty() ? "" : ", ") + candidate.value("name", std::string());
             }
         }
-        const std::string others = active.empty() ? std::string("none") : active;
-        const std::string shown = map->value("shown", Json()).is_string() ? map->at("shown").get<std::string>() : "";
-        const std::string other = map->value("other", Json()).is_string() ? map->at("other").get<std::string>() : "";
-        if (pin == nullptr && !other.empty() && !swapped_)
-        {
-            // Not on the map shown, and there is another, a city's and the
-            // world's: swapped to as the map's toggle button does, and looked
-            // for again there (#42).
-            swapped_ = true;
-            if (!Ask("input", Json{{"message", "WorldMap.WorldMapSwapMaps"}}))
-            {
-                return End(false, *stopped_);
-            }
-            steps_.push_back(Json{{"did", "swap to the " + other + " map"}, {"result", "asked"}});
-            const auto swapUntil = Clock::now() + std::min(Left(), milliseconds(3000));
-            while (Clock::now() < swapUntil)
-            {
-                const auto again = Ask("inspect", Json{{"kind", "worldmap"}});
-                if (again && again->value("shown", Json()) != map->value("shown", Json()))
-                {
-                    break;
-                }
-                std::this_thread::sleep_for(milliseconds(250));
-            }
-            answer_["swapped"] = true;
-            return Map(false);
-        }
-        if (pin == nullptr)
-        {
-            std::string where = shown.empty() ? std::string("the world map") : "the " + shown + " map";
-            if (swapped_)
-            {
-                where += " or the other";
-            }
-            return End(false, "no pin " + to_.dump() + " on " + where + "; the active ones: " + others);
-        }
-        answer_["pin"] = *pin;
-        const std::string name = pin->value("name", std::string());
-        const std::string state = pin->value("state", std::string());
-        if (state != "active")
-        {
-            return End(false,
-                       name + " is " + state + " on the world map, not a place to go now; the active ones: " + others);
-        }
-        auto since = bench_.Events().Next();
+        others = active.empty() ? std::string("none") : active;
+        return pin;
+    }
+
+    // The pin clicked as its own click does: nothing, or the refusal.
+    std::optional<Json> ClickPin(const Json &map, const Json &pin, const std::string &name)
+    {
         // What the pin's own click does before the transition (worldmap.gfx,
         // MapPinIcon.PinClicked): the map marks itself closed by travel, and
         // the pin's index goes in the data tree. Without the mark the map
@@ -258,13 +284,13 @@ class Journey
         // alone, four times of four from camp to the area it was entered
         // from; with it, all four arrived (turn-based-agent's reading and
         // trial, 2026-10-03, #30).
-        const int index = pin->value("index", 0);
+        const int index = pin.value("index", 0);
         // The map shown: the world's, or the Fade's own (fademap.gfx), whose
         // pin sets the index and sends the transition with no mark (#34).
-        const std::string screen = map->value("screen", Json("WorldMap")).is_string()
-                                       ? map->value("screen", std::string("WorldMap"))
+        const std::string screen = map.value("screen", Json("WorldMap")).is_string()
+                                       ? map.value("screen", std::string("WorldMap"))
                                        : std::string("WorldMap");
-        if (map->value("map", std::string("world")) != "fade")
+        if (map.value("map", std::string("world")) != "fade")
         {
             const auto marked =
                 Ask("input", Json{{"screen", screen}, {"set", "WorldMap.m_bClosedByTravel"}, {"value", true}});
@@ -276,13 +302,20 @@ class Journey
                           {"call", "ExternalCommands.SetValue"},
                           {"args", Json::array({"WorldMap.LastClickedPinIndex", index})}});
         const std::string click =
-            "GameModeController.AreaTransition " + map->value("at", std::string()) + " " + std::to_string(index);
+            "GameModeController.AreaTransition " + map.value("at", std::string()) + " " + std::to_string(index);
         const auto sent = Ask("input", Json{{"message", click}});
         if (!sent || !sent->value("sent", false))
         {
             return End(false, "the game took no " + click + (stopped_ ? ": " + *stopped_ : std::string()));
         }
         steps_.push_back(Json{{"did", "the world map's pin " + name}, {"result", "asked"}});
+        return std::nullopt;
+    }
+
+    // Waited for until another area is in place: the pin's, or an
+    // encounter's on the way.
+    Json Arrive(std::uint64_t since, const Json &pin, const std::string &name)
+    {
         const auto loaded = EventFilter::FromArgs(Json{{"topic", "eluvian.script.area_loaded"}});
         while (Left() > milliseconds(0))
         {
@@ -307,7 +340,7 @@ class Journey
                 continue;
             }
             answer_["area"] = game.at("area");
-            if (area == pin->value("area", std::string()))
+            if (area == pin.value("area", std::string()))
             {
                 return End(true, "through to " + name);
             }
@@ -416,69 +449,93 @@ class Journey
                 const std::string result = ended->payload.value("result", std::string());
                 if (result.starts_with("COMMAND_FAILED") && result != kCleared)
                 {
-                    steps_.push_back(Json{{"did", "use " + exit}, {"result", result}});
-                    if (steppedBack || !StepBack(exit))
+                    if (auto failed = UseAgain(exit, result, steppedBack, since, useSince))
                     {
-                        std::string why = "the use of " + exit;
-                        why += " ended ";
-                        why += result;
-                        return End(false, std::move(why));
+                        return std::move(*failed);
                     }
-                    steppedBack = true;
-                    useSince = bench_.Events().Next();
-                    since = useSince;
-                    if (!Ask("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}}))
-                    {
-                        return End(false, *stopped_);
-                    }
-                    steps_.push_back(Json{{"did", "use " + exit + " again"}, {"result", "asked"}});
                     continue;
                 }
             }
-            const Json health = bench_.Invoke("health", Json::object()).data;
-            const std::string mode = health.value("mode", std::string());
-            answer_["mode"] = mode;
-            if (mode == "loading")
+            if (auto end = Crossed(to))
             {
-                continue;
-            }
-            // Refused as the other area comes in: asked again.
-            const auto read = Ask("inspect", Json{{"kind", "game"}});
-            if (!read)
-            {
-                continue;
-            }
-            const Json &game = *read;
-            const std::string area = game.value(Json::json_pointer("/area/tag"), std::string());
-            if (!area.empty() && area != fromArea_)
-            {
-                answer_["area"] = game.at("area");
-                steps_.push_back(Json{{"did", "wait for " + area}, {"result", "loaded"}});
-                return End(true, "through to " + game.value(Json::json_pointer("/area/name"), area) +
-                                     (area == to || to.empty() ? "" : " (the exit named " + to + ")"));
-            }
-            if (game.contains("popup") && !game.at("popup").is_null())
-            {
-                return End(false, "the game asks before leaving: " + game.at("popup").dump() +
-                                      "; inspect kind=gui reads it and game action=press answers it");
-            }
-            if (mode == "combat")
-            {
-                return End(false, "a fight began before the party left");
-            }
-            if (mode == "dialog" || mode == "cutscene")
-            {
-                return End(false, "a " + std::string(mode == "dialog" ? "conversation" : "cutscene") +
-                                      " took the screen before the party left");
-            }
-            if (mode != "explore" && !mode.empty())
-            {
-                return End(false, "the game is in mode " + mode +
-                                      " and the party has not left (an exit to the "
-                                      "world map opens it)");
+                return std::move(*end);
             }
         }
         return End(false, "the party did not leave in the time given; the exit was used");
+    }
+
+    // A use of the exit that failed: tried once more from a step back,
+    // the cursors taken before it is ordered; nothing, or the end.
+    std::optional<Json> UseAgain(const std::string &exit, const std::string &result, bool &steppedBack,
+                                 std::uint64_t &since, std::uint64_t &useSince)
+    {
+        steps_.push_back(Json{{"did", "use " + exit}, {"result", result}});
+        if (steppedBack || !StepBack(exit))
+        {
+            std::string why = "the use of " + exit;
+            why += " ended ";
+            why += result;
+            return End(false, std::move(why));
+        }
+        steppedBack = true;
+        useSince = bench_.Events().Next();
+        since = useSince;
+        if (!Ask("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}}))
+        {
+            return End(false, *stopped_);
+        }
+        steps_.push_back(Json{{"did", "use " + exit + " again"}, {"result", "asked"}});
+        return std::nullopt;
+    }
+
+    // What the game shows once the use is in: through to the other area,
+    // a question, a fight, a conversation, another mode. Nothing while it
+    // loads or stays.
+    std::optional<Json> Crossed(const std::string &to)
+    {
+        const Json health = bench_.Invoke("health", Json::object()).data;
+        const std::string mode = health.value("mode", std::string());
+        answer_["mode"] = mode;
+        if (mode == "loading")
+        {
+            return std::nullopt;
+        }
+        // Refused as the other area comes in: asked again.
+        const auto read = Ask("inspect", Json{{"kind", "game"}});
+        if (!read)
+        {
+            return std::nullopt;
+        }
+        const Json &game = *read;
+        const std::string area = game.value(Json::json_pointer("/area/tag"), std::string());
+        if (!area.empty() && area != fromArea_)
+        {
+            answer_["area"] = game.at("area");
+            steps_.push_back(Json{{"did", "wait for " + area}, {"result", "loaded"}});
+            return End(true, "through to " + game.value(Json::json_pointer("/area/name"), area) +
+                                 (area == to || to.empty() ? "" : " (the exit named " + to + ")"));
+        }
+        if (game.contains("popup") && !game.at("popup").is_null())
+        {
+            return End(false, "the game asks before leaving: " + game.at("popup").dump() +
+                                  "; inspect kind=gui reads it and game action=press answers it");
+        }
+        if (mode == "combat")
+        {
+            return End(false, "a fight began before the party left");
+        }
+        if (mode == "dialog" || mode == "cutscene")
+        {
+            return End(false, "a " + std::string(mode == "dialog" ? "conversation" : "cutscene") +
+                                  " took the screen before the party left");
+        }
+        if (mode != "explore" && !mode.empty())
+        {
+            return End(false, "the game is in mode " + mode +
+                                  " and the party has not left (an exit to the "
+                                  "world map opens it)");
+        }
+        return std::nullopt;
     }
 
     // A step back from the exit, along the line from it through the walker:
@@ -507,7 +564,7 @@ class Journey
             length = 1;
         }
         const Json point =
-            Json::array({(*from)[0] + dx / length * kStepBack, (*from)[1] + dy / length * kStepBack, (*from)[2]});
+            Json::array({(*from)[0] + (dx / length * kStepBack), (*from)[1] + (dy / length * kStepBack), (*from)[2]});
         const auto result =
             Order(Json{{"action", "move"}, {"id", who_}, {"point", point}}, "MoveToLocation", "step back from " + exit);
         return result && *result == "success";
@@ -529,8 +586,6 @@ class Journey
 
     Json Walk()
     {
-        std::string lastBlocker;
-        std::optional<double> lastWalk; // the walk's length when the last move along it was given
         for (int step = 0; step < 4 * (static_cast<int>(maxDoors_) + 2); ++step)
         {
             if (const auto reason = NotMine())
@@ -553,223 +608,133 @@ class Journey
             {
                 return End(true, "there");
             }
-            if (walk.value("found", false))
+            if (auto end = Step(geometry, walk, distance))
             {
-                // The walk's own end, not the target's place: a door or a
-                // mirror stands where nothing can, the search ends as near
-                // as a creature fits, and a move to the thing itself ended
-                // COMMAND_FAILED_INVALID_PATH 6 m and 20 m short (2026-10-01).
-                const double length = walk.value("length", distance);
-                if (length < 0.5)
-                {
-                    return End(true, "as near as the walk goes");
-                }
-                // A walk whose end the creature cannot stand on, under a
-                // thing that fills its place or hangs overhead: each move
-                // there ends where it began, and the walk asked again is as
-                // long. The Elven Ruins' cocoon, 4 m up, took 22 such moves
-                // until the steps ran out, where a use from below worked at
-                // once (#4, 2026-10-02). A thing is used from as near as it
-                // goes; a point is not reached.
-                if (lastWalk && length > *lastWalk - kNoNearer)
-                {
-                    if (where_.contains("target"))
-                    {
-                        return End(true, "as near as the walk goes: the last move brought it no nearer");
-                    }
-                    return End(false, "the walk goes no nearer: the last move brought it no nearer");
-                }
-                lastWalk = length;
-                const Json waypoints = walk.value("waypoints", Json::array());
-                const Json &to = waypoints.is_array() && !waypoints.empty() ? waypoints.back() : geometry.at("to");
-                const auto result =
-                    Order(Json{{"action", "move"}, {"id", who_}, {"point", to}}, "MoveToLocation", "move");
-                if (!result)
-                {
-                    return End(false, stopped_.value_or("the time ran out while walking"));
-                }
-                if (*result == "success" || *result == kUnseen)
-                {
-                    continue; // measured again above: there, or stopped short of it
-                }
-                if (*result == kCleared)
-                {
-                    lastWalk.reset(); // not a move made: it does not say the walk goes no nearer
-                    continue;
-                }
-                if (*result != "COMMAND_FAILED_PATH_ACTION_REQUIRED")
-                {
-                    // A move to a creature ends COMMAND_FAILED_INVALID_PATH
-                    // beside it, where the creature stands: there, then. A
-                    // walk to Master Ilen ended so 0.45 m from him (#12).
-                    Json again = where_;
-                    again.update(Json{{"kind", "geometry"}, {"id", who_}});
-                    if (const auto after = Ask("inspect", again))
-                    {
-                        answer_["distance"] = after->value("distance", 0.0);
-                        measured_ = true;
-                        if (after->value("distance", within_ + 1) <= within_)
-                        {
-                            return End(true, "there");
-                        }
-                    }
-                    return End(false, "the walk ended " + *result);
-                }
-                continue; // something shut on the way: asked again from where it stopped
+                return std::move(*end);
             }
-            const std::string blocker = walk.value(Json::json_pointer("/blocker/id"), std::string());
-            if (!blocker.empty() && blocker == where_.value("target", std::string()))
+        }
+        return End(false, "too many steps without arriving");
+    }
+
+    // One step of the walk, by what the search answered (#77): the
+    // journey's end, or nothing, to measure again and go on.
+    std::optional<Json> Step(const Json &geometry, const Json &walk, double distance)
+    {
+        if (walk.value("found", false))
+        {
+            return AlongTheWalk(geometry, walk, distance);
+        }
+        const std::string blocker = walk.value(Json::json_pointer("/blocker/id"), std::string());
+        if (!blocker.empty() && blocker == where_.value("target", std::string()))
+        {
+            return TargetInTheWay(walk, distance);
+        }
+        if (auto shut = ShutForGood(walk, blocker))
+        {
+            return shut;
+        }
+        // An exit lying ahead is no door on the way: its use leaves the
+        // area or brings the map up. Where the search gives up, the
+        // placeable just ahead is named, and beside Redcliffe castle's
+        // village door that was the World Map exit, used twice before
+        // travel stopped (turn-based-agent, 2026-10-04, #38). It is gone
+        // round as nothing named: as far as the search got, then said.
+        const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");
+        // So too a thing that is not interactive, which no use opens: the
+        // East Brecilian Forest's heart has an Invisible Object across
+        // the path, removed by a trigger's script as the party walks in
+        // with the Grand Oak's branch; travel used it as a door and said
+        // "did not open" five times without walking up to it
+        // (turn-based-agent, 2026-10-04, #50). Gone round the same way,
+        // a trigger near it may remove it on the way there.
+        const bool inertAhead = !blocker.empty() && !walk.value(Json::json_pointer("/blocker/interactive"), true);
+        if (!blocker.empty() && !exitAhead && !inertAhead)
+        {
+            return OpenOnTheWay(walk, blocker);
+        }
+        return NoWalk(walk, blocker, exitAhead, inertAhead);
+    }
+
+    // A walk found: a move along it.
+    std::optional<Json> AlongTheWalk(const Json &geometry, const Json &walk, double distance)
+    {
+        // The walk's own end, not the target's place: a door or a
+        // mirror stands where nothing can, the search ends as near
+        // as a creature fits, and a move to the thing itself ended
+        // COMMAND_FAILED_INVALID_PATH 6 m and 20 m short (2026-10-01).
+        const double length = walk.value("length", distance);
+        if (length < 0.5)
+        {
+            return End(true, "as near as the walk goes");
+        }
+        // A walk whose end the creature cannot stand on, under a
+        // thing that fills its place or hangs overhead: each move
+        // there ends where it began, and the walk asked again is as
+        // long. The Elven Ruins' cocoon, 4 m up, took 22 such moves
+        // until the steps ran out, where a use from below worked at
+        // once (#4, 2026-10-02). A thing is used from as near as it
+        // goes; a point is not reached.
+        if (lastWalk_ && length > *lastWalk_ - kNoNearer)
+        {
+            if (where_.contains("target"))
             {
-                // The target itself is what stands in the way: it is reached,
-                // not a door to open on the way (a chest in a narrow place was
-                // opened as one, #21). Only near it: from afar the search names
-                // the target as soon as the way ends at it, and a locked door
-                // 62 m off answered "as near as the walk goes" with no step
-                // taken (turn-based-agent, 2026-10-04, #46). It is walked up
-                // to first, as far as the search got.
-                if (distance > kNearOwnWay)
-                {
-                    if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)
-                    {
-                        wentToReached_ = true;
-                        lastWalk.reset();
-                        const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", walk.at("reached")}},
-                                                  "MoveToLocation", "move as far as the search got");
-                        if (!result)
-                        {
-                            return End(false, stopped_.value_or("the time ran out while walking"));
-                        }
-                        wentToReached_ = *result != kCleared;
-                        continue;
-                    }
-                    // As far as the search got, and no nearer: its way can
-                    // end at the target from far off where the game walks
-                    // on. In the darkspawn tunnels under Ostagar an exit two
-                    // rooms away was "in the way" 69 m off, and from a little
-                    // further on the next travel walked there and through
-                    // (turn-based-agent, 2026-10-05, #67). The engine's own
-                    // move to it, once, before saying so.
-                    if (!engineTried_)
-                    {
-                        engineTried_ = true;
-                        if (EngineMove("the engine's own move, the search's way ending at the target"))
-                        {
-                            lastWalk.reset();
-                            continue;
-                        }
-                    }
-                    return End(false, "the target itself stands in the way of the walk, " +
-                                          std::to_string(std::lround(distance)) +
-                                          " m off, and the walk gets no nearer: order use on it walks up to it");
-                }
-                return End(true, "as near as the walk goes: the target itself stands in the way");
+                return End(true, "as near as the walk goes: the last move brought it no nearer");
             }
-            // A door the story keeps shut, or its key: its pick level is the
-            // game's "cannot be picked", and using it does nothing. The
-            // Circle Tower's stairs stand behind such doors until the story
-            // opens them; travel used one three times and stood there
-            // (turn-based-agent, 2026-10-03, #33). Said at once, neither used
-            // nor walked towards.
-            // So too a door whose key is required and not carried: Redcliffe
-            // castle's Main Hall, its key "DoesNotExist" (turn-based-agent,
-            // 2026-10-04, #40).
-            // Only while it is locked: a door the party unlocked with its key,
-            // which the game took, fell shut behind them unlocked, and travel
-            // would not leave the room "the key the party does not carry"
-            // (turn-based-agent, 2026-10-04, #45). Read as locked where no
-            // state is read.
-            const bool locked = walk.value(Json::json_pointer("/blocker/state"), kLocked) == kLocked;
-            const bool keyMissing = locked && walk.value(Json::json_pointer("/blocker/lock/keyRequired"), false) &&
-                                    !walk.value(Json::json_pointer("/blocker/lock/keyHeld"), true);
-            if (!blocker.empty() && keyMissing)
+            return End(false, "the walk goes no nearer: the last move brought it no nearer");
+        }
+        lastWalk_ = length;
+        const Json waypoints = walk.value("waypoints", Json::array());
+        const Json &to = waypoints.is_array() && !waypoints.empty() ? waypoints.back() : geometry.at("to");
+        const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", to}}, "MoveToLocation", "move");
+        if (!result)
+        {
+            return End(false, stopped_.value_or("the time ran out while walking"));
+        }
+        if (*result == "success" || *result == kUnseen)
+        {
+            return std::nullopt; // measured again above: there, or stopped short of it
+        }
+        if (*result == kCleared)
+        {
+            lastWalk_.reset(); // not a move made: it does not say the walk goes no nearer
+            return std::nullopt;
+        }
+        if (*result != "COMMAND_FAILED_PATH_ACTION_REQUIRED")
+        {
+            // A move to a creature ends COMMAND_FAILED_INVALID_PATH
+            // beside it, where the creature stands: there, then. A
+            // walk to Master Ilen ended so 0.45 m from him (#12).
+            Json again = where_;
+            again.update(Json{{"kind", "geometry"}, {"id", who_}});
+            if (const auto after = Ask("inspect", again))
             {
-                answer_["shutBy"] = walk.at("blocker");
-                std::string why = "the way is shut by a door whose key the party does not carry (" +
-                                  walk.value(Json::json_pointer("/blocker/lock/keyTag"), std::string()) +
-                                  "): " + blocker;
-                why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
-                why += " (the story opens it, or its key; inspect kind=placeables says more)";
-                return End(false, std::move(why));
+                answer_["distance"] = after->value("distance", 0.0);
+                measured_ = true;
+                if (after->value("distance", within_ + 1) <= within_)
+                {
+                    return End(true, "there");
+                }
             }
-            if (!blocker.empty() && locked &&
-                walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)
-            {
-                answer_["shutBy"] = walk.at("blocker");
-                std::string why = "the way is shut by a door that cannot be opened: " + blocker;
-                why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
-                why += " (the story opens it, or its key; inspect kind=placeables says more)";
-                return End(false, std::move(why));
-            }
-            // An exit lying ahead is no door on the way: its use leaves the
-            // area or brings the map up. Where the search gives up, the
-            // placeable just ahead is named, and beside Redcliffe castle's
-            // village door that was the World Map exit, used twice before
-            // travel stopped (turn-based-agent, 2026-10-04, #38). It is gone
-            // round as nothing named: as far as the search got, then said.
-            const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");
-            // So too a thing that is not interactive, which no use opens: the
-            // East Brecilian Forest's heart has an Invisible Object across
-            // the path, removed by a trigger's script as the party walks in
-            // with the Grand Oak's branch; travel used it as a door and said
-            // "did not open" five times without walking up to it
-            // (turn-based-agent, 2026-10-04, #50). Gone round the same way,
-            // a trigger near it may remove it on the way there.
-            const bool inertAhead = !blocker.empty() && !walk.value(Json::json_pointer("/blocker/interactive"), true);
-            if (!blocker.empty() && !exitAhead && !inertAhead)
-            {
-                if (doors_.size() >= maxDoors_)
-                {
-                    return End(false, "more shut on the way than `maxDoors` allows; the next is " + blocker);
-                }
-                if (blocker == lastBlocker)
-                {
-                    // A door locked with its key carried: the key's first use
-                    // only unlocks it, the key taken from the pack, and a
-                    // second opens it; the Ruined Temple's south-east door
-                    // stood "did not open" after the first (turn-based-agent,
-                    // 2026-10-04, #47). Its state read straight after may
-                    // still say locked, a frame early: the key carried at the
-                    // first use is what says a second is due.
-                    const Json used = doors_.empty() ? Json::object() : doors_.back();
-                    const bool keyTurned = used.value(Json::json_pointer("/state"), kLocked) == kLocked &&
-                                           used.value(Json::json_pointer("/lock/keyHeld"), false);
-                    if (!keyTurned || keyTurned_ == blocker)
-                    {
-                        return End(false, "what is in the way did not open: " + blocker);
-                    }
-                    keyTurned_ = blocker;
-                }
-                lastBlocker = blocker;
-                lastWalk.reset(); // the way is another once it is open
-                Json use = {{"action", "use"}, {"id", who_}, {"target", blocker}};
-                if (!byClick_)
-                {
-                    use["via"] = "command";
-                    use["objectAction"] = "open";
-                }
-                const auto result = Order(use, "UseObject", "use " + blocker);
-                if (!result)
-                {
-                    return End(false, stopped_.value_or("the time ran out at " + blocker));
-                }
-                if (*result == kCleared)
-                {
-                    lastBlocker.clear(); // not a use made: it may be asked again
-                    continue;
-                }
-                if (doors_.empty() || doors_.back().value("id", std::string()) != blocker)
-                {
-                    doors_.push_back(walk.at("blocker")); // once, as it was at its first use
-                }
-                continue;
-            }
-            // No walk and nothing named in the way: go as far as the search
-            // got, once, and ask from there; a creature standing at a door
-            // gets the pathfinder's own word for it.
+            return End(false, "the walk ended " + *result);
+        }
+        return std::nullopt; // something shut on the way: asked again from where it stopped
+    }
+
+    std::optional<Json> TargetInTheWay(const Json &walk, double distance)
+    {
+        // The target itself is what stands in the way: it is reached,
+        // not a door to open on the way (a chest in a narrow place was
+        // opened as one, #21). Only near it: from afar the search names
+        // the target as soon as the way ends at it, and a locked door
+        // 62 m off answered "as near as the walk goes" with no step
+        // taken (turn-based-agent, 2026-10-04, #46). It is walked up
+        // to first, as far as the search got.
+        if (distance > kNearOwnWay)
+        {
             if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)
             {
                 wentToReached_ = true;
-                lastWalk.reset();
+                lastWalk_.reset();
                 const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", walk.at("reached")}},
                                           "MoveToLocation", "move as far as the search got");
                 if (!result)
@@ -777,64 +742,192 @@ class Journey
                     return End(false, stopped_.value_or("the time ran out while walking"));
                 }
                 wentToReached_ = *result != kCleared;
-                continue;
+                return std::nullopt;
             }
-            if (exitAhead)
-            {
-                answer_["exitAhead"] = walk.at("blocker");
-                std::string why = blocker + " " + walk.value(Json::json_pointer("/blocker/name"), std::string()) +
-                                  ", an exit, stands in the way; it is not used on the way, as it leaves the area";
-                if (where_.contains("target"))
-                {
-                    return End(true, "as near as the walk goes: " + why + " (order use on the target walks the rest)");
-                }
-                return End(false, "no walk there: " + why);
-            }
-            if (inertAhead)
-            {
-                answer_["inertAhead"] = walk.at("blocker");
-                std::string why = blocker + " " + walk.value(Json::json_pointer("/blocker/name"), std::string()) +
-                                  " stands in the way and is not interactive, so no use opens it: the story removes "
-                                  "it, a trigger near it perhaps (inspect kind=triggers)";
-                if (where_.contains("target"))
-                {
-                    return End(true, "as near as the walk goes: " + why);
-                }
-                return End(false, "no walk there: " + why);
-            }
-            // The search found none and named nothing: a strip on an open
-            // doorway's line in the Lair of the Werewolves that it takes for
-            // no ground, which the engine's own straight steps cross; the
-            // walk stopped dead where a player walks through
-            // (turn-based-agent, 2026-10-04, #53). Short straight steps
-            // toward the goal, the walk asked again after each, once.
-            // The engine's own move to the goal first: through an open door
-            // at Soldier's Peak the search found none, where MoveToLocation
-            // walked straight in and the straight steps got no nearer
-            // (turn-based-agent, 2026-10-05, #67). The game's path is the
-            // authority; the search only plans.
-            if (walk.value("result", std::string()) == "none" && !engineTried_ && exit_.empty() && area_.empty())
+            // As far as the search got, and no nearer: its way can
+            // end at the target from far off where the game walks
+            // on. In the darkspawn tunnels under Ostagar an exit two
+            // rooms away was "in the way" 69 m off, and from a little
+            // further on the next travel walked there and through
+            // (turn-based-agent, 2026-10-05, #67). The engine's own
+            // move to it, once, before saying so.
+            if (!engineTried_)
             {
                 engineTried_ = true;
-                if (EngineMove("the engine's own move, the search having found none"))
+                if (EngineMove("the engine's own move, the search's way ending at the target"))
                 {
-                    lastWalk.reset();
-                    continue;
+                    lastWalk_.reset();
+                    return std::nullopt;
                 }
             }
-            if (walk.value("result", std::string()) == "none" && !straightTried_ && exit_.empty() && area_.empty())
-            {
-                straightTried_ = true;
-                if (const auto why = StraightSteps())
-                {
-                    return End(false, *why);
-                }
-                lastWalk.reset();
-                continue;
-            }
-            return End(false, "no walk there: " + walk.value("result", std::string("the search found none")));
+            return End(false, "the target itself stands in the way of the walk, " +
+                                  std::to_string(std::lround(distance)) +
+                                  " m off, and the walk gets no nearer: order use on it walks up to it");
         }
-        return End(false, "too many steps without arriving");
+        return End(true, "as near as the walk goes: the target itself stands in the way");
+    }
+
+    std::optional<Json> ShutForGood(const Json &walk, const std::string &blocker)
+    {
+        // A door the story keeps shut, or its key: its pick level is the
+        // game's "cannot be picked", and using it does nothing. The
+        // Circle Tower's stairs stand behind such doors until the story
+        // opens them; travel used one three times and stood there
+        // (turn-based-agent, 2026-10-03, #33). Said at once, neither used
+        // nor walked towards.
+        // So too a door whose key is required and not carried: Redcliffe
+        // castle's Main Hall, its key "DoesNotExist" (turn-based-agent,
+        // 2026-10-04, #40).
+        // Only while it is locked: a door the party unlocked with its key,
+        // which the game took, fell shut behind them unlocked, and travel
+        // would not leave the room "the key the party does not carry"
+        // (turn-based-agent, 2026-10-04, #45). Read as locked where no
+        // state is read.
+        const bool locked = walk.value(Json::json_pointer("/blocker/state"), kLocked) == kLocked;
+        const bool keyMissing = locked && walk.value(Json::json_pointer("/blocker/lock/keyRequired"), false) &&
+                                !walk.value(Json::json_pointer("/blocker/lock/keyHeld"), true);
+        if (!blocker.empty() && keyMissing)
+        {
+            answer_["shutBy"] = walk.at("blocker");
+            std::string why = "the way is shut by a door whose key the party does not carry (" +
+                              walk.value(Json::json_pointer("/blocker/lock/keyTag"), std::string()) + "): " + blocker;
+            why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
+            why += " (the story opens it, or its key; inspect kind=placeables says more)";
+            return End(false, std::move(why));
+        }
+        if (!blocker.empty() && locked && walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)
+        {
+            answer_["shutBy"] = walk.at("blocker");
+            std::string why = "the way is shut by a door that cannot be opened: " + blocker;
+            why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
+            why += " (the story opens it, or its key; inspect kind=placeables says more)";
+            return End(false, std::move(why));
+        }
+        return std::nullopt;
+    }
+
+    // A door on the way, used to open it.
+    std::optional<Json> OpenOnTheWay(const Json &walk, const std::string &blocker)
+    {
+        if (doors_.size() >= maxDoors_)
+        {
+            return End(false, "more shut on the way than `maxDoors` allows; the next is " + blocker);
+        }
+        if (blocker == lastBlocker_)
+        {
+            // A door locked with its key carried: the key's first use
+            // only unlocks it, the key taken from the pack, and a
+            // second opens it; the Ruined Temple's south-east door
+            // stood "did not open" after the first (turn-based-agent,
+            // 2026-10-04, #47). Its state read straight after may
+            // still say locked, a frame early: the key carried at the
+            // first use is what says a second is due.
+            const Json used = doors_.empty() ? Json::object() : doors_.back();
+            const bool keyTurned = used.value(Json::json_pointer("/state"), kLocked) == kLocked &&
+                                   used.value(Json::json_pointer("/lock/keyHeld"), false);
+            if (!keyTurned || keyTurned_ == blocker)
+            {
+                return End(false, "what is in the way did not open: " + blocker);
+            }
+            keyTurned_ = blocker;
+        }
+        lastBlocker_ = blocker;
+        lastWalk_.reset(); // the way is another once it is open
+        Json use = {{"action", "use"}, {"id", who_}, {"target", blocker}};
+        if (!byClick_)
+        {
+            use["via"] = "command";
+            use["objectAction"] = "open";
+        }
+        const auto result = Order(use, "UseObject", "use " + blocker);
+        if (!result)
+        {
+            return End(false, stopped_.value_or("the time ran out at " + blocker));
+        }
+        if (*result == kCleared)
+        {
+            lastBlocker_.clear(); // not a use made: it may be asked again
+            return std::nullopt;
+        }
+        if (doors_.empty() || doors_.back().value("id", std::string()) != blocker)
+        {
+            doors_.push_back(walk.at("blocker")); // once, as it was at its first use
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Json> NoWalk(const Json &walk, const std::string &blocker, bool exitAhead, bool inertAhead)
+    {
+        // No walk and nothing named in the way: go as far as the search
+        // got, once, and ask from there; a creature standing at a door
+        // gets the pathfinder's own word for it.
+        if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)
+        {
+            wentToReached_ = true;
+            lastWalk_.reset();
+            const auto result = Order(Json{{"action", "move"}, {"id", who_}, {"point", walk.at("reached")}},
+                                      "MoveToLocation", "move as far as the search got");
+            if (!result)
+            {
+                return End(false, stopped_.value_or("the time ran out while walking"));
+            }
+            wentToReached_ = *result != kCleared;
+            return std::nullopt;
+        }
+        if (exitAhead)
+        {
+            answer_["exitAhead"] = walk.at("blocker");
+            std::string why = blocker + " " + walk.value(Json::json_pointer("/blocker/name"), std::string()) +
+                              ", an exit, stands in the way; it is not used on the way, as it leaves the area";
+            if (where_.contains("target"))
+            {
+                return End(true, "as near as the walk goes: " + why + " (order use on the target walks the rest)");
+            }
+            return End(false, "no walk there: " + why);
+        }
+        if (inertAhead)
+        {
+            answer_["inertAhead"] = walk.at("blocker");
+            std::string why = blocker + " " + walk.value(Json::json_pointer("/blocker/name"), std::string()) +
+                              " stands in the way and is not interactive, so no use opens it: the story removes "
+                              "it, a trigger near it perhaps (inspect kind=triggers)";
+            if (where_.contains("target"))
+            {
+                return End(true, "as near as the walk goes: " + why);
+            }
+            return End(false, "no walk there: " + why);
+        }
+        // The search found none and named nothing: a strip on an open
+        // doorway's line in the Lair of the Werewolves that it takes for
+        // no ground, which the engine's own straight steps cross; the
+        // walk stopped dead where a player walks through
+        // (turn-based-agent, 2026-10-04, #53). Short straight steps
+        // toward the goal, the walk asked again after each, once.
+        // The engine's own move to the goal first: through an open door
+        // at Soldier's Peak the search found none, where MoveToLocation
+        // walked straight in and the straight steps got no nearer
+        // (turn-based-agent, 2026-10-05, #67). The game's path is the
+        // authority; the search only plans.
+        if (walk.value("result", std::string()) == "none" && !engineTried_ && exit_.empty() && area_.empty())
+        {
+            engineTried_ = true;
+            if (EngineMove("the engine's own move, the search having found none"))
+            {
+                lastWalk_.reset();
+                return std::nullopt;
+            }
+        }
+        if (walk.value("result", std::string()) == "none" && !straightTried_ && exit_.empty() && area_.empty())
+        {
+            straightTried_ = true;
+            if (const auto why = StraightSteps())
+            {
+                return End(false, *why);
+            }
+            lastWalk_.reset();
+            return std::nullopt;
+        }
+        return End(false, "no walk there: " + walk.value("result", std::string("the search found none")));
     }
 
     [[nodiscard]] milliseconds Left() const
@@ -925,8 +1018,8 @@ class Journey
             const double dy = (*to)[1] - (*from)[1];
             const double length = std::hypot(dx, dy);
             const double reach = std::min(kStraightStep, length);
-            const Json point = Json::array({(*from)[0] + dx / length * reach, (*from)[1] + dy / length * reach,
-                                            (*from)[2] + ((*to)[2] - (*from)[2]) * reach / length});
+            const Json point = Json::array({(*from)[0] + (dx / length * reach), (*from)[1] + (dy / length * reach),
+                                            (*from)[2] + (((*to)[2] - (*from)[2]) * reach / length)});
             const auto result =
                 Order(Json{{"action", "move"}, {"id", who_}, {"point", point}}, "MoveToLocation", "straight step");
             if (!result)
@@ -1201,9 +1294,11 @@ class Journey
     std::string who_;
     bool byClick_ = false;
     bool wentToReached_ = false;
-    bool straightTried_ = false; // whether straight steps were tried where the walk found none (#53)
-    bool engineTried_ = false;   // whether the engine's own move was tried where the walk found none (#67)
-    bool measured_ = false;      // whether `distance` was measured after the last order
+    std::string lastBlocker_;        // the door used last, to tell one that did not open
+    std::optional<double> lastWalk_; // the walk's length when the last move along it was given
+    bool straightTried_ = false;     // whether straight steps were tried where the walk found none (#53)
+    bool engineTried_ = false;       // whether the engine's own move was tried where the walk found none (#67)
+    bool measured_ = false;          // whether `distance` was measured after the last order
     std::optional<std::string> stopped_;
     Json doors_ = Json::array();
     Json steps_ = Json::array();

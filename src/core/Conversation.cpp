@@ -126,75 +126,98 @@ class Talk
             {
                 cursor_ = event->seq + 1;
                 quietSince = Clock::now();
-                if (event->topic == "eluvian.dialogue.line")
+                if (auto end = OnEvent(*event))
                 {
-                    if (const auto text = event->payload.value("text", std::string()); !text.empty())
-                    {
-                        lines_.push_back(Json{{"speaker", event->payload.value("speaker", std::string())},
-                                              {"by", event->payload.value("by", Json())},
-                                              {"to", event->payload.value("to", Json())},
-                                              {"text", text}});
-                    }
-                    continue;
-                }
-                if (event->topic == "eluvian.dialogue.replies")
-                {
-                    const Json replies = event->payload.value("replies", Json::array());
-                    if (RealChoice(replies))
-                    {
-                        return Choice(replies);
-                    }
-                    // No replies is the old ones taken away, not a continue to
-                    // go through: one gone through there, as the Quartermaster's
-                    // talk ended into his Store, was refused (2026-10-03).
-                    if (!replies.empty() && !GoOn())
-                    {
-                        return Stopped();
-                    }
-                    continue;
-                }
-                const std::string to = event->payload.value("to", std::string());
-                if (to != "dialog")
-                {
-                    return Ended(to);
+                    return std::move(*end);
                 }
                 continue;
             }
             // Nothing in a quarter second: the screen read.
-            const auto read = Ask("inspect", Json{{"kind", "dialogue"}});
-            if (!read)
+            if (auto end = OnScreen(quietSince))
             {
-                return End(false, refused_);
-            }
-            if (!read->value("active", false))
-            {
-                return Ended(read->value("cutscene", false) ? "cutscene" : Mode());
-            }
-            const Json replies = read->value("replies", Json::array());
-            if (!replies.empty() && Indices(replies) != answered_)
-            {
-                if (RealChoice(replies))
-                {
-                    return Choice(replies);
-                }
-                if (!GoOn())
-                {
-                    return Stopped();
-                }
-                quietSince = Clock::now();
-                continue;
-            }
-            if (skipLines_ && replies.empty() && Clock::now() - quietSince > kQuiet)
-            {
-                // A line being spoken: cut short, as the skip key does.
-                if (!GoOn())
-                {
-                    return Stopped();
-                }
-                quietSince = Clock::now();
+                return std::move(*end);
             }
         }
         return End(false, "the time ran out before the next choice; inspect kind=dialogue says where it is");
+    }
+
+    // An event's part: a line kept, a choice answered or gone through, the
+    // conversation's end. Nothing while it goes on.
+    std::optional<Json> OnEvent(const Event &event)
+    {
+        if (event.topic == "eluvian.dialogue.line")
+        {
+            if (const auto text = event.payload.value("text", std::string()); !text.empty())
+            {
+                lines_.push_back(Json{{"speaker", event.payload.value("speaker", std::string())},
+                                      {"by", event.payload.value("by", Json())},
+                                      {"to", event.payload.value("to", Json())},
+                                      {"text", text}});
+            }
+            return std::nullopt;
+        }
+        if (event.topic == "eluvian.dialogue.replies")
+        {
+            const Json replies = event.payload.value("replies", Json::array());
+            if (RealChoice(replies))
+            {
+                return Choice(replies);
+            }
+            // No replies is the old ones taken away, not a continue to
+            // go through: one gone through there, as the Quartermaster's
+            // talk ended into his Store, was refused (2026-10-03).
+            if (!replies.empty() && !GoOn())
+            {
+                return Stopped();
+            }
+            return std::nullopt;
+        }
+        const std::string to = event.payload.value("to", std::string());
+        if (to != "dialog")
+        {
+            return Ended(to);
+        }
+        return std::nullopt;
+    }
+
+    // The screen's part, read when no event came: its replies answered or
+    // gone through, a spoken line cut short, the conversation's end.
+    // `quietSince` starts again when it goes on.
+    std::optional<Json> OnScreen(Clock::time_point &quietSince)
+    {
+        const auto read = Ask("inspect", Json{{"kind", "dialogue"}});
+        if (!read)
+        {
+            return End(false, refused_);
+        }
+        if (!read->value("active", false))
+        {
+            return Ended(read->value("cutscene", false) ? "cutscene" : Mode());
+        }
+        const Json replies = read->value("replies", Json::array());
+        if (!replies.empty() && Indices(replies) != answered_)
+        {
+            if (RealChoice(replies))
+            {
+                return Choice(replies);
+            }
+            if (!GoOn())
+            {
+                return Stopped();
+            }
+            quietSince = Clock::now();
+            return std::nullopt;
+        }
+        if (skipLines_ && replies.empty() && Clock::now() - quietSince > kQuiet)
+        {
+            // A line being spoken: cut short, as the skip key does.
+            if (!GoOn())
+            {
+                return Stopped();
+            }
+            quietSince = Clock::now();
+        }
+        return std::nullopt;
     }
 
     bool GoOn()

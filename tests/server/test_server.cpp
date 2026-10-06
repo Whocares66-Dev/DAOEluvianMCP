@@ -64,7 +64,7 @@ class Client
         return ReadResponse();
     }
 
-    void SendRaw(const std::string &bytes)
+    void SendRaw(const std::string &bytes) const
     {
         send(socket_, bytes.data(), static_cast<int>(bytes.size()), 0);
     }

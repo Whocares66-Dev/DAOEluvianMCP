@@ -47,7 +47,7 @@ dao::Vector VectorOf(const Json &value, std::string_view what)
     const auto number = [&](const Json &n) {
         if (!n.is_number())
         {
-            throw ToolError(std::format("{} must be a point: {{\"x\": 1, \"y\": 2, \"z\": 0}} or [1, 2, 0]", what));
+            throw ToolError(std::format(R"({} must be a point: {{"x": 1, "y": 2, "z": 0}} or [1, 2, 0])", what));
         }
         return n.get<float>();
     };

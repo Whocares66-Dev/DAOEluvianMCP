@@ -129,24 +129,9 @@ class Looting
             {
                 return TakeAll();
             }
-            if (!open.empty())
+            if (auto instead = Instead(gui, open))
             {
-                return End(false, "the loot panel of " + open + " opened, not " + target_ + "'s");
-            }
-            if (gui.contains("popup") && !gui.at("popup").is_null())
-            {
-                return End(false, "the game asks: " + gui.at("popup").value("text", std::string()) +
-                                      "; inspect kind=gui reads it and game action=press answers it");
-            }
-            const std::string mode = gui.value("mode", std::string());
-            if (mode == "combat")
-            {
-                return End(false, "a fight began");
-            }
-            if (mode == "dialog" || mode == "cutscene")
-            {
-                return End(false,
-                           "a " + std::string(mode == "dialog" ? "conversation" : "cutscene") + " took the screen");
+                return End(false, std::move(*instead));
             }
             if (!started && Clock::now() - ordered > kNoUse)
             {
@@ -158,6 +143,31 @@ class Looting
             }
         }
         return End(false, "no loot panel came in the time given");
+    }
+
+    // What came instead of the container's panel, if anything: another's
+    // panel, a question, a fight, a conversation or a cutscene.
+    std::optional<std::string> Instead(const Json &gui, const std::string &open) const
+    {
+        if (!open.empty())
+        {
+            return "the loot panel of " + open + " opened, not " + target_ + "'s";
+        }
+        if (gui.contains("popup") && !gui.at("popup").is_null())
+        {
+            return "the game asks: " + gui.at("popup").value("text", std::string()) +
+                   "; inspect kind=gui reads it and game action=press answers it";
+        }
+        const std::string mode = gui.value("mode", std::string());
+        if (mode == "combat")
+        {
+            return "a fight began";
+        }
+        if (mode == "dialog" || mode == "cutscene")
+        {
+            return "a " + std::string(mode == "dialog" ? "conversation" : "cutscene") + " took the screen";
+        }
+        return std::nullopt;
     }
 
     // A use that started nothing: what the container holds says why.

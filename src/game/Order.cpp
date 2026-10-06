@@ -164,6 +164,128 @@ bool OrderByClick(const Args &args, const std::string &action, ObjectId who, Jso
 
 } // namespace
 
+namespace
+{
+
+// action control: the scripts' own hand-over to a party member.
+Json OrderControl(Bench &bench, const Args &args, ObjectId controlled)
+{
+    // The scripts' SetPrimaryControlled, what the game's own
+    // scripts use to hand control to a follower. A follower given
+    // an order by command out of combat took none, and the
+    // selection's binding left the hero controlled
+    // (turn-based-agent, 2026-10-03, #22).
+    const ObjectId member = args.Id("id", "a party member, as inspect kind=game lists the party");
+    if (!PartyOf(api::GetHero()).contains(member))
+    {
+        throw ToolError(std::format("order: {} is not in the party; inspect kind=game lists it", FormatId(member)));
+    }
+    api::SetPrimaryControlled(member);
+    const ObjectId now = api::GetMainControlled();
+    return Json{{"action", "control"},
+                {"before", Brief(controlled)},
+                {"controlled", Brief(now)},
+                {"taken", now == member},
+                {"cursor", bench.Events().Next()}};
+}
+
+// Control handed to a party member before its move, as a click on its
+// portrait: whom it was before.
+Json HandOver(ObjectId who, ObjectId controlled)
+{
+    if (!PartyOf(api::GetHero()).contains(who))
+    {
+        throw ToolError(std::format("order: a move goes to the controlled creature ({}), not {}: the "
+                                    "game's move click moves whom the player controls, and a creature "
+                                    "outside the party is not moved by order",
+                                    controlled == kInvalidObject ? "nobody" : FormatId(controlled), FormatId(who)));
+    }
+    api::SetPrimaryControlled(who);
+    if (api::GetMainControlled() != who)
+    {
+        throw ToolError(std::format("order: {} would not take control, and a move goes to the "
+                                    "controlled creature; nobody moved",
+                                    FormatId(who)));
+    }
+    return Brief(controlled);
+}
+
+// The order tool's handler, registered by AddOrder.
+ToolResult ToolOrder(Bench &bench, const Watch &watch, const Json &raw)
+{
+    const Args args(raw, "order");
+    const auto action = args.Choice("action", {"attack", "move", "ability", "use", "control"});
+    RequireWorld(watch, "order");
+    const ObjectId controlled = api::GetMainControlled();
+    if (action == "control")
+    {
+        return OrderControl(bench, args, controlled);
+    }
+    const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(controlled);
+    if (who == kInvalidObject)
+    {
+        throw ToolError("order: nobody is controlled and no `id` was given");
+    }
+    const bool useByClick = action == "use" && who == controlled && !args.Has("objectAction");
+    // An item's ability out of combat by command takes nothing:
+    // Kolgrim's Horn ordered so three times on the mountain top
+    // answered given and stayed in the pack, its script never run;
+    // by click it was used at once (turn-based-agent, 2026-10-04,
+    // #51). In fights the command path works (poultices, the
+    // Litany), and stays.
+    const bool itemByClick = action == "ability" && who == controlled && (args.Has("item") || args.Has("itemTag")) &&
+                             watch.Mode() == static_cast<std::int32_t>(dao::GameMode::Explore);
+    const auto via = args.Choice("via", {"command", "click"}, useByClick || itemByClick ? "click" : "command");
+    if (via == "click" && who != controlled)
+    {
+        throw ToolError(std::format("order: a click is the controlled creature's ({}); via \"command\" "
+                                    "orders any creature",
+                                    controlled == kInvalidObject ? "nobody" : FormatId(controlled)));
+    }
+    // A move goes to the controlled creature, whatever `id` says:
+    // it is explore mode's own move click (GameModeExplore::MoveTo),
+    // which moves whom the player controls. Ordered for a follower
+    // in the Gauntlet, the hero walked there instead, and the answer
+    // named the follower (turn-based-agent, 2026-10-04, #48). A
+    // script's move would reach it, but the party's following takes
+    // a follower back to the leader once it ends. So another party
+    // member is given control first, as a click on its portrait,
+    // and keeps it; judged at the moment of the order, so a fight's
+    // member on its turn, controlled already, is moved as before.
+    Json handedOver;
+    if (action == "move" && who != controlled)
+    {
+        handedOver = HandOver(who, controlled);
+    }
+    const auto cursor = bench.Events().Next();
+    Json answer = {{"action", action}, {"via", via}, {"creature", Brief(who)}};
+    if (!handedOver.is_null())
+    {
+        answer["controlled"] = Brief(who);
+        answer["before"] = handedOver;
+        answer["note"] = "a move is the player's move click, which moves whom the player controls: control "
+                         "passed to the creature first, and stays with it (order action=control gives it "
+                         "back)";
+    }
+    const bool taken =
+        via == "click" ? OrderByClick(args, action, who, answer) : OrderByCommand(args, action, who, answer);
+    if (!taken)
+    {
+        throw ToolError(via == "click" ? "order: explore mode did not take the ability's click"
+                                       : "order: the game took no order: the creature is not there, or (for move) "
+                                         "the game is not in explore or combat mode");
+    }
+    if (itemByClick && !args.Has("via"))
+    {
+        answer["note"] = "an item's ability out of combat goes by click: by command it takes nothing there";
+    }
+    answer["given"] = true;
+    answer["cursor"] = cursor;
+    return answer;
+}
+
+} // namespace
+
 void AddOrder(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
@@ -228,111 +350,7 @@ void AddOrder(Bench &bench, const Watch &watch)
                                           "1) took unlock, then open_inventory; a door open"}}}}},
                       {"required", {"action"}}},
                  Thread::Frame},
-        [&bench, &watch](const Json &raw) -> ToolResult {
-            const Args args(raw, "order");
-            const auto action = args.Choice("action", {"attack", "move", "ability", "use", "control"});
-            RequireWorld(watch, "order");
-            const ObjectId controlled = api::GetMainControlled();
-            if (action == "control")
-            {
-                // The scripts' SetPrimaryControlled, what the game's own
-                // scripts use to hand control to a follower. A follower given
-                // an order by command out of combat took none, and the
-                // selection's binding left the hero controlled
-                // (turn-based-agent, 2026-10-03, #22).
-                const ObjectId member = args.Id("id", "a party member, as inspect kind=game lists the party");
-                if (!PartyOf(api::GetHero()).contains(member))
-                {
-                    throw ToolError(
-                        std::format("order: {} is not in the party; inspect kind=game lists it", FormatId(member)));
-                }
-                api::SetPrimaryControlled(member);
-                const ObjectId now = api::GetMainControlled();
-                return Json{{"action", action},
-                            {"before", Brief(controlled)},
-                            {"controlled", Brief(now)},
-                            {"taken", now == member},
-                            {"cursor", bench.Events().Next()}};
-            }
-            const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(controlled);
-            if (who == kInvalidObject)
-            {
-                throw ToolError("order: nobody is controlled and no `id` was given");
-            }
-            const bool useByClick = action == "use" && who == controlled && !args.Has("objectAction");
-            // An item's ability out of combat by command takes nothing:
-            // Kolgrim's Horn ordered so three times on the mountain top
-            // answered given and stayed in the pack, its script never run;
-            // by click it was used at once (turn-based-agent, 2026-10-04,
-            // #51). In fights the command path works (poultices, the
-            // Litany), and stays.
-            const bool itemByClick = action == "ability" && who == controlled &&
-                                     (args.Has("item") || args.Has("itemTag")) &&
-                                     watch.Mode() == static_cast<std::int32_t>(dao::GameMode::Explore);
-            const auto via = args.Choice("via", {"command", "click"}, useByClick || itemByClick ? "click" : "command");
-            if (via == "click" && who != controlled)
-            {
-                throw ToolError(std::format("order: a click is the controlled creature's ({}); via \"command\" "
-                                            "orders any creature",
-                                            controlled == kInvalidObject ? "nobody" : FormatId(controlled)));
-            }
-            // A move goes to the controlled creature, whatever `id` says:
-            // it is explore mode's own move click (GameModeExplore::MoveTo),
-            // which moves whom the player controls. Ordered for a follower
-            // in the Gauntlet, the hero walked there instead, and the answer
-            // named the follower (turn-based-agent, 2026-10-04, #48). A
-            // script's move would reach it, but the party's following takes
-            // a follower back to the leader once it ends. So another party
-            // member is given control first, as a click on its portrait,
-            // and keeps it; judged at the moment of the order, so a fight's
-            // member on its turn, controlled already, is moved as before.
-            Json handedOver;
-            if (action == "move" && who != controlled)
-            {
-                if (!PartyOf(api::GetHero()).contains(who))
-                {
-                    throw ToolError(std::format("order: a move goes to the controlled creature ({}), not {}: the "
-                                                "game's move click moves whom the player controls, and a creature "
-                                                "outside the party is not moved by order",
-                                                controlled == kInvalidObject ? "nobody" : FormatId(controlled),
-                                                FormatId(who)));
-                }
-                api::SetPrimaryControlled(who);
-                if (api::GetMainControlled() != who)
-                {
-                    throw ToolError(std::format("order: {} would not take control, and a move goes to the "
-                                                "controlled creature; nobody moved",
-                                                FormatId(who)));
-                }
-                handedOver = Brief(controlled);
-            }
-            const auto cursor = bench.Events().Next();
-            Json answer = {{"action", action}, {"via", via}, {"creature", Brief(who)}};
-            if (!handedOver.is_null())
-            {
-                answer["controlled"] = Brief(who);
-                answer["before"] = handedOver;
-                answer["note"] = "a move is the player's move click, which moves whom the player controls: control "
-                                 "passed to the creature first, and stays with it (order action=control gives it "
-                                 "back)";
-            }
-            const bool taken =
-                via == "click" ? OrderByClick(args, action, who, answer) : OrderByCommand(args, action, who, answer);
-            if (!taken)
-            {
-                throw ToolError(via == "click"
-                                    ? "order: explore mode did not take the ability's click"
-                                    : "order: the game took no order: the creature is not there, or (for move) "
-                                      "the game is not in explore or combat mode");
-            }
-            if (itemByClick && !args.Has("via"))
-            {
-                answer["note"] = "an item's ability out of combat goes by click: by command it takes nothing there";
-            }
-            answer["given"] = true;
-            answer["cursor"] = cursor;
-            return answer;
-        });
+        [&bench, &watch](const Json &raw) -> ToolResult { return ToolOrder(bench, watch, raw); });
 }
 
 } // namespace eluvian::game

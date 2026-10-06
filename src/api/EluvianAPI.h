@@ -35,6 +35,10 @@ extern "C"
 {
 #endif
 
+    // A C header, included by plugins in C and C++ alike: its typedefs
+    // stay typedefs, `using` being C++ only (#77).
+    // NOLINTBEGIN(modernize-use-using)
+
     typedef struct EluvianReply EluvianReply;
     struct EluvianReply
     {
@@ -92,6 +96,8 @@ extern "C"
     } EluvianInterface1;
 
     typedef const EluvianInterface1 *(*EluvianGetInterfaceFn)(uint32_t version);
+
+    // NOLINTEND(modernize-use-using)
 
 #define ELUVIAN_GET_INTERFACE "Eluvian_GetInterface"
 

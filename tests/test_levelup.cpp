@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,7 @@ struct Rogue
             return {{"_level0.ScrollingSkills_mc.Scrollable_mc.AbilityChain200", skillIcons}};
         }
         std::vector<int> talents;
+        talents.reserve(chain.size());
         for (const auto &[id, state] : chain)
         {
             talents.push_back(id);
@@ -104,6 +106,22 @@ struct Rogue
         }
     }
 
+    // An ability taken back: learnable again, the next in its chain not yet.
+    void Unlearn(int id)
+    {
+        for (std::size_t i = 0; i < chain.size(); ++i)
+        {
+            if (chain[i].first == id)
+            {
+                chain[i].second = "learnable";
+                if (i + 1 < chain.size())
+                {
+                    chain[i + 1].second = "not yet";
+                }
+            }
+        }
+    }
+
     // The screen's end, as its scene's end handler goes: aborted, every
     // pick its icons stored reverted (RevertAllChanges); then CharGenEnd
     // sent with the exit point.
@@ -126,17 +144,7 @@ struct Rogue
             {
                 std::erase(abilities, *it);
                 (*it == 50 ? skillPoints : levels) += 1;
-                for (std::size_t i = 0; i < chain.size(); ++i)
-                {
-                    if (chain[i].first == *it)
-                    {
-                        chain[i].second = "learnable";
-                        if (i + 1 < chain.size())
-                        {
-                            chain[i + 1].second = "not yet";
-                        }
-                    }
-                }
+                Unlearn(*it);
             }
         }
         stored.clear();
@@ -144,87 +152,91 @@ struct Rogue
         sent.push_back("GUILevelUp.CharGenEnd 130 1 " + std::to_string(exitPoint));
     }
 
-    // input with `screen`: the level-up screen's movie.
-    Json Movie(const Json &args)
+    // A specialization icon's field, as the screen reads it: nothing for
+    // another path.
+    std::optional<Json> SpecialGet(const std::string &path) const
     {
-        movie.push_back(args);
-        if (args.contains("set"))
+        for (std::size_t n = 0; n < specials.size(); ++n)
         {
-            const bool exit = takesExit && args.at("set") == "LevelUp.nExitPoint";
-            if (exit)
+            const std::string icon = "specializations_mc.Scrollable_mc.icon" + std::to_string(n);
+            const auto &special = specials[n];
+            if (path == icon + ".sName")
             {
-                exitPoint = args.at("value").get<int>();
+                return Json{{"type", "string"}, {"value", special.name}};
             }
-            return Json{{"done", exit}};
+            if (path == icon + ".nSpecializationAbilityID")
+            {
+                return Json{{"type", "number"}, {"value", special.id}};
+            }
+            if (path == icon + ".bSelected" || path == icon + ".bGrey")
+            {
+                return Json{{"type", "boolean"},
+                            {"value", path.ends_with("Selected") ? special.selected : special.grey}};
+            }
         }
-        if (args.contains("children"))
+        return std::nullopt;
+    }
+
+    // The ability chains' list, as the scene shown names them, or one
+    // icon's ability id: nothing for another path.
+    std::optional<Json> ChainGet(const std::string &path) const
+    {
+        const bool skillsOwn = path == "ScrollingSkills_mc.Scrollable_mc.m_aChains" && scene == "Skills";
+        const bool talents =
+            path == std::string(kContainer) + ".AbilityChainContainer_mc.m_aChains" && scene == "SpellsTalents";
+        if (skillsOwn || talents)
         {
-            Json children = Json::array();
-            if (!scene.empty() && args.at("children") == "ScrollingAbilities_mc.Scrollable_mc")
-            {
-                children.push_back(Json{{"depth", 0}, {"type", "string"}, {"path", kContainer}});
-            }
-            return Json{{"children", children}};
-        }
-        if (args.contains("get"))
-        {
-            const std::string path = args.at("get");
-            if (path == "LevelUp.nSpecializationsFound" || path == "LevelUp.nSpecializationPoints")
-            {
-                return Json{{"type", "number"},
-                            {"value", path.ends_with("Found") ? static_cast<int>(specials.size()) : specialPoints}};
-            }
-            for (std::size_t n = 0; n < specials.size(); ++n)
-            {
-                const std::string icon = "specializations_mc.Scrollable_mc.icon" + std::to_string(n);
-                const auto &special = specials[n];
-                if (path == icon + ".sName")
-                {
-                    return Json{{"type", "string"}, {"value", special.name}};
-                }
-                if (path == icon + ".nSpecializationAbilityID")
-                {
-                    return Json{{"type", "number"}, {"value", special.id}};
-                }
-                if (path == icon + ".bSelected" || path == icon + ".bGrey")
-                {
-                    return Json{{"type", "boolean"},
-                                {"value", path.ends_with("Selected") ? special.selected : special.grey}};
-                }
-            }
-            if (path == "LevelUp.LEVELUP_EXIT_COMPLETE" || path == "LevelUp.LEVELUP_EXIT_ABORT")
-            {
-                return Json{{"type", "number"}, {"value", path.ends_with("COMPLETE") ? 1 : 0}};
-            }
-            if (path == "SpellsTalentsScene.nPointsToSpend" || path == "SkillsScene.nPointsToSpend")
-            {
-                return Json{{"type", "number"}, {"value", path.starts_with("Skills") ? skillPoints : levels}};
-            }
-            const bool skillsOwn = path == "ScrollingSkills_mc.Scrollable_mc.m_aChains" && scene == "Skills";
-            const bool talents =
-                path == std::string(kContainer) + ".AbilityChainContainer_mc.m_aChains" && scene == "SpellsTalents";
-            if (skillsOwn || talents)
-            {
-                std::string list;
-                for (const auto &[name, ids] : Chains())
-                {
-                    list += (list.empty() ? "" : ",") + name;
-                }
-                return Json{{"type", "string"}, {"value", list}};
-            }
+            std::string list;
             for (const auto &[name, ids] : Chains())
             {
-                for (std::size_t k = 0; k < ids.size(); ++k)
+                list += (list.empty() ? "" : ",") + name;
+            }
+            return Json{{"type", "string"}, {"value", list}};
+        }
+        for (const auto &[name, ids] : Chains())
+        {
+            for (std::size_t k = 0; k < ids.size(); ++k)
+            {
+                if (path == name + ".icon" + std::to_string(k) + ".m_oAbility.nID")
                 {
-                    if (path == name + ".icon" + std::to_string(k) + ".m_oAbility.nID")
-                    {
-                        return Json{{"type", "number"}, {"value", ids[k]}};
-                    }
+                    return Json{{"type", "number"}, {"value", ids[k]}};
                 }
             }
-            return Json{{"type", "undefined"}, {"value", nullptr}};
         }
-        const std::string call = args.at("call");
+        return std::nullopt;
+    }
+
+    // The movie's value at `path`.
+    Json MovieGet(const std::string &path) const
+    {
+        if (path == "LevelUp.nSpecializationsFound" || path == "LevelUp.nSpecializationPoints")
+        {
+            return Json{{"type", "number"},
+                        {"value", path.ends_with("Found") ? static_cast<int>(specials.size()) : specialPoints}};
+        }
+        if (auto special = SpecialGet(path))
+        {
+            return std::move(*special);
+        }
+        if (path == "LevelUp.LEVELUP_EXIT_COMPLETE" || path == "LevelUp.LEVELUP_EXIT_ABORT")
+        {
+            return Json{{"type", "number"}, {"value", path.ends_with("COMPLETE") ? 1 : 0}};
+        }
+        if (path == "SpellsTalentsScene.nPointsToSpend" || path == "SkillsScene.nPointsToSpend")
+        {
+            return Json{{"type", "number"}, {"value", path.starts_with("Skills") ? skillPoints : levels}};
+        }
+        if (auto ofChains = ChainGet(path))
+        {
+            return std::move(*ofChains);
+        }
+        return Json{{"type", "undefined"}, {"value", nullptr}};
+    }
+
+    // A function of the movie called: a scene played, a specialization's
+    // icon pressed, an ability's icon taken.
+    Json MovieCall(const std::string &call, const Json &args)
+    {
         if (call == "SceneManager.PlayScene")
         {
             scene = args.at("args").at(0);
@@ -256,91 +268,137 @@ struct Rogue
         return Json{{"ran", true}, {"type", "undefined"}, {"value", nullptr}};
     }
 
+    // input with `screen`: the level-up screen's movie.
+    Json Movie(const Json &args)
+    {
+        movie.push_back(args);
+        if (args.contains("set"))
+        {
+            const bool exit = takesExit && args.at("set") == "LevelUp.nExitPoint";
+            if (exit)
+            {
+                exitPoint = args.at("value").get<int>();
+            }
+            return Json{{"done", exit}};
+        }
+        if (args.contains("children"))
+        {
+            Json children = Json::array();
+            if (!scene.empty() && args.at("children") == "ScrollingAbilities_mc.Scrollable_mc")
+            {
+                children.push_back(Json{{"depth", 0}, {"type", "string"}, {"path", kContainer}});
+            }
+            return Json{{"children", children}};
+        }
+        if (args.contains("get"))
+        {
+            return MovieGet(args.at("get"));
+        }
+        return MovieCall(args.at("call"), args);
+    }
+
     Rogue()
     {
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            const std::string kind = args.value("kind", "");
-            if (kind == "game")
-            {
-                return Json{{"controlled", {{"id", "0x82"}, {"name", "Lyna"}}}};
-            }
-            if (kind == "gui")
-            {
-                return Json{{"fullScreen", up ? Json("LevelUp") : Json(nullptr)}};
-            }
-            if (kind == "levelup")
-            {
-                Json talents = Json::array();
-                for (const auto &[id, state] : chain)
-                {
-                    talents.push_back(Json{{"id", id}, {"state", state}});
-                }
-                return Json{
-                    {"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}, {"skills", skillPoints}}},
-                    {"attributes", {{"strength", strength}}},
-                    {"talents", talents},
-                    {"spells", spell ? Json::array({Json{{"id", 60}, {"state", "learnable"}}}) : Json::array()},
-                    {"skills", Json::array({Json{{"id", 50}, {"state", "learnable"}}})}};
-            }
-            if (kind == "abilities")
-            {
-                Json talents = Json::array();
-                for (const int id : abilities)
-                {
-                    talents.push_back(Json{{"id", id}, {"name", "ability " + std::to_string(id)}});
-                }
-                return Json{{"talents", talents}};
-            }
-            return Json{{"name", "Lyna"},
-                        {"level", 2 + levels},
-                        {"canLevelUp", levels > 0}, // as the game: false with only a specialization point (#64)
-                        {"pointsToSpend",
-                         {{"attributes", 3 * levels},
-                          {"skills", levels},
-                          {"talentsOrSpells", levels},
-                          {"specializations", specialPoints}}},
-                        {"attributes", {{"strength", {{"base", strength}, {"total", strength + 2}}}}}};
-        });
-        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            if (args.contains("screen"))
-            {
-                return Movie(args);
-            }
-            const std::string text = args.value("message", "");
-            sent.push_back(text);
-            if (text.starts_with("GUI.GoToLevelUp"))
-            {
-                up = opens;
-                exitPoint = 0; // the screen's StartScene: LEVELUP_EXIT_ABORT
-            }
-            else if (text.starts_with("GUILevelUp.AutoLevelUp"))
-            {
-                const int spend = !spends ? 0 : (onePerAuto ? 1 : levels);
-                for (int i = 0; i < spend; ++i)
-                {
-                    strength += 3;
-                    abilities.push_back(8 + static_cast<int>(abilities.size()));
-                }
-                levels -= spend;
-            }
-            else if (text.starts_with("GUICharGen.CharGenAssignAttribute"))
-            {
-                strength += std::stoi(text.substr(text.rfind(' ') + 1));
-            }
-            else if (text == "GUI.HideFullScreenGUI")
-            {
-                if (up && closes)
-                {
-                    End();
-                }
-                up = !closes;
-            }
-            return Json{{"sent", true}};
-        });
+        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInput(args); });
         AddLevelUpTool(bench);
     }
 
-    Json LevelUp(Json args)
+    // The stand-in's inspect.
+    ToolResult FakeInspect(const Json &args)
+    {
+        const std::string kind = args.value("kind", "");
+        if (kind == "game")
+        {
+            return Json{{"controlled", {{"id", "0x82"}, {"name", "Lyna"}}}};
+        }
+        if (kind == "gui")
+        {
+            return Json{{"fullScreen", up ? Json("LevelUp") : Json(nullptr)}};
+        }
+        if (kind == "levelup")
+        {
+            Json talents = Json::array();
+            for (const auto &[id, state] : chain)
+            {
+                talents.push_back(Json{{"id", id}, {"state", state}});
+            }
+            return Json{{"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}, {"skills", skillPoints}}},
+                        {"attributes", {{"strength", strength}}},
+                        {"talents", talents},
+                        {"spells", spell ? Json::array({Json{{"id", 60}, {"state", "learnable"}}}) : Json::array()},
+                        {"skills", Json::array({Json{{"id", 50}, {"state", "learnable"}}})}};
+        }
+        if (kind == "abilities")
+        {
+            Json talents = Json::array();
+            for (const int id : abilities)
+            {
+                talents.push_back(Json{{"id", id}, {"name", "ability " + std::to_string(id)}});
+            }
+            return Json{{"talents", talents}};
+        }
+        return Json{{"name", "Lyna"},
+                    {"level", 2 + levels},
+                    {"canLevelUp", levels > 0}, // as the game: false with only a specialization point (#64)
+                    {"pointsToSpend",
+                     {{"attributes", 3 * levels},
+                      {"skills", levels},
+                      {"talentsOrSpells", levels},
+                      {"specializations", specialPoints}}},
+                    {"attributes", {{"strength", {{"base", strength}, {"total", strength + 2}}}}}};
+    }
+
+    // The stand-in's input.
+    ToolResult FakeInput(const Json &args)
+    {
+        if (args.contains("screen"))
+        {
+            return Movie(args);
+        }
+        const std::string text = args.value("message", "");
+        sent.push_back(text);
+        if (text.starts_with("GUI.GoToLevelUp"))
+        {
+            up = opens;
+            exitPoint = 0; // the screen's StartScene: LEVELUP_EXIT_ABORT
+        }
+        else if (text.starts_with("GUILevelUp.AutoLevelUp"))
+        {
+            int spend = levels;
+            if (!spends)
+            {
+                spend = 0;
+            }
+            else if (onePerAuto)
+            {
+                spend = 1;
+            }
+            for (int i = 0; i < spend; ++i)
+            {
+                strength += 3;
+                abilities.push_back(8 + static_cast<int>(abilities.size()));
+            }
+            levels -= spend;
+        }
+        else if (text.starts_with("GUICharGen.CharGenAssignAttribute"))
+        {
+            strength += std::stoi(text.substr(text.rfind(' ') + 1));
+        }
+        else if (text == "GUI.HideFullScreenGUI")
+        {
+            if (up && closes)
+            {
+                End();
+            }
+            up = !closes;
+        }
+        return Json{{"sent", true}};
+    }
+
+    Json LevelUp(const Json &args)
     {
         return bench.Invoke("levelup", args).data;
     }

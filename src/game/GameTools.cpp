@@ -180,7 +180,7 @@ void DescribeTopics(EventCatalog &topics)
     describe("eluvian.gui.message",
              "A screen sent the engine one of its messages, as its buttons and its own script send them: what "
              "the interface asked of the game, the same text input's `message` sends.",
-             Json{{"screen", "the movie that sent it, as the game names it (\"levelup\", \"inventory\")"},
+             Json{{"screen", R"(the movie that sent it, as the game names it ("levelup", "inventory"))"},
                   {"text", "the message: \"Receiver.Message arguments\""}});
     describe("eluvian.equipment.equipped",
              "An item went on a creature, by any path: the inventory screen, equip, a script. A refusal is not "

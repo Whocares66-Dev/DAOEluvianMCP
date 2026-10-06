@@ -49,7 +49,9 @@ class HttpServer
     void Reap();
 
     Handler handler_;
-    std::uintptr_t listener_;
+    // Set in the constructor, not here: its "none" is Winsock's INVALID_SOCKET,
+    // which this header keeps out (#77).
+    std::uintptr_t listener_; // NOLINT(modernize-use-default-member-init): above
     std::atomic<bool> running_{false};
     bool winsock_ = false;
     std::thread acceptor_;

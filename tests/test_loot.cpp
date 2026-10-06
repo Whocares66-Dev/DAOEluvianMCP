@@ -42,88 +42,121 @@ struct Chest
 
     Chest()
     {
-        bench.Tools().Add(ToolSpec{"travel", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            calls.emplace_back("travel");
-            walkArgs = args;
-            if (walkOpens)
-            {
-                panel = args.value("target", "");
-                return Json{{"arrived", false},
-                            {"reason", "the game is paused"},
-                            {"distance", 2.0},
-                            {"opened", Json::array({Json{{"id", panel}}})}};
-            }
-            return Json{{"arrived", arrives},
-                        {"reason", arrives ? "there" : "a fight began"},
-                        {"distance", 1.0},
-                        {"opened", Json::array()}};
-        });
-        bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            calls.emplace_back("order " + args.value("action", ""));
-            if (refuses)
-            {
-                throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
-            }
-            const auto cursor = bench.Events().Next();
-            used = args.value("target", "");
-            if (chatter)
-            {
-                bench.Events().Emit("eluvian.command.ended",
-                                    Json{{"id", "0x10d"}, {"type", "UseObject"}, {"result", "success"}});
-            }
-            if (startsLate > 0)
-            {
-                startIn = startsLate;
-            }
-            else
-            {
-                Start();
-            }
-            return Json{{"given", true}, {"creature", {{"id", "0x82"}}}, {"cursor", cursor}};
-        });
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            if (args.value("kind", "") == "inventory")
-            {
-                return Json{{"count", items.size()}, {"items", items}};
-            }
-            // Time passes between reads: a late use starts, a late panel comes.
-            if (startIn > 0 && --startIn == 0)
-            {
-                Start();
-            }
-            else if (panelIn > 0 && --panelIn == 0)
+        bench.Tools().Add(ToolSpec{"travel", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeTravel(args); });
+        bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeOrder(args); });
+        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        bench.Tools().Add(ToolSpec{"game", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeGame(args); });
+        AddLootTool(bench);
+    }
+
+    // The stand-in's travel.
+    ToolResult FakeTravel(const Json &args)
+    {
+        calls.emplace_back("travel");
+        walkArgs = args;
+        if (walkOpens)
+        {
+            panel = args.value("target", "");
+            return Json{{"arrived", false},
+                        {"reason", "the game is paused"},
+                        {"distance", 2.0},
+                        {"opened", Json::array({Json{{"id", panel}}})}};
+        }
+        return Json{{"arrived", arrives},
+                    {"reason", arrives ? "there" : "a fight began"},
+                    {"distance", 1.0},
+                    {"opened", Json::array()}};
+    }
+
+    // The stand-in's order.
+    ToolResult FakeOrder(const Json &args)
+    {
+        calls.emplace_back("order " + args.value("action", ""));
+        if (refuses)
+        {
+            throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
+        }
+        const auto cursor = bench.Events().Next();
+        used = args.value("target", "");
+        if (chatter)
+        {
+            bench.Events().Emit("eluvian.command.ended",
+                                Json{{"id", "0x10d"}, {"type", "UseObject"}, {"result", "success"}});
+        }
+        if (startsLate > 0)
+        {
+            startIn = startsLate;
+        }
+        else
+        {
+            Start();
+        }
+        return Json{{"given", true}, {"creature", {{"id", "0x82"}}}, {"cursor", cursor}};
+    }
+
+    // The stand-in's inspect.
+    ToolResult FakeInspect(const Json &args)
+    {
+        if (args.value("kind", "") == "inventory")
+        {
+            return Json{{"count", items.size()}, {"items", items}};
+        }
+        // Time passes between reads: a late use starts, a late panel comes.
+        bool started = false;
+        if (startIn > 0)
+        {
+            --startIn;
+            started = startIn == 0;
+        }
+        if (started)
+        {
+            Start();
+        }
+        else if (panelIn > 0)
+        {
+            --panelIn;
+            if (panelIn == 0)
             {
                 panel = Opened();
             }
-            return Json{{"mode", !mode.empty()   ? mode
-                                 : panel.empty() ? "explore"
-                                                 : "gui"},
-                        {"popup", calls.empty() || calls.back() != "order use" ? Json(nullptr) : popup},
-                        {"loot", panel.empty() ? Json(nullptr) : Panel()}};
-        });
-        bench.Tools().Add(ToolSpec{"game", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            calls.emplace_back("game " + args.value("action", "") + " " + args.value("button", ""));
-            if (panel.empty())
-            {
-                throw ToolError("game: no message box and no loot panel is up");
-            }
-            if (args.value("button", "") == "Close")
-            {
-                panel.clear();
-                return Json{{"panel", nullptr}};
-            }
-            Json answer = {{"container", {{"id", panel}}},
-                           {"taken", full ? Json::array() : items},
-                           {"left", full ? items : Json::array()},
-                           {"full", full}};
-            if (!full && !staysUp)
-            {
-                panel.clear();
-            }
-            answer["panel"] = panel.empty() ? Json(nullptr) : Panel();
-            return answer;
-        });
-        AddLootTool(bench);
+        }
+        std::string shown = mode;
+        if (shown.empty())
+        {
+            shown = panel.empty() ? "explore" : "gui";
+        }
+        return Json{{"mode", shown},
+                    {"popup", calls.empty() || calls.back() != "order use" ? Json(nullptr) : popup},
+                    {"loot", panel.empty() ? Json(nullptr) : Panel()}};
+    }
+
+    // The stand-in's game.
+    ToolResult FakeGame(const Json &args)
+    {
+        calls.emplace_back("game " + args.value("action", "") + " " + args.value("button", ""));
+        if (panel.empty())
+        {
+            throw ToolError("game: no message box and no loot panel is up");
+        }
+        if (args.value("button", "") == "Close")
+        {
+            panel.clear();
+            return Json{{"panel", nullptr}};
+        }
+        Json answer = {{"container", {{"id", panel}}},
+                       {"taken", full ? Json::array() : items},
+                       {"left", full ? items : Json::array()},
+                       {"full", full}};
+        if (!full && !staysUp)
+        {
+            panel.clear();
+        }
+        answer["panel"] = panel.empty() ? Json(nullptr) : Panel();
+        return answer;
     }
 
     // The use, as the game's: it ends on the bus (on empty remains it never

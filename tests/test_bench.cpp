@@ -159,7 +159,9 @@ class TempFolder
     {
         std::filesystem::create_directories(path_);
     }
-    ~TempFolder()
+    // remove_all with an error_code throws only bad_alloc, which ends the
+    // test run all the same (#77).
+    ~TempFolder() // NOLINT(bugprone-exception-escape): above
     {
         std::error_code error;
         std::filesystem::remove_all(path_, error);

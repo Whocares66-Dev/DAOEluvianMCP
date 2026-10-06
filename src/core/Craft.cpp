@@ -52,7 +52,7 @@ constexpr std::array<Kind, 3> kKinds{{
 // decimal: "0x82" is 130.
 std::optional<std::uint32_t> Decimal(std::string_view id)
 {
-    if (id.size() < 3 || id.substr(0, 2) != "0x")
+    if (id.size() < 3 || !id.starts_with("0x"))
     {
         return std::nullopt;
     }
@@ -223,21 +223,7 @@ class Crafting
         }
         if (recipe_.is_null())
         {
-            Json list = Json::array();
-            for (const auto &recipe : *recipes)
-            {
-                list.push_back(RecipeJson(recipe));
-            }
-            answer_["recipes"] = std::move(list);
-            std::this_thread::sleep_for(show_);
-            if (!Close())
-            {
-                return End(false, refused_);
-            }
-            answer_["reason"] = recipes->empty()
-                                    ? "no recipes known for " + std::string(kind_.skill) + ": merchants sell them"
-                                    : "the recipes the screen lists; nothing made";
-            return answer_;
+            return List(*recipes);
         }
         const Recipe *chosen = Choose(*recipes);
         if (chosen == nullptr)
@@ -250,51 +236,8 @@ class Crafting
         answer_["asked"] = count_;
         std::this_thread::sleep_for(show_);
         int made = 0;
-        std::string stopped;
         Recipe now = *chosen;
-        while (made < count_)
-        {
-            if (!Held(now.skill))
-            {
-                stopped = now.name + " needs a rank of " + std::string(kind_.skill) + " (ability " +
-                          std::to_string(now.skill) + ") that " + answer_["maker"]["name"].get<std::string>() +
-                          " has not";
-                break;
-            }
-            if (!now.canMake)
-            {
-                stopped = "the screen does not let " + now.name + " be made: " + Short(now);
-                break;
-            }
-            const auto before = InPack(now.productRef);
-            if (!before || !Send("GUICrafting.CraftItem " + std::to_string(id) + " " + std::to_string(n_)))
-            {
-                stopped = refused_;
-                break;
-            }
-            const auto after = Made(now.productRef, *before);
-            if (!after)
-            {
-                stopped = refused_;
-                break;
-            }
-            made += *after - *before;
-            // The screen's own list again, as its RefreshRecipes reads it
-            // after a craft: what is left, and whether another may be made.
-            const auto again = Recipes();
-            if (!again)
-            {
-                stopped = refused_;
-                break;
-            }
-            const auto it = std::ranges::find(*again, id, &Recipe::id);
-            if (it == again->end())
-            {
-                stopped = now.name + " is no longer listed";
-                break;
-            }
-            now = *it;
-        }
+        const std::string stopped = Make(now, made);
         answer_["made"] = made;
         answer_["ingredients"] = RecipeJson(now)["ingredients"];
         std::this_thread::sleep_for(show_);
@@ -307,6 +250,71 @@ class Crafting
             return End(made > 0, (made > 0 ? std::to_string(made) + " made, then " : std::string()) + stopped);
         }
         return End(true, std::to_string(made) + " made");
+    }
+
+    // The recipes the screen lists, when none was asked for: nothing made.
+    Json List(const std::vector<Recipe> &recipes)
+    {
+        Json list = Json::array();
+        for (const auto &recipe : recipes)
+        {
+            list.push_back(RecipeJson(recipe));
+        }
+        answer_["recipes"] = std::move(list);
+        std::this_thread::sleep_for(show_);
+        if (!Close())
+        {
+            return End(false, refused_);
+        }
+        answer_["reason"] = recipes.empty()
+                                ? "no recipes known for " + std::string(kind_.skill) + ": merchants sell them"
+                                : "the recipes the screen lists; nothing made";
+        return answer_;
+    }
+
+    // One at a time, as the screen's button makes them, up to `count_`:
+    // `made` counts them and `now` is the recipe as the screen lists it
+    // after the last. Why it stopped short, or nothing.
+    std::string Make(Recipe &now, int &made)
+    {
+        const int id = now.id;
+        while (made < count_)
+        {
+            if (!Held(now.skill))
+            {
+                return now.name + " needs a rank of " + std::string(kind_.skill) + " (ability " +
+                       std::to_string(now.skill) + ") that " + answer_["maker"]["name"].get<std::string>() + " has not";
+            }
+            if (!now.canMake)
+            {
+                return "the screen does not let " + now.name + " be made: " + Short(now);
+            }
+            const auto before = InPack(now.productRef);
+            if (!before || !Send("GUICrafting.CraftItem " + std::to_string(id) + " " + std::to_string(n_)))
+            {
+                return refused_;
+            }
+            const auto after = Made(now.productRef, *before);
+            if (!after)
+            {
+                return refused_;
+            }
+            made += *after - *before;
+            // The screen's own list again, as its RefreshRecipes reads it
+            // after a craft: what is left, and whether another may be made.
+            const auto again = Recipes();
+            if (!again)
+            {
+                return refused_;
+            }
+            const auto it = std::ranges::find(*again, id, &Recipe::id);
+            if (it == again->end())
+            {
+                return now.name + " is no longer listed";
+            }
+            now = *it;
+        }
+        return {};
     }
 
     // The recipe asked for, by id or by name (the recipe's or its
@@ -590,7 +598,7 @@ class Crafting
         if (!Screen(false))
         {
             refused_ = "the crafting screen did not close: " + refused_ +
-                       "; input {\"message\": \"GUI.HideFullScreenGUI\"} closes it";
+                       R"(; input {"message": "GUI.HideFullScreenGUI"} closes it)";
             return false;
         }
         return true;

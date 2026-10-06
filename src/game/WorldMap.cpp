@@ -83,6 +83,74 @@ std::string TreeText(std::wstring_view path)
 
 } // namespace
 
+namespace
+{
+
+// The worldmap kind's handler, registered by AddWorldMap.
+ToolResult KindWorldmap(const Watch &watch, const Json & /*args*/)
+{
+    RequireWorld(watch, "inspect");
+    const auto screen = MapScreen();
+    std::wstring movie = screen ? screen->movie : L"";
+    std::ranges::transform(movie, movie.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    const bool fade = movie == L"fademap";
+    // The Fade's map keeps its place under WorldMap.FadeMap; its pins
+    // there too if the tree has them, else the primary map's, which
+    // listed the Fade's ten pins in play.
+    const std::wstring branch =
+        fade && dao::data::Find(L"WorldMap.FadeMap.Locations.0.Tag") != nullptr ? L"FadeMap" : L"PrimaryMap";
+    Json pins = Json::array();
+    for (int index = 0; index < kMostPins; ++index)
+    {
+        const std::wstring base = std::format(L"WorldMap.{}.Locations.{}", branch, index);
+        if (dao::data::Find(base + L".Tag") == nullptr)
+        {
+            break;
+        }
+        pins.push_back(Json{{"index", index},
+                            {"name", TreeText(base + L".Name")},
+                            {"tag", TreeText(base + L".Tag")},
+                            {"area", TreeText(base + L".AreaTag")},
+                            {"state", PinState(static_cast<int>(dao::data::Number(base + L".State").value_or(0)))},
+                            {"type", dao::data::Number(base + L".Type").value_or(0)}});
+    }
+    // Two maps at once in a city: the map shown is the primary,
+    // the other the secondary, and the map's toggle button sends
+    // WorldMap.WorldMapSwapMaps, enabled while the secondary is not
+    // 0. Each map's Type is a row of the world maps table (171),
+    // whose Label names it (worldmap.gfx's GetCurrentMap,
+    // GetOtherMap and UpdateWorldMap, read 2026-10-04). Denerim's
+    // market opened the city's map, and a pin of the world's was
+    // not on it (turn-based-agent, 2026-10-04, #42).
+    const auto mapName = [](std::wstring_view map) -> Json {
+        const auto type = dao::data::Number(std::wstring(map) + L".Type");
+        if (!type)
+        {
+            return nullptr;
+        }
+        const std::string label =
+            Narrow(api::GetM2DAString(kTableWorldMaps, L"Label", static_cast<std::int32_t>(*type)));
+        return label.empty() ? Json(std::format("map {}", static_cast<int>(*type))) : Json(label);
+    };
+    // The other map is there when its Type is not 0, as the movie's
+    // UpdateWorldMap reads GetOtherMap() + ".Type": WorldMap.
+    // SecondaryMap itself is a node with no number, and read so no
+    // second map was ever said, Denerim's swap never made
+    // (turn-based-agent, 2026-10-05, #42).
+    const bool other = !fade && dao::data::Number(L"WorldMap.SecondaryMap.Type").value_or(0) != 0;
+    return Json{{"up", screen.has_value()},
+                {"screen", screen ? Json(Narrow(screen->name)) : Json(nullptr)},
+                {"map", screen ? Json(fade ? "fade" : "world") : Json(nullptr)},
+                {"shown", fade ? Json(nullptr) : mapName(L"WorldMap.PrimaryMap")},
+                {"other", other ? mapName(L"WorldMap.SecondaryMap") : Json(nullptr)},
+                {"at", TreeText(fade ? L"WorldMap.FadeMap.PlayerLocation.AreaTag"
+                                     : L"WorldMap.PrimaryMap.PlayerLocation.AreaTag")},
+                {"count", pins.size()},
+                {"pins", std::move(pins)}};
+}
+
+} // namespace
+
 void AddWorldMap(Bench &bench, const Watch &watch)
 {
     bench.Tools().AddKind(
@@ -99,68 +167,7 @@ void AddWorldMap(Bench &bench, const Watch &watch)
                  "the other). The map is closed as its Close button closes it: input "
                  "{\"message\": \"GUI.HideFullScreenGUI\"} (WorldMap.WorldMapClosed is the screen's report "
                  "that it closed, not the close)."},
-        [&watch](const Json &) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const auto screen = MapScreen();
-            std::wstring movie = screen ? screen->movie : L"";
-            std::ranges::transform(movie, movie.begin(),
-                                   [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-            const bool fade = movie == L"fademap";
-            // The Fade's map keeps its place under WorldMap.FadeMap; its pins
-            // there too if the tree has them, else the primary map's, which
-            // listed the Fade's ten pins in play.
-            const std::wstring branch =
-                fade && dao::data::Find(L"WorldMap.FadeMap.Locations.0.Tag") != nullptr ? L"FadeMap" : L"PrimaryMap";
-            Json pins = Json::array();
-            for (int index = 0; index < kMostPins; ++index)
-            {
-                const std::wstring base = std::format(L"WorldMap.{}.Locations.{}", branch, index);
-                if (dao::data::Find(base + L".Tag") == nullptr)
-                {
-                    break;
-                }
-                pins.push_back(
-                    Json{{"index", index},
-                         {"name", TreeText(base + L".Name")},
-                         {"tag", TreeText(base + L".Tag")},
-                         {"area", TreeText(base + L".AreaTag")},
-                         {"state", PinState(static_cast<int>(dao::data::Number(base + L".State").value_or(0)))},
-                         {"type", dao::data::Number(base + L".Type").value_or(0)}});
-            }
-            // Two maps at once in a city: the map shown is the primary,
-            // the other the secondary, and the map's toggle button sends
-            // WorldMap.WorldMapSwapMaps, enabled while the secondary is not
-            // 0. Each map's Type is a row of the world maps table (171),
-            // whose Label names it (worldmap.gfx's GetCurrentMap,
-            // GetOtherMap and UpdateWorldMap, read 2026-10-04). Denerim's
-            // market opened the city's map, and a pin of the world's was
-            // not on it (turn-based-agent, 2026-10-04, #42).
-            const auto mapName = [](std::wstring_view map) -> Json {
-                const auto type = dao::data::Number(std::wstring(map) + L".Type");
-                if (!type)
-                {
-                    return nullptr;
-                }
-                const std::string label =
-                    Narrow(api::GetM2DAString(kTableWorldMaps, L"Label", static_cast<std::int32_t>(*type)));
-                return label.empty() ? Json(std::format("map {}", static_cast<int>(*type))) : Json(label);
-            };
-            // The other map is there when its Type is not 0, as the movie's
-            // UpdateWorldMap reads GetOtherMap() + ".Type": WorldMap.
-            // SecondaryMap itself is a node with no number, and read so no
-            // second map was ever said, Denerim's swap never made
-            // (turn-based-agent, 2026-10-05, #42).
-            const bool other = !fade && dao::data::Number(L"WorldMap.SecondaryMap.Type").value_or(0) != 0;
-            return Json{{"up", screen.has_value()},
-                        {"screen", screen ? Json(Narrow(screen->name)) : Json(nullptr)},
-                        {"map", screen ? Json(fade ? "fade" : "world") : Json(nullptr)},
-                        {"shown", fade ? Json(nullptr) : mapName(L"WorldMap.PrimaryMap")},
-                        {"other", other ? mapName(L"WorldMap.SecondaryMap") : Json(nullptr)},
-                        {"at", TreeText(fade ? L"WorldMap.FadeMap.PlayerLocation.AreaTag"
-                                             : L"WorldMap.PrimaryMap.PlayerLocation.AreaTag")},
-                        {"count", pins.size()},
-                        {"pins", std::move(pins)}};
-        });
+        [&watch](const Json &args) -> ToolResult { return KindWorldmap(watch, args); });
 }
 
 } // namespace eluvian::game

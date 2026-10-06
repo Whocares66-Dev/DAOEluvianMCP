@@ -73,7 +73,7 @@ class Picker
         // done (turn-based-agent, 2026-10-05, #62); the game's own callers
         // set USE first.
         const int status = Status();
-        answer_["status"] = status >= 0 && status < static_cast<int>(kStatusNames.size())
+        answer_["status"] = status >= 0 && std::cmp_less(status, kStatusNames.size())
                                 ? Json(std::string(kStatusNames[static_cast<std::size_t>(status)]))
                                 : Json(status);
         if (status >= 0 && status != kUse && action_ != "look" && action_ != "accept")
@@ -132,7 +132,7 @@ class Picker
             {
                 chosen.push_back(Json{{"slot", slot},
                                       {"name", name.value("text", std::string())},
-                                      {"tag", values.at(2 * slot + 1).value("text", std::string())}});
+                                      {"tag", values.at((2 * slot) + 1).value("text", std::string())}});
             }
         }
         return chosen;
@@ -231,7 +231,7 @@ class Picker
                 last = name;
                 if (turned && Lower(name) == Lower(name_))
                 {
-                    return std::optional<Json>(pixel);
+                    return std::make_optional(pixel);
                 }
             }
         }

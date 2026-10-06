@@ -15,7 +15,7 @@ namespace
 
 ToolHandler Answer(Json value)
 {
-    return [value](const Json &) -> ToolResult { return value; };
+    return [value = std::move(value)](const Json &) -> ToolResult { return value; };
 }
 
 ToolSpec Inspect()

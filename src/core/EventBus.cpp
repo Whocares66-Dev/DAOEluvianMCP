@@ -109,7 +109,7 @@ EventFilter EventFilter::FromArgs(const Json &args)
     {
         if (!match->is_object())
         {
-            throw ToolError("`match` is an object of payload fields to equal, like {\"id\": \"0x7d9\"}");
+            throw ToolError(R"(`match` is an object of payload fields to equal, like {"id": "0x7d9"})");
         }
         filter.match = *match;
     }

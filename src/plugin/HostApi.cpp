@@ -291,7 +291,7 @@ void EmitEvent(const char *topic, const char *payloadJson) noexcept
 
 constexpr EluvianInterface1 kInterface{
     sizeof(EluvianInterface1),
-    EL_VERSION_MAJOR * 10000 + EL_VERSION_MINOR * 100 + EL_VERSION_PATCH,
+    (EL_VERSION_MAJOR * 10000) + (EL_VERSION_MINOR * 100) + EL_VERSION_PATCH,
     &RegisterTool,
     &RegisterInspectKind,
     &EmitEvent,

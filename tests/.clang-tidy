@@ -1,6 +1,14 @@
 # The tests, relaxed from the root .clang-tidy where a test's shape is the
 # point: Catch2 macros expand to code the analyser walks on every REQUIRE.
+# A test's stand-in keeps its fields in the order of what they model, and
+# its size does not matter: no padding findings (#77).
 InheritParentConfig: true
 Checks: >
   -bugprone-chained-comparison,
-  -bugprone-unchecked-optional-access
+  -bugprone-unchecked-optional-access,
+  -clang-analyzer-optin.performance.Padding
+
+# A Catch2 CHECK expands to branches that are not the test's own: a test's
+# complexity is counted without them (#77).
+CheckOptions:
+  readability-function-cognitive-complexity.IgnoreMacros: true

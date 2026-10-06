@@ -135,7 +135,7 @@ MUTANTS = [
     Mutant(
         "travel makes a move that brings it no nearer again until the steps run out (#4)",
         TRAVEL,
-        "if (lastWalk && length > *lastWalk - kNoNearer)",
+        "if (lastWalk_ && length > *lastWalk_ - kNoNearer)",
         "if (false)",
     ),
     Mutant(
@@ -147,7 +147,7 @@ MUTANTS = [
     Mutant(
         "travel keeps the walk's length from before a door once it is open",
         TRAVEL,
-        "lastWalk.reset(); // the way is another once it is open",
+        "lastWalk_.reset(); // the way is another once it is open",
         "// the way is another once it is open",
     ),
     Mutant(
@@ -165,7 +165,7 @@ MUTANTS = [
     Mutant(
         "travel uses a door that did not open again",
         TRAVEL,
-        "if (blocker == lastBlocker)",
+        "if (blocker == lastBlocker_)",
         "if (false)",
     ),
     Mutant(
@@ -201,14 +201,14 @@ MUTANTS = [
     Mutant(
         "travel's crossing reads the game while an area loads",
         TRAVEL,
-        'if (mode == "loading")\n            {\n                continue;',
-        "if (false)\n            {\n                continue;",
+        'if (mode == "loading")\n        {\n            return std::nullopt;',
+        "if (false)\n        {\n            return std::nullopt;",
     ),
     Mutant(
         "travel's crossing tells a fight before the party left as another mode",
         TRAVEL,
-        'if (mode == "combat")\n            {\n                return End(false, "a fight began before the party left");',
-        'if (false)\n            {\n                return End(false, "a fight began before the party left");',
+        'if (mode == "combat")\n        {\n            return End(false, "a fight began before the party left");',
+        'if (false)\n        {\n            return End(false, "a fight began before the party left");',
     ),
     Mutant(
         "travel walks on into a fight",
@@ -273,16 +273,14 @@ MUTANTS = [
     Mutant(
         "travel goes to the search's furthest point again and again",
         TRAVEL,
-        'own word for it.\n            if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
-        'own word for it.\n            if (walk.contains("reached") && !walk.at("reached").is_null())',
+        'own word for it.\n        if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
+        'own word for it.\n        if (walk.contains("reached") && !walk.at("reached").is_null())',
     ),
     Mutant(
         "travel walks up to its target in its own way again and again",
         TRAVEL,
-        "if (distance > kNearOwnWay)\n                {\n"
-        '                    if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
-        "if (distance > kNearOwnWay)\n                {\n"
-        '                    if (walk.contains("reached") && !walk.at("reached").is_null())',
+        'if (distance > kNearOwnWay)\n        {\n            if (walk.contains("reached") && !walk.at("reached").is_null() && !wentToReached_)',
+        'if (distance > kNearOwnWay)\n        {\n            if (walk.contains("reached") && !walk.at("reached").is_null())',
     ),
     Mutant(
         "travel moves to the target's own place, not the walk's end",
@@ -348,8 +346,8 @@ MUTANTS = [
     Mutant(
         "loot waits out another container's panel opening",
         LOOT,
-        'if (!open.empty())\n            {\n                return End(false, "the loot panel of "',
-        'if (false)\n            {\n                return End(false, "the loot panel of "',
+        'if (!open.empty())\n        {\n            return "the loot panel of "',
+        'if (false)\n        {\n            return "the loot panel of "',
     ),
     Mutant(
         "loot waits out a message box the use brings",
@@ -404,62 +402,62 @@ MUTANTS = [
     Mutant(
         "scenario goes on past a failed step",
         SCENARIO,
-        "if (timedOut || (!failure.empty() && !continueOnError))",
-        "if (timedOut || (!failure.empty() && !continueOnError && false))",
+        "if (timedOut_ || (failed && !continueOnError))",
+        "if (timedOut_ || (failed && !continueOnError && !failed))",
     ),
     Mutant(
         "scenario stops at a failed step though told to go on",
         SCENARIO,
-        "if (timedOut || (!failure.empty() && !continueOnError))",
-        "if (timedOut || (!failure.empty() && (continueOnError || true)))",
+        "if (timedOut_ || (failed && !continueOnError))",
+        "if (timedOut_ || (failed && (continueOnError || true)))",
     ),
     Mutant(
         "scenario goes on out of time when told to go on",
         SCENARIO,
-        "if (timedOut || (!failure.empty() && !continueOnError))",
-        "if (!failure.empty() && !continueOnError)",
+        "if (timedOut_ || (failed && !continueOnError))",
+        "if (failed && !continueOnError)",
     ),
     Mutant(
         "scenario says a run that timed out is ok",
         SCENARIO,
-        '{"ok", ok && !timedOut}',
+        '{"ok", ok && !timedOut_}',
         '{"ok", ok}',
     ),
     Mutant(
         "scenario's wait after a tool step sees what came before the step",
         SCENARIO,
-        "cursor = bench.Events().Next();\n                        answer = bench.Invoke(",
-        "answer = bench.Invoke(",
+        "cursor_ = bench_.Events().Next();\n        answer = bench_.Invoke(",
+        "answer = bench_.Invoke(",
     ),
     Mutant(
         "scenario's second wait finds the first one's event again",
         SCENARIO,
-        "cursor = event->seq + 1; // a second wait looks past this one",
+        "cursor_ = event->seq + 1; // a second wait looks past this one",
         "// a second wait looks past this one",
     ),
     Mutant(
         "scenario does not read a wait's `since`",
         SCENARIO,
-        '"since", static_cast<std::int64_t>(cursor), 0,',
-        '"sinceMs", static_cast<std::int64_t>(cursor), 0,',
+        '"since", static_cast<std::int64_t>(cursor_), 0,',
+        '"sinceMs", static_cast<std::int64_t>(cursor_), 0,',
     ),
     Mutant(
         "scenario does not cut a wait to the time left",
         SCENARIO,
-        "const auto timeout = std::min(asked, left());",
+        "const auto timeout = std::min(asked, Left());",
         "const auto timeout = asked;",
     ),
     Mutant(
         "scenario does not say a wait cut by the budget timed out",
         SCENARIO,
-        "else if (timeout < asked)",
-        "else if (false)",
+        "if (timeout < asked)",
+        "if (timeout < asked && timeout > asked)",
     ),
     Mutant(
         "scenario goes on after a tool step that ran past the budget",
         SCENARIO,
-        "if (left().count() == 0)\n                        {\n                            // A call the game",
-        "if (false)\n                        {\n                            // A call the game",
+        "if (Left().count() == 0)\n        {\n            // A call the game",
+        "if (false)\n        {\n            // A call the game",
     ),
     Mutant(
         "scenario's label holds a failed step's answer",
@@ -488,7 +486,7 @@ MUTANTS = [
     Mutant(
         "scenario's wait that times out does not ask why",
         SCENARIO,
-        "if (whyNothing)",
+        "if (whyNothing_)",
         "if (false)",
     ),
     # The event bus: topics, match as a subset, cursors, missed, WaitFor
@@ -1222,7 +1220,7 @@ MUTANTS = [
     Mutant(
         "travel gives no cleared move again",
         TRAVEL,
-        "lastWalk.reset(); // not a move made: it does not say the walk goes no nearer\n                    continue;",
+        "lastWalk_.reset(); // not a move made: it does not say the walk goes no nearer\n            return std::nullopt;",
         'return End(false, "the walk ended " + *result);',
     ),
     # #21: a target the walk itself opened is taken from; a target in the
@@ -1354,7 +1352,7 @@ MUTANTS = [
     Mutant(
         "dialogue drops who spoke a line",
         CONVERSATION,
-        '{"by", event->payload.value("by", Json())},',
+        '{"by", event.payload.value("by", Json())},',
         '{"by", Json()},',
     ),
     # #24: a world map pin by name in any case, tag or index; refused when not
@@ -1387,13 +1385,13 @@ MUTANTS = [
     Mutant(
         "travel to takes an encounter for the pin",
         TRAVEL,
-        'if (area == pin->value("area", std::string()))',
-        "if (true)",
+        'if (area == pin.value("area", std::string()))',
+        'if (area == pin.value("area", std::string()) || !area.empty())',
     ),
     Mutant(
         "travel to clicks from nowhere",
         TRAVEL,
-        '"GameModeController.AreaTransition " + map->value("at", std::string()) + " " + std::to_string(index);',
+        '"GameModeController.AreaTransition " + map.value("at", std::string()) + " " + std::to_string(index);',
         '"GameModeController.AreaTransition " + std::string("x") + " " + std::to_string(index);',
     ),
     Mutant(
@@ -1413,7 +1411,7 @@ MUTANTS = [
     Mutant(
         "travel to marks the Fade's map as if it were the world's",
         TRAVEL,
-        'if (map->value("map", std::string("world")) != "fade")',
+        'if (map.value("map", std::string("world")) != "fade")',
         "if (true)",
     ),
     # #32: a text blocker is never a way out.
@@ -1969,8 +1967,8 @@ MUTANTS = [
     Mutant(
         "levelup calls a grey specialization locked though no point is left",
         LEVELUP,
-        ': *points < 1 ? "no point to spend"',
-        ': *points < -1 ? "no point to spend"',
+        "else if (*points < 1)",
+        "else if (*points < -1)",
     ),
     Mutant(
         "levelup presses a specialization had already",
@@ -2145,8 +2143,8 @@ MUTANTS = [
     Mutant(
         "travel never swaps a city's map for the other",
         TRAVEL,
-        "if (pin == nullptr && !other.empty() && !swapped_)",
-        "if (pin == nullptr && other.empty() && !swapped_)",
+        "if (!other.empty() && !swapped_)",
+        "if (other.empty() && !swapped_)",
     ),
     Mutant(
         "travel swaps a city's maps back and forth",

@@ -97,7 +97,7 @@ std::string GivenBack(const Json &taken)
 // A creature's id as the screen's messages carry it, in decimal: "0x82" is 130.
 std::optional<std::uint32_t> Decimal(std::string_view id)
 {
-    if (id.size() < 3 || id.substr(0, 2) != "0x")
+    if (id.size() < 3 || !id.starts_with("0x"))
     {
         return std::nullopt;
     }
@@ -296,7 +296,7 @@ class Levelling
         if (!Screen(false))
         {
             refused_ = "the level-up screen did not close: " + refused_ +
-                       "; input {\"message\": \"GUI.HideFullScreenGUI\"} closes it";
+                       R"(; input {"message": "GUI.HideFullScreenGUI"} closes it)";
             return false;
         }
         return true;
@@ -397,13 +397,11 @@ class Levelling
     // <id> <attribute> <amount>. An ability the screen does not offer as
     // learnable now is refused, the screen abandoned; those taken before it
     // are said.
-    std::optional<Json> Choose(Json &last)
+    // The abilities chosen, one at a time as the screen's icons take them,
+    // read again each time: nothing, or the answer the screen was
+    // abandoned with, what was taken given back.
+    std::optional<Json> TakeAbilities()
     {
-        if (!Open())
-        {
-            return End(false, refused_);
-        }
-        std::this_thread::sleep_for(show_);
         Json taken = Json::array();
         for (const auto ability : chosen_)
         {
@@ -454,6 +452,17 @@ class Levelling
             }
             taken.push_back(ability);
         }
+        return std::nullopt;
+    }
+
+    // The attributes raised as the screen's buttons raise them: false,
+    // with refused_ said, where the screen took a raise not.
+    bool RaiseAttributes()
+    {
+        // Each raise is a command to the screen, stopping at the first it
+        // refuses: a loop says so plainer than all_of with a predicate that
+        // sends (#77).
+        // NOLINTNEXTLINE(readability-use-anyofallof)
         for (const auto &[name, amount] : raise_.items())
         {
             const std::string spend =
@@ -461,9 +470,27 @@ class Levelling
             if (!Send("GUICharGen.CharGenAssignAttribute " + spend) ||
                 !Send("Paperdoll.CharGenAssignAttribute " + spend))
             {
-                Close(false);
-                return End(false, refused_);
+                return false;
             }
+        }
+        return true;
+    }
+
+    std::optional<Json> Choose(Json &last)
+    {
+        if (!Open())
+        {
+            return End(false, refused_);
+        }
+        std::this_thread::sleep_for(show_);
+        if (auto abandoned = TakeAbilities())
+        {
+            return abandoned;
+        }
+        if (!RaiseAttributes())
+        {
+            Close(false);
+            return End(false, refused_);
         }
         std::this_thread::sleep_for(show_);
         if (!Close(true))
@@ -514,12 +541,21 @@ class Levelling
             const bool had = selected->value("value", Json()) == true;
             const bool shut = grey->value("value", Json()) == true;
             const Json label = name->value("value", Json());
+            const char *state = "locked";
+            if (had)
+            {
+                state = "has";
+            }
+            else if (!shut)
+            {
+                state = "learnable";
+            }
+            else if (*points < 1)
+            {
+                state = "no point to spend";
+            }
             specializations.push_back(Special{static_cast<std::int32_t>(*id),
-                                              label.is_string() ? label.get<std::string>() : std::string(),
-                                              had           ? "has"
-                                              : !shut       ? "learnable"
-                                              : *points < 1 ? "no point to spend"
-                                                            : "locked",
+                                              label.is_string() ? label.get<std::string>() : std::string(), state,
                                               icon});
         }
         return specializations;
@@ -959,7 +995,7 @@ void AddLevelUpTool(Bench &bench, milliseconds show)
                    {"abilities",
                     {{"type", "array"}, {"description", "Ability ids to take, learnable in `offers`, in order"}}},
                    {"attributes",
-                    {{"type", "object"}, {"description", "Points per attribute: {\"strength\": 2, \"cunning\": 1}"}}},
+                    {{"type", "object"}, {"description", R"(Points per attribute: {"strength": 2, "cunning": 1})"}}},
                    {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
             Thread::Listener},
         [&bench, show](const Json &raw) -> ToolResult {

@@ -135,7 +135,7 @@ std::string UrlDecode(std::string_view text, bool query)
             const int low = HexDigit(text[i + 2]);
             if (high >= 0 && low >= 0)
             {
-                out += static_cast<char>(high * 16 + low);
+                out += static_cast<char>((high * 16) + low);
                 i += 2;
                 continue;
             }
@@ -180,10 +180,28 @@ HttpParser::Status HttpParser::Parse()
     }
     request_ = HttpRequest{};
     const std::string_view head(buffer_.data(), headEnd);
-
-    // The request line: METHOD SP target SP HTTP/1.x
     const auto lineEnd = std::min(head.find("\r\n"), head.size());
-    const std::string_view line = head.substr(0, lineEnd);
+    if (const auto status = ParseRequestLine(head.substr(0, lineEnd)); status != Status::Complete)
+    {
+        return status;
+    }
+    if (const auto status = ParseHeaders(lineEnd < head.size() ? head.substr(lineEnd + 2) : std::string_view());
+        status != Status::Complete)
+    {
+        return status;
+    }
+    const std::size_t bodyStart = headEnd + 4;
+    if (Lower(request_.Header("transfer-encoding")).find("chunked") != std::string::npos)
+    {
+        return ParseChunked(bodyStart);
+    }
+    return ParseBody(bodyStart);
+}
+
+// The request line: METHOD SP target SP HTTP/1.x, the target's query
+// taken apart.
+HttpParser::Status HttpParser::ParseRequestLine(std::string_view line)
+{
     const auto space1 = line.find(' ');
     const auto space2 = space1 == std::string_view::npos ? space1 : line.find(' ', space1 + 1);
     if (space2 == std::string_view::npos)
@@ -197,6 +215,7 @@ HttpParser::Status HttpParser::Parse()
     {
         return Fail(400, "only HTTP/1.1 and 1.0 are spoken here");
     }
+    http11_ = version == "HTTP/1.1";
     if (request_.method.empty() || target.empty() || target.front() != '/')
     {
         return Fail(400, "not an HTTP request line");
@@ -220,8 +239,13 @@ HttpParser::Status HttpParser::Parse()
             query = amp == std::string_view::npos ? std::string_view() : query.substr(amp + 1);
         }
     }
+    return Status::Complete;
+}
 
-    std::string_view rest = lineEnd < head.size() ? head.substr(lineEnd + 2) : std::string_view();
+// The header lines, and keep-alive by them and the version.
+HttpParser::Status HttpParser::ParseHeaders(std::string_view lines)
+{
+    std::string_view rest = lines;
     while (!rest.empty())
     {
         const auto end = std::min(rest.find("\r\n"), rest.size());
@@ -235,16 +259,15 @@ HttpParser::Status HttpParser::Parse()
                                       std::string(Trim(header.substr(colon + 1))));
         rest = end < rest.size() ? rest.substr(end + 2) : std::string_view();
     }
-
     const auto connection = Lower(request_.Header("connection"));
-    request_.keepAlive = version == "HTTP/1.1" ? connection.find("close") == std::string::npos
-                                               : connection.find("keep-alive") != std::string::npos;
+    request_.keepAlive =
+        http11_ ? connection.find("close") == std::string::npos : connection.find("keep-alive") != std::string::npos;
+    return Status::Complete;
+}
 
-    const std::size_t bodyStart = headEnd + 4;
-    if (Lower(request_.Header("transfer-encoding")).find("chunked") != std::string::npos)
-    {
-        return ParseChunked(bodyStart);
-    }
+// A body of Content-Length bytes, or none.
+HttpParser::Status HttpParser::ParseBody(std::size_t bodyStart)
+{
     // 64 bits, since size_t is 32 in the game's build and a large length
     // would read as no number rather than as too large.
     std::uint64_t declared = 0;
@@ -296,16 +319,7 @@ HttpParser::Status HttpParser::ParseChunked(std::size_t bodyStart)
         at = lineEnd + 2;
         if (size == 0)
         {
-            // Trailers, if any, end with an empty line; they are not kept.
-            const auto trailersEnd = buffer_.compare(at, 2, "\r\n") == 0 ? at : buffer_.find("\r\n\r\n", at);
-            if (trailersEnd == std::string::npos)
-            {
-                return Status::NeedMore;
-            }
-            const auto consumed = trailersEnd == at ? at + 2 : trailersEnd + 4;
-            request_.body = std::move(body);
-            buffer_.erase(0, consumed);
-            return Status::Complete;
+            return EndChunks(std::move(body), at);
         }
         if (body.size() + size > kMaxBody)
         {
@@ -322,6 +336,21 @@ HttpParser::Status HttpParser::ParseChunked(std::size_t bodyStart)
         body.append(buffer_, at, size);
         at += size + 2;
     }
+}
+
+// The last chunk's trailers, if any, end with an empty line; they are not
+// kept.
+HttpParser::Status HttpParser::EndChunks(std::string body, std::size_t at)
+{
+    const auto trailersEnd = buffer_.compare(at, 2, "\r\n") == 0 ? at : buffer_.find("\r\n\r\n", at);
+    if (trailersEnd == std::string::npos)
+    {
+        return Status::NeedMore;
+    }
+    const auto consumed = trailersEnd == at ? at + 2 : trailersEnd + 4;
+    request_.body = std::move(body);
+    buffer_.erase(0, consumed);
+    return Status::Complete;
 }
 
 HttpRequest HttpParser::Take()

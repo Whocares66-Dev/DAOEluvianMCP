@@ -1,5 +1,6 @@
 #include "core/Craft.h"
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -64,14 +65,8 @@ struct Poisoner
 
     bool CanMake(const Recipe &recipe) const
     {
-        for (const auto &ingredient : recipe.ingredients)
-        {
-            if (held.at(ingredient.name) < ingredient.need)
-            {
-                return false;
-            }
-        }
-        return true;
+        return std::ranges::all_of(
+            recipe.ingredients, [this](const auto &ingredient) { return held.at(ingredient.name) >= ingredient.need; });
     }
 
     // A path's value in the tree, as inspect kind=data reads it.
@@ -104,11 +99,33 @@ struct Poisoner
         }
         if (rest == "ID" || rest == "Skill" || rest == "HaveAllIngredients")
         {
-            value["number"] = rest == "ID" ? recipe.id : rest == "Skill" ? recipe.skill : CanMake(recipe) ? 1 : 0;
+            if (rest == "ID")
+            {
+                value["number"] = recipe.id;
+            }
+            else if (rest == "Skill")
+            {
+                value["number"] = recipe.skill;
+            }
+            else
+            {
+                value["number"] = CanMake(recipe) ? 1 : 0;
+            }
         }
         else
         {
-            value["text"] = rest == "Name" ? recipe.name : rest == "ProductName" ? recipe.product : recipe.ref;
+            if (rest == "Name")
+            {
+                value["text"] = recipe.name;
+            }
+            else if (rest == "ProductName")
+            {
+                value["text"] = recipe.product;
+            }
+            else
+            {
+                value["text"] = recipe.ref;
+            }
         }
         return value;
     }
@@ -154,93 +171,113 @@ struct Poisoner
 
     Poisoner()
     {
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            const std::string kind = args.value("kind", "");
-            if (kind == "game")
+        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeScript(args); });
+        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInput(args); });
+        bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeOrder(args); });
+    }
+
+    // The stand-in's inspect.
+    ToolResult FakeInspect(const Json &args)
+    {
+        const std::string kind = args.value("kind", "");
+        if (kind == "game")
+        {
+            return Json{{"controlled", {{"id", controlled}}}};
+        }
+        if (kind == "character")
+        {
+            return Json{{"name", args.at("id") == "0x82" ? "Lyna" : "Zevran"}};
+        }
+        if (kind == "gui")
+        {
+            return Json{{"fullScreen", up ? Json("Crafting") : Json(nullptr)}};
+        }
+        if (kind == "data")
+        {
+            return Data(args);
+        }
+        for (auto it = arriving.begin(); it != arriving.end();)
+        {
+            if (--it->first > 0)
             {
-                return Json{{"controlled", {{"id", controlled}}}};
+                ++it;
+                continue;
             }
-            if (kind == "character")
+            pack[it->second] += 1;
+            it = arriving.erase(it);
+        }
+        Json items = Json::array({Json{{"template", "gen_im_wep_mel_dag_01"}, {"stack", 1}}});
+        for (const auto &[ref, count] : pack)
+        {
+            items.push_back(Json{{"template", ref}, {"stack", count}});
+        }
+        return Json{{"items", items}};
+    }
+
+    // The stand-in's script.
+    ToolResult FakeScript(const Json &args)
+    {
+        scripts.push_back(args);
+        const std::string command = args.at("command");
+        if (command == "HasAbility")
+        {
+            const std::string who = args.at("args").at(0);
+            return Json{{"value", skills[who].contains(args.at("args").at(1).get<int>()) ? 1 : 0}};
+        }
+        up = up || opens; // ShowCraftingGUI
+        return Json{{"value", nullptr}};
+    }
+
+    // The stand-in's input.
+    ToolResult FakeInput(const Json &args)
+    {
+        const std::string text = args.at("message");
+        sent.push_back(text);
+        if (text == "GUI.HideFullScreenGUI")
+        {
+            up = false;
+        }
+        else if (text.starts_with("GUICrafting.CraftItem ") && crafts)
+        {
+            const int id = std::stoi(text.substr(22));
+            for (const auto &recipe : recipes)
             {
-                return Json{{"name", args.at("id") == "0x82" ? "Lyna" : "Zevran"}};
-            }
-            if (kind == "gui")
-            {
-                return Json{{"fullScreen", up ? Json("Crafting") : Json(nullptr)}};
-            }
-            if (kind == "data")
-            {
-                return Data(args);
-            }
-            for (auto it = arriving.begin(); it != arriving.end();)
-            {
-                if (--it->first > 0)
+                if (recipe.id == id && CanMake(recipe))
                 {
-                    ++it;
-                    continue;
-                }
-                pack[it->second] += 1;
-                it = arriving.erase(it);
-            }
-            Json items = Json::array({Json{{"template", "gen_im_wep_mel_dag_01"}, {"stack", 1}}});
-            for (const auto &[ref, count] : pack)
-            {
-                items.push_back(Json{{"template", ref}, {"stack", count}});
-            }
-            return Json{{"items", items}};
-        });
-        bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            scripts.push_back(args);
-            const std::string command = args.at("command");
-            if (command == "HasAbility")
-            {
-                const std::string who = args.at("args").at(0);
-                return Json{{"value", skills[who].contains(args.at("args").at(1).get<int>()) ? 1 : 0}};
-            }
-            up = up || opens; // ShowCraftingGUI
-            return Json{{"value", nullptr}};
-        });
-        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            const std::string text = args.at("message");
-            sent.push_back(text);
-            if (text == "GUI.HideFullScreenGUI")
-            {
-                up = false;
-            }
-            else if (text.starts_with("GUICrafting.CraftItem ") && crafts)
-            {
-                const int id = std::stoi(text.substr(22));
-                for (const auto &recipe : recipes)
-                {
-                    if (recipe.id == id && CanMake(recipe))
+                    for (const auto &ingredient : recipe.ingredients)
                     {
-                        for (const auto &ingredient : recipe.ingredients)
-                        {
-                            held[ingredient.name] -= ingredient.need;
-                        }
-                        const std::string ref = recipe.ref.substr(0, recipe.ref.size() - 4);
-                        if (lag > 0)
-                        {
-                            arriving.emplace_back(lag, ref);
-                        }
-                        else
-                        {
-                            pack[ref] += 1;
-                        }
+                        held[ingredient.name] -= ingredient.need;
+                    }
+                    const std::string ref = recipe.ref.substr(0, recipe.ref.size() - 4);
+                    if (lag > 0)
+                    {
+                        arriving.emplace_back(lag, ref);
+                    }
+                    else
+                    {
+                        pack[ref] += 1;
                     }
                 }
             }
-            return Json{{"sent", true}};
-        });
-        bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            const std::string id = args.at("id");
-            ordered.push_back(id);
-            if (party.contains(id))
-            {
-                controlled = id;
-            }
-            return Json{{"taken", controlled == id}};
-        });
+        }
+        return Json{{"sent", true}};
+    }
+
+    // The stand-in's order.
+    ToolResult FakeOrder(const Json &args)
+    {
+        const std::string id = args.at("id");
+        ordered.push_back(id);
+        if (party.contains(id))
+        {
+            controlled = id;
+        }
+        return Json{{"taken", controlled == id}};
     }
 
     Json Craft(Json args)

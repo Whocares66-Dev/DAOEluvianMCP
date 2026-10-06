@@ -59,7 +59,11 @@ void Watch::OnFrame()
         bench_.Events().Emit("eluvian.mode.changed", Json{{"from", ModeName(before)}, {"to", ModeName(now)}});
     }
     const auto *app = dao::CClientExoApp::Get();
-    const std::int32_t paused = app == nullptr ? -1 : (app->IsPaused() ? 1 : 0);
+    std::int32_t paused = -1; // no app yet: neither
+    if (app != nullptr)
+    {
+        paused = app->IsPaused() ? 1 : 0;
+    }
     if (const auto before = paused_.exchange(paused); before != paused && paused >= 0)
     {
         bench_.Events().Emit("eluvian.paused", Json{{"paused", paused == 1}});
@@ -82,7 +86,15 @@ void AddHealthTool(Bench &bench, const Watch &watch, std::function<Json()> extra
                     .count();
             const auto last = watch.lastFrameMs_.load();
             const auto sinceFrame = last < 0 ? -1 : nowMs - last;
-            const char *state = last < 0 ? "starting" : (sinceFrame > 1000 ? "stalled" : "running");
+            const char *state = "running";
+            if (last < 0)
+            {
+                state = "starting";
+            }
+            else if (sinceFrame > 1000)
+            {
+                state = "stalled";
+            }
             const auto paused = watch.paused_.load();
             Json answer = {
                 {"state", state},

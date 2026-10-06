@@ -33,10 +33,10 @@ std::uint32_t Word(std::span<const std::byte> bytes, std::size_t at)
 std::string Text(std::span<const std::byte> bytes, std::size_t at, std::size_t chars)
 {
     std::string text;
-    for (std::size_t i = 0; i < chars && at + 2 * i + 1 < bytes.size(); ++i)
+    for (std::size_t i = 0; i < chars && at + (2 * i) + 1 < bytes.size(); ++i)
     {
-        const auto unit = static_cast<std::uint16_t>(static_cast<std::uint16_t>(bytes[at + 2 * i]) |
-                                                     static_cast<std::uint16_t>(bytes[at + 2 * i + 1]) << 8);
+        const auto unit = static_cast<std::uint16_t>(static_cast<std::uint16_t>(bytes[at + (2 * i)]) |
+                                                     static_cast<std::uint16_t>(bytes[at + (2 * i) + 1]) << 8);
         if (unit == 0)
         {
             break;
@@ -73,7 +73,7 @@ std::optional<std::size_t> ErfIndexBytes(std::span<const std::byte> head)
     {
         return std::nullopt;
     }
-    return layout->header + static_cast<std::size_t>(Word(head, 16)) * layout->entry;
+    return layout->header + (static_cast<std::size_t>(Word(head, 16)) * layout->entry);
 }
 
 std::vector<std::string> ErfNames(std::span<const std::byte> index)
@@ -87,7 +87,7 @@ std::vector<std::string> ErfNames(std::span<const std::byte> index)
     std::vector<std::string> names;
     for (std::size_t i = 0; i < count; ++i)
     {
-        const std::size_t at = layout->header + i * layout->entry;
+        const std::size_t at = layout->header + (i * layout->entry);
         if (at + kNameBytes > index.size())
         {
             break;

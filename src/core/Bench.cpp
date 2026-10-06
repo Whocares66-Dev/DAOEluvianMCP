@@ -245,6 +245,8 @@ Json ListLogs(const std::filesystem::path &directory)
             files.push_back({{"file", entry.path().filename().string()}, {"size", entry.file_size(error)}});
         }
     }
+    // json's iterators are not std::ranges ranges (#77):
+    // NOLINTNEXTLINE(modernize-use-ranges)
     std::sort(files.begin(), files.end(), [](const Json &a, const Json &b) { return a["file"] < b["file"]; });
     return files;
 }

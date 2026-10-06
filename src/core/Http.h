@@ -75,10 +75,17 @@ class HttpParser
 
   private:
     Status Fail(int status, std::string message);
+    // Parse's parts, in the order of the request (#77): each fills request_
+    // and answers Complete to go on, or Fail's answer.
+    Status ParseRequestLine(std::string_view line);
+    Status ParseHeaders(std::string_view lines);
+    Status ParseBody(std::size_t bodyStart);
     Status ParseChunked(std::size_t bodyStart);
+    Status EndChunks(std::string body, std::size_t at);
 
     std::string buffer_;
     HttpRequest request_;
+    bool http11_ = false; // the request line's version, for keep-alive's default
     int errorStatus_ = 0;
     std::string errorMessage_;
 };

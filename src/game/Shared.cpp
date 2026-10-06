@@ -307,15 +307,12 @@ Json RoomJson(ObjectId id)
     {
         return nullptr;
     }
-    const char *seen = room->seen == Room::kNeverSeen ? "never" : room->seen == Room::kInView ? "in view" : "before";
-    const Json wanted = room->state == Room::kDropped     ? Json("dropped")
-                        : room->state == Room::kWanted    ? Json("kept")
-                        : room->state == Room::kWantedNow ? Json("now")
-                                                          : Json(room->state);
-    const Json load = room->load == Room::kLoading     ? Json("loading")
-                      : room->load == Room::kLoaded    ? Json("loaded")
-                      : room->load == Room::kNotLoaded ? Json("not loaded")
-                                                       : Json(room->load);
+    const Json seen =
+        Label(room->seen, {{Room::kNeverSeen, "never"}, {Room::kInView, "in view"}, {Room::kSeenBefore, "before"}});
+    const Json wanted =
+        Label(room->state, {{Room::kDropped, "dropped"}, {Room::kWanted, "kept"}, {Room::kWantedNow, "now"}});
+    const Json load =
+        Label(room->load, {{Room::kLoading, "loading"}, {Room::kLoaded, "loaded"}, {Room::kNotLoaded, "not loaded"}});
     return Json{{"number", room->number}, {"seen", seen}, {"shown", room->Shown()}, {"wanted", wanted}, {"load", load}};
 }
 

@@ -176,10 +176,9 @@ Json LevelUpOffers()
                 name = AbilityJson(ability).value("name", std::string());
             }
             const auto state = static_cast<int>(number(member + L".DisplayState"));
-            abilities.push_back(
-                Json{{"id", ability},
-                     {"name", std::move(name)},
-                     {"state", state == 1 ? "has" : (state == 2 ? "learnable" : (state == 3 ? "not yet" : "?"))}});
+            abilities.push_back(Json{{"id", ability},
+                                     {"name", std::move(name)},
+                                     {"state", Label(state, {{1, "has"}, {2, "learnable"}, {3, "not yet"}})}});
         }
         answer[page.name] = std::move(abilities);
     }
@@ -329,6 +328,254 @@ constexpr std::array<Named, 4> kPoints = {
 
 static void AddEquip(Bench &bench, const Watch &watch);
 
+namespace
+{
+
+// The character kind's handler, registered by AddCharacter.
+ToolResult KindCharacter(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = CreatureOrControlled(args);
+    Json sheet = Brief(id);
+    sheet["template"] = Narrow(api::GetResRef(id));
+    sheet["race"] = Rule(k::TABLE_RULES_RACES, api::GetCreatureRacialType(id));
+    const auto gender = api::GetCreatureGender(id);
+    sheet["gender"] = Label(gender, {{k::GENDER_MALE, "male"}, {k::GENDER_FEMALE, "female"}});
+    sheet["class"] =
+        Rule(k::TABLE_RULES_CLASSES,
+             static_cast<std::int32_t>(api::GetCreatureProperty(id, kPropertyClass, k::PROPERTY_VALUE_TOTAL)));
+    sheet["level"] =
+        static_cast<std::int32_t>(api::GetCreatureProperty(id, k::PROPERTY_SIMPLE_LEVEL, k::PROPERTY_VALUE_TOTAL));
+    sheet["experience"] =
+        static_cast<std::int32_t>(api::GetCreatureProperty(id, k::PROPERTY_SIMPLE_EXPERIENCE, k::PROPERTY_VALUE_TOTAL));
+    sheet["canLevelUp"] = api::GetCanLevelUp(id) != 0;
+    sheet["rank"] = Rule(k::TABLE_CREATURERANKS, api::GetCreatureRank(id));
+    // A member of the party, the hero among them (IsFollower is true
+    // of the hero too, in play 2026-10-01).
+    if (api::IsFollower(id) != 0)
+    {
+        const auto state = api::GetFollowerState(id);
+        sheet["follower"] = Json{{"state", Label(state, {{k::FOLLOWER_STATE_ACTIVE, "active"},
+                                                         {k::FOLLOWER_STATE_AVAILABLE, "available"},
+                                                         {k::FOLLOWER_STATE_UNAVAILABLE, "unavailable"},
+                                                         {k::FOLLOWER_STATE_SUSPENDED, "suspended"},
+                                                         {k::FOLLOWER_STATE_LOADING, "loading"},
+                                                         {k::FOLLOWER_STATE_LOCKEDACTIVE, "lockedActive"}})},
+                                 {"approval", api::GetFollowerApproval(id)},
+                                 {"locked", api::IsFollowerLocked(id) != 0},
+                                 {"aiEnabled", api::IsPartyAIEnabled(id) != 0}};
+    }
+    sheet["attributes"] = Json{{"strength", Stat(id, k::PROPERTY_ATTRIBUTE_STRENGTH)},
+                               {"dexterity", Stat(id, k::PROPERTY_ATTRIBUTE_DEXTERITY)},
+                               {"willpower", Stat(id, k::PROPERTY_ATTRIBUTE_WILLPOWER)},
+                               {"magic", Stat(id, k::PROPERTY_ATTRIBUTE_MAGIC)},
+                               {"cunning", Stat(id, k::PROPERTY_ATTRIBUTE_INTELLIGENCE)},
+                               {"constitution", Stat(id, k::PROPERTY_ATTRIBUTE_CONSTITUTION)}};
+    Json combat = Json::object();
+    for (const auto &named : kCombat)
+    {
+        combat[std::string(named.name)] = api::GetCreatureProperty(id, named.id, k::PROPERTY_VALUE_TOTAL);
+    }
+    sheet["combat"] = std::move(combat);
+    Json points = Json::object();
+    for (const auto &named : kPoints)
+    {
+        points[std::string(named.name)] =
+            static_cast<std::int32_t>(api::GetCreatureProperty(id, named.id, k::PROPERTY_VALUE_TOTAL));
+    }
+    sheet["pointsToSpend"] = std::move(points);
+    sheet["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
+    sheet["manaStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
+    const auto style = api::GetWeaponStyle(id);
+    sheet["weaponStyle"] = Label(style, {{k::WEAPONSTYLE_NONE, "none"},
+                                         {k::WEAPONSTYLE_SINGLE, "single"},
+                                         {k::WEAPONSTYLE_DUAL, "dual"},
+                                         {k::WEAPONSTYLE_TWOHANDED, "two-handed"}});
+    sheet["plot"] = api::IsPlot(id) != 0;
+    sheet["immortal"] = api::IsImmortal(id) != 0;
+    sheet["abilityCount"] = api::GetAbilityCount(id);
+    const ObjectId hero = api::GetHero();
+    sheet["side"] = Side(id, hero, PartyOf(hero));
+    // Every property that is not nothing, by the name the game's own
+    // table gives it (the `properties` table's Stat column; lib-agent,
+    // 2026-10-01): resistances, regeneration, damage bonuses and the
+    // rest, beyond the named ones above.
+    Json properties = Json::object();
+    for (std::int32_t property = 1; property < 60; ++property) // the table's rows are 0 to 59
+    {
+        const float total = api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL);
+        if (total == 0)
+        {
+            continue;
+        }
+        std::string name = Narrow(api::GetM2DAString(-1, L"Stat", property, L"properties"));
+        if (name.empty())
+        {
+            name = std::format("property{}", property);
+        }
+        properties[name] =
+            Json{{"total", total}, {"base", api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_BASE)}};
+    }
+    sheet["properties"] = std::move(properties);
+    sheet["equipment"] = EquipmentJson(id, false);
+    return sheet;
+}
+
+// The abilities kind's handler, registered by AddCharacter.
+ToolResult KindAbilities(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = CreatureOrControlled(args);
+    const auto list = [id](dao::abilities::Kind kind) {
+        Json abilities = Json::array();
+        for (const std::int32_t ability : dao::abilities::Known(id, kind))
+        {
+            Json entry = AbilityJson(ability);
+            const bool available = api::IsAbilityAvailable(id, ability) != 0;
+            const auto cooldown = dao::abilities::GetCooldown(id, ability);
+            UseInto(entry, id, ability, available && (!cooldown || cooldown->remaining <= 0));
+            if (cooldown && cooldown->remaining > 0)
+            {
+                entry["cooldown"] = Json{{"remaining", cooldown->remaining}, {"total", cooldown->total}};
+            }
+            abilities.push_back(std::move(entry));
+        }
+        return abilities;
+    };
+    return Json{{"of", Brief(id)},
+                {"count", api::GetAbilityCount(id)},
+                {"talents", list(dao::abilities::Kind::Talent)},
+                {"spells", list(dao::abilities::Kind::Spell)},
+                {"skills", list(dao::abilities::Kind::Skill)},
+                {"items", list(dao::abilities::Kind::Item)}};
+}
+
+// The tactics kind's handler, registered by AddCharacter.
+ToolResult KindTactics(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = CreatureOrControlled(args);
+    constexpr std::int32_t kMostSlots = 64;
+    constexpr std::int32_t kCommandUseAbility = 4;
+    constexpr std::int32_t kCommandUseItem = 7;
+    constexpr std::int32_t kPropertyBehaviour = 18;
+    const std::int32_t slots = api::GetNumTactics(id);
+    Json tactics = Json::array();
+    for (std::int32_t slot = 1; slot <= slots && slot <= kMostSlots; ++slot)
+    {
+        Json entry = {{"slot", slot}, {"enabled", api::IsTacticEnabled(id, slot) != 0}};
+        const std::int32_t command = api::GetTacticCommand(id, slot);
+        if (command == 0)
+        {
+            entry["empty"] = true;
+            tactics.push_back(std::move(entry));
+            continue;
+        }
+        entry["target"] = Rule(k::TABLE_AI_TACTICS_TARGET_TYPE, api::GetTacticTargetType(id, slot));
+        entry["condition"] = Rule(k::TABLE_TACTICS_CONDITIONS, api::GetTacticCondition(id, slot));
+        entry["command"] = Rule(k::TABLE_COMMAND_TYPES, command);
+        const std::int32_t param = api::GetTacticCommandParam(id, slot);
+        if (command >= kCommandUseAbility && command <= kCommandUseItem && param != 0)
+        {
+            entry["ability"] = AbilityJson(param);
+        }
+        else if (param != 0)
+        {
+            entry["param"] = param;
+        }
+        if (auto tag = Narrow(api::GetTacticCommandItemTag(id, slot)); !tag.empty())
+        {
+            entry["item"] = std::move(tag);
+        }
+        if (const ObjectId object = api::GetTacticTargetObject(id, slot); api::IsObjectValid(object) != 0)
+        {
+            entry["targetObject"] = Brief(object);
+        }
+        if (const ObjectId object = api::GetTacticConditionObject(id, slot); api::IsObjectValid(object) != 0)
+        {
+            entry["conditionObject"] = Brief(object);
+        }
+        tactics.push_back(std::move(entry));
+    }
+    const auto behaviour =
+        static_cast<std::int32_t>(api::GetCreatureProperty(id, kPropertyBehaviour, k::PROPERTY_VALUE_TOTAL));
+    // Preset 0 is the table's INVALID row: none chosen, the slots set by
+    // hand or by the creature's template (a follower read 0 in play).
+    const std::int32_t preset = api::GetTacticPresetID(id);
+    return Json{{"of", Brief(id)},
+                {"slots", slots},
+                {"preset", preset > 0 ? Rule(k::TABLE_TACTICS_USER_PRESETS, preset) : Json(nullptr)},
+                {"behaviour", Rule(k::TABLE_AI_BEHAVIORS, behaviour)},
+                {"tactics", std::move(tactics)}};
+}
+
+// The equipment kind's handler, registered by AddCharacter.
+ToolResult KindEquipment(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = CreatureOrControlled(args);
+    Json answer = EquipmentJson(id, true);
+    answer["of"] = Brief(id);
+    return answer;
+}
+
+// The inventory kind's handler, registered by AddCharacter.
+ToolResult KindInventory(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetHero());
+    if (id == kInvalidObject)
+    {
+        throw ToolError("inspect: no hero and no `id` was given; is a game loaded?");
+    }
+    const bool full = args.Bool("full", false);
+    Json items = Json::array();
+    const auto list = api::GetItemsInInventory(id, k::GET_ITEMS_OPTION_BACKPACK);
+    for (std::size_t i = 0; i < list.Size(); ++i)
+    {
+        items.push_back(ItemJson(list.Object(i), full));
+    }
+    // A container answers the same list (chests, cocoons and piles of
+    // bones did in play, 2026-10-01), with no size or purse of its own.
+    Json answer = {{"of", Brief(id)}, {"count", items.size()}};
+    if (api::GetObjectType(id) == k::OBJECT_TYPE_CREATURE)
+    {
+        answer["holds"] = api::GetMaxInventorySize(id);
+        answer["money"] = api::GetCreatureMoney(id);
+    }
+    answer["items"] = std::move(items);
+    return answer;
+}
+
+// The levelup kind's handler, registered by AddCharacter.
+ToolResult KindLevelup(const Watch &watch, const Json & /*args*/)
+{
+    RequireWorld(watch, "inspect");
+    return LevelUpOffers();
+}
+
+// The item kind's handler, registered by AddCharacter.
+ToolResult KindItem(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "inspect");
+    const Args args(raw, "inspect");
+    const ObjectId id = args.Id("id", "an item, as inspect kind=inventory lists them");
+    if (api::GetObjectType(id) != k::OBJECT_TYPE_ITEM)
+    {
+        throw ToolError(std::format("inspect: {} is not an item; inspect kind=inventory and "
+                                    "kind=equipment list items",
+                                    FormatId(id)));
+    }
+    return ItemJson(id, true);
+}
+
+} // namespace
+
 void AddCharacter(Bench &bench, const Watch &watch)
 {
     AddEquip(bench, watch);
@@ -346,97 +593,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "names: resistances, regeneration, damage), and what it wears, slot by slot in brief. inspect "
                  "kind=equipment gives the items "
                  "in full, kind=inventory the backpack, kind=creature its effects and abilities."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = CreatureOrControlled(args);
-            Json sheet = Brief(id);
-            sheet["template"] = Narrow(api::GetResRef(id));
-            sheet["race"] = Rule(k::TABLE_RULES_RACES, api::GetCreatureRacialType(id));
-            const auto gender = api::GetCreatureGender(id);
-            sheet["gender"] = gender == k::GENDER_MALE     ? Json("male")
-                              : gender == k::GENDER_FEMALE ? Json("female")
-                                                           : Json(gender);
-            sheet["class"] =
-                Rule(k::TABLE_RULES_CLASSES,
-                     static_cast<std::int32_t>(api::GetCreatureProperty(id, kPropertyClass, k::PROPERTY_VALUE_TOTAL)));
-            sheet["level"] = static_cast<std::int32_t>(
-                api::GetCreatureProperty(id, k::PROPERTY_SIMPLE_LEVEL, k::PROPERTY_VALUE_TOTAL));
-            sheet["experience"] = static_cast<std::int32_t>(
-                api::GetCreatureProperty(id, k::PROPERTY_SIMPLE_EXPERIENCE, k::PROPERTY_VALUE_TOTAL));
-            sheet["canLevelUp"] = api::GetCanLevelUp(id) != 0;
-            sheet["rank"] = Rule(k::TABLE_CREATURERANKS, api::GetCreatureRank(id));
-            // A member of the party, the hero among them (IsFollower is true
-            // of the hero too, in play 2026-10-01).
-            if (api::IsFollower(id) != 0)
-            {
-                const auto state = api::GetFollowerState(id);
-                sheet["follower"] = Json{{"state", state == k::FOLLOWER_STATE_ACTIVE         ? Json("active")
-                                                   : state == k::FOLLOWER_STATE_AVAILABLE    ? Json("available")
-                                                   : state == k::FOLLOWER_STATE_UNAVAILABLE  ? Json("unavailable")
-                                                   : state == k::FOLLOWER_STATE_SUSPENDED    ? Json("suspended")
-                                                   : state == k::FOLLOWER_STATE_LOADING      ? Json("loading")
-                                                   : state == k::FOLLOWER_STATE_LOCKEDACTIVE ? Json("lockedActive")
-                                                                                             : Json(state)},
-                                         {"approval", api::GetFollowerApproval(id)},
-                                         {"locked", api::IsFollowerLocked(id) != 0},
-                                         {"aiEnabled", api::IsPartyAIEnabled(id) != 0}};
-            }
-            sheet["attributes"] = Json{{"strength", Stat(id, k::PROPERTY_ATTRIBUTE_STRENGTH)},
-                                       {"dexterity", Stat(id, k::PROPERTY_ATTRIBUTE_DEXTERITY)},
-                                       {"willpower", Stat(id, k::PROPERTY_ATTRIBUTE_WILLPOWER)},
-                                       {"magic", Stat(id, k::PROPERTY_ATTRIBUTE_MAGIC)},
-                                       {"cunning", Stat(id, k::PROPERTY_ATTRIBUTE_INTELLIGENCE)},
-                                       {"constitution", Stat(id, k::PROPERTY_ATTRIBUTE_CONSTITUTION)}};
-            Json combat = Json::object();
-            for (const auto &named : kCombat)
-            {
-                combat[std::string(named.name)] = api::GetCreatureProperty(id, named.id, k::PROPERTY_VALUE_TOTAL);
-            }
-            sheet["combat"] = std::move(combat);
-            Json points = Json::object();
-            for (const auto &named : kPoints)
-            {
-                points[std::string(named.name)] =
-                    static_cast<std::int32_t>(api::GetCreatureProperty(id, named.id, k::PROPERTY_VALUE_TOTAL));
-            }
-            sheet["pointsToSpend"] = std::move(points);
-            sheet["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
-            sheet["manaStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
-            const auto style = api::GetWeaponStyle(id);
-            sheet["weaponStyle"] = style == k::WEAPONSTYLE_SINGLE      ? Json("single")
-                                   : style == k::WEAPONSTYLE_DUAL      ? Json("dual")
-                                   : style == k::WEAPONSTYLE_TWOHANDED ? Json("two-handed")
-                                                                       : Json("none");
-            sheet["plot"] = api::IsPlot(id) != 0;
-            sheet["immortal"] = api::IsImmortal(id) != 0;
-            sheet["abilityCount"] = api::GetAbilityCount(id);
-            const ObjectId hero = api::GetHero();
-            sheet["side"] = Side(id, hero, PartyOf(hero));
-            // Every property that is not nothing, by the name the game's own
-            // table gives it (the `properties` table's Stat column; lib-agent,
-            // 2026-10-01): resistances, regeneration, damage bonuses and the
-            // rest, beyond the named ones above.
-            Json properties = Json::object();
-            for (std::int32_t property = 1; property < 60; ++property) // the table's rows are 0 to 59
-            {
-                const float total = api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL);
-                if (total == 0)
-                {
-                    continue;
-                }
-                std::string name = Narrow(api::GetM2DAString(-1, L"Stat", property, L"properties"));
-                if (name.empty())
-                {
-                    name = std::format("property{}", property);
-                }
-                properties[name] =
-                    Json{{"total", total}, {"base", api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_BASE)}};
-            }
-            sheet["properties"] = std::move(properties);
-            sheet["equipment"] = EquipmentJson(id, false);
-            return sheet;
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindCharacter(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -449,33 +606,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank "
                  "it has. "
                  "`count` is the game's own count of them."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = CreatureOrControlled(args);
-            const auto list = [id](dao::abilities::Kind kind) {
-                Json abilities = Json::array();
-                for (const std::int32_t ability : dao::abilities::Known(id, kind))
-                {
-                    Json entry = AbilityJson(ability);
-                    const bool available = api::IsAbilityAvailable(id, ability) != 0;
-                    const auto cooldown = dao::abilities::GetCooldown(id, ability);
-                    UseInto(entry, id, ability, available && (!cooldown || cooldown->remaining <= 0));
-                    if (cooldown && cooldown->remaining > 0)
-                    {
-                        entry["cooldown"] = Json{{"remaining", cooldown->remaining}, {"total", cooldown->total}};
-                    }
-                    abilities.push_back(std::move(entry));
-                }
-                return abilities;
-            };
-            return Json{{"of", Brief(id)},
-                        {"count", api::GetAbilityCount(id)},
-                        {"talents", list(dao::abilities::Kind::Talent)},
-                        {"spells", list(dao::abilities::Kind::Spell)},
-                        {"skills", list(dao::abilities::Kind::Skill)},
-                        {"items", list(dao::abilities::Kind::Item)}};
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindAbilities(watch, raw); });
 
     // A creature's tactics, by the scripts' own commands. Slots count from 1
     // and an unset one has command 0 (read in play 2026-10-01: the hero's
@@ -493,63 +624,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "ability, activate mode, use item ...) and the `ability` or `item` the command is for; a slot "
                  "not set is `empty`. `preset` (null when none is chosen) and `behaviour` are the two choices above "
                  "the slots."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = CreatureOrControlled(args);
-            constexpr std::int32_t kMostSlots = 64;
-            constexpr std::int32_t kCommandUseAbility = 4;
-            constexpr std::int32_t kCommandUseItem = 7;
-            constexpr std::int32_t kPropertyBehaviour = 18;
-            const std::int32_t slots = api::GetNumTactics(id);
-            Json tactics = Json::array();
-            for (std::int32_t slot = 1; slot <= slots && slot <= kMostSlots; ++slot)
-            {
-                Json entry = {{"slot", slot}, {"enabled", api::IsTacticEnabled(id, slot) != 0}};
-                const std::int32_t command = api::GetTacticCommand(id, slot);
-                if (command == 0)
-                {
-                    entry["empty"] = true;
-                    tactics.push_back(std::move(entry));
-                    continue;
-                }
-                entry["target"] = Rule(k::TABLE_AI_TACTICS_TARGET_TYPE, api::GetTacticTargetType(id, slot));
-                entry["condition"] = Rule(k::TABLE_TACTICS_CONDITIONS, api::GetTacticCondition(id, slot));
-                entry["command"] = Rule(k::TABLE_COMMAND_TYPES, command);
-                const std::int32_t param = api::GetTacticCommandParam(id, slot);
-                if (command >= kCommandUseAbility && command <= kCommandUseItem && param != 0)
-                {
-                    entry["ability"] = AbilityJson(param);
-                }
-                else if (param != 0)
-                {
-                    entry["param"] = param;
-                }
-                if (auto tag = Narrow(api::GetTacticCommandItemTag(id, slot)); !tag.empty())
-                {
-                    entry["item"] = std::move(tag);
-                }
-                if (const ObjectId object = api::GetTacticTargetObject(id, slot); api::IsObjectValid(object) != 0)
-                {
-                    entry["targetObject"] = Brief(object);
-                }
-                if (const ObjectId object = api::GetTacticConditionObject(id, slot); api::IsObjectValid(object) != 0)
-                {
-                    entry["conditionObject"] = Brief(object);
-                }
-                tactics.push_back(std::move(entry));
-            }
-            const auto behaviour =
-                static_cast<std::int32_t>(api::GetCreatureProperty(id, kPropertyBehaviour, k::PROPERTY_VALUE_TOTAL));
-            // Preset 0 is the table's INVALID row: none chosen, the slots set by
-            // hand or by the creature's template (a follower read 0 in play).
-            const std::int32_t preset = api::GetTacticPresetID(id);
-            return Json{{"of", Brief(id)},
-                        {"slots", slots},
-                        {"preset", preset > 0 ? Rule(k::TABLE_TACTICS_USER_PRESETS, preset) : Json(nullptr)},
-                        {"behaviour", Rule(k::TABLE_AI_BEHAVIORS, behaviour)},
-                        {"tactics", std::move(tactics)}};
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindTactics(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -560,14 +635,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "the game's own names), its properties with their power, and what using it does. `slots` "
                  "are the active weapon set's main, offhand and ammo, then chest, head, boots, gloves, cloak, "
                  "the rings, neck and belt; `otherWeapons` is the set not in hand."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = CreatureOrControlled(args);
-            Json answer = EquipmentJson(id, true);
-            answer["of"] = Brief(id);
-            return answer;
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindEquipment(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -580,32 +648,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "kind=equipment. A container's treasure may be chosen only as it is opened (a body's remains "
                  "read empty, then held a gem once open), so an empty list before is not the last word: the "
                  "loot tool opens and empties one."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetHero());
-            if (id == kInvalidObject)
-            {
-                throw ToolError("inspect: no hero and no `id` was given; is a game loaded?");
-            }
-            const bool full = args.Bool("full", false);
-            Json items = Json::array();
-            const auto list = api::GetItemsInInventory(id, k::GET_ITEMS_OPTION_BACKPACK);
-            for (std::size_t i = 0; i < list.Size(); ++i)
-            {
-                items.push_back(ItemJson(list.Object(i), full));
-            }
-            // A container answers the same list (chests, cocoons and piles of
-            // bones did in play, 2026-10-01), with no size or purse of its own.
-            Json answer = {{"of", Brief(id)}, {"count", items.size()}};
-            if (api::GetObjectType(id) == k::OBJECT_TYPE_CREATURE)
-            {
-                answer["holds"] = api::GetMaxInventorySize(id);
-                answer["money"] = api::GetCreatureMoney(id);
-            }
-            answer["items"] = std::move(items);
-            return answer;
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindInventory(watch, raw); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -616,10 +659,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "class's `talents`, `spells` and `skills`, each a list of abilities, `id`, `name` and "
                  "`state`: has, learnable (can be taken now) or not yet (a level, an attribute or the one "
                  "before it in its chain). The levelup tool spends points on named ones."},
-        [&watch](const Json &) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            return LevelUpOffers();
-        });
+        [&watch](const Json &args) -> ToolResult { return KindLevelup(watch, args); });
 
     bench.Tools().AddKind(
         "inspect",
@@ -628,18 +668,7 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "tag, template, base type, material, stack and the most a stack holds, value, where it is "
                  "worn, its stats, its properties with their power, what using it does, and whether it is "
                  "plot, droppable or indestructible."},
-        [&watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "inspect");
-            const Args args(raw, "inspect");
-            const ObjectId id = args.Id("id", "an item, as inspect kind=inventory lists them");
-            if (api::GetObjectType(id) != k::OBJECT_TYPE_ITEM)
-            {
-                throw ToolError(std::format("inspect: {} is not an item; inspect kind=inventory and "
-                                            "kind=equipment list items",
-                                            FormatId(id)));
-            }
-            return ItemJson(id, true);
-        });
+        [&watch](const Json &raw) -> ToolResult { return KindItem(watch, raw); });
 }
 
 // `equip`: put an item of the pack on, or take one off, as the inventory
@@ -654,6 +683,214 @@ void AddCharacter(Bench &bench, const Watch &watch)
 // "GUI.SelectedChar.UnequipItem <item>"; both reach the creature the
 // interface has selected (the engine's EquipItemMessage and
 // UnequipItemMessage are CCCreature's). Not yet seen in play.
+namespace
+{
+
+// The equip tool's handler, registered by AddEquip.
+// Taken off as the paperdoll does: back to the pack.
+Json Unequip(ObjectId item, Json answer)
+{
+    const auto slot = api::GetItemEquipSlot(item);
+    if (SlotName(slot).empty())
+    {
+        throw ToolError("equip: that item is not worn; inspect kind=equipment says what is");
+    }
+    if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.UnequipItem {}", item)))
+    {
+        throw ToolError("equip: the game took no unequip");
+    }
+    answer["slot"] = std::string(SlotName(slot));
+    answer["unequipped"] = SlotName(api::GetItemEquipSlot(item)).empty();
+    return answer;
+}
+
+// An item refused a slot it does not go in: the ones it fits named.
+[[noreturn]] void NotThere(std::int32_t mask)
+{
+    std::string fits;
+    for (const auto &named : kSlots)
+    {
+        if (((mask >> named.id) & 1) != 0)
+        {
+            fits += (fits.empty() ? "" : ", ") + std::string(named.name);
+        }
+    }
+    throw ToolError("equip: that item does not go there; it goes in: " +
+                    (fits.empty() ? std::string("nothing (it is not worn)") : fits));
+}
+
+// The slot an item goes in: `slot` by number or name, or the item's first;
+// refused, naming those it fits, where it goes in none of them.
+std::int32_t SlotFor(const Args &args, std::int32_t mask)
+{
+    std::int32_t slot = -1;
+    if (const auto &wanted = args.Raw().value("slot", Json()); wanted.is_number_integer())
+    {
+        slot = wanted.get<std::int32_t>();
+    }
+    else if (wanted.is_string())
+    {
+        for (const auto &named : kSlots)
+        {
+            if (named.name == wanted.get<std::string>())
+            {
+                slot = named.id;
+            }
+        }
+    }
+    else
+    {
+        for (std::int32_t bit = 0; bit < 31 && slot < 0; ++bit)
+        {
+            slot = ((mask >> bit) & 1) != 0 ? bit : -1;
+        }
+    }
+    if (slot < 0 || slot > 30 || ((mask >> slot) & 1) == 0)
+    {
+        NotThere(mask);
+    }
+    return slot;
+}
+
+// And the lines themselves, as the inventory screen asks for
+// them: a shown screen's DAExternalCommands.GetItemRequirements
+// raises the engine's handler, which leaves its answer, one
+// string, in the movie's fsc_retval before the movie splits
+// it (lib-agent read the handler, 2026-10-05). That is the
+// root's: the function's register 1 is _root (flags 0x6a),
+// and DAExternalCommands.fsc_retval read null in play while
+// the call answered the split list (turn-based-agent,
+// 2026-10-05; "0;Requires: 36 strength;" at the root). Asked of
+// the first screen shown that has DAExternalCommands: the
+// quickbar is not shown while a picker, a conversation or a
+// full screen is up (turn-based-agent, 2026-10-05).
+std::optional<Json> Requirements(ObjectId item, ObjectId who)
+{
+    for (const wchar_t *screen : {L"Quickbar", L"Inventory", L"CharacterRecord", L"Store"})
+    {
+        auto movie = dao::gui::ScreenMovie(screen);
+        if (!movie)
+        {
+            continue;
+        }
+        const std::array<dao::gui::Value, 2> ids{dao::gui::Value::Number(static_cast<double>(item)),
+                                                 dao::gui::Value::Number(static_cast<double>(who))};
+        if (!movie->Call("DAExternalCommands.GetItemRequirements", ids))
+        {
+            continue;
+        }
+        using Type = dao::gui::Value::Type;
+        const auto said = movie->Get("_root.fsc_retval");
+        if (said && (said->type == Type::String || said->type == Type::StringW))
+        {
+            return ItemRequirements(said->text);
+        }
+    }
+    return std::nullopt;
+}
+
+// An item's own restrictions are among its properties:
+// Warden's Oath, "Restrict: player", was refused for a
+// follower with no reason given (turn-based-agent, 2026-10-03,
+// #31).
+Json Restrictions(ObjectId item)
+{
+    Json restrictions = Json::array();
+    for (const auto &property : ItemJson(item, true).value("properties", Json::array()))
+    {
+        const std::string label = property.value("label", std::string());
+        if (label.find("Restrict") != std::string::npos || label.find("restrict") != std::string::npos)
+        {
+            restrictions.push_back(label);
+        }
+    }
+    return restrictions;
+}
+
+// Why an item did not go on: the game's verdict, its requirement lines and
+// the item's restrictions, said in `answer`.
+void WhyNotOn(ObjectId item, ObjectId who, Json &answer)
+{
+    // The game's own verdict on the creature using it
+    // (CanUseItem), which its inventory screen's requirement
+    // lines follow: Alistair's Helm of the Legion was refused
+    // with nothing said (turn-based-agent, 2026-10-05, #31). The
+    // lines themselves (DAExternalCommands.GetItemRequirements)
+    // come back as objects this GFx cannot hand over.
+    const bool canUse = api::CanUseItem(who, item) != 0;
+    answer["canUse"] = canUse;
+    if (auto requirements = Requirements(item, who))
+    {
+        answer["requirements"] = std::move(*requirements);
+    }
+    answer["note"] = canUse ? "the game did not put it on, though it says the creature can use it: the "
+                              "creature cannot change equipment now "
+                              "(GUI.SelectedChar.CanChangeEquipment), or the slot is held"
+                            : "the game says " + Narrow(api::GetName(who)) +
+                                  " cannot use it (CanUseItem): a requirement not met, most often "
+                                  "an attribute (strength for heavy armour), or a restriction; the "
+                                  "inventory screen's tooltip names it";
+    if (Json restrictions = Restrictions(item); !restrictions.empty())
+    {
+        answer["restrictions"] = std::move(restrictions);
+    }
+}
+
+ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "equip");
+    const Args args(raw, "equip");
+    const auto action = args.Choice("action", {"equip", "unequip"}, "equip");
+    const ObjectId item = args.Id("item", "an item, as inspect kind=inventory and kind=equipment list them");
+    if (api::GetObjectType(item) != k::OBJECT_TYPE_ITEM)
+    {
+        throw ToolError(std::format("equip: {} is not an item; inspect kind=inventory lists the pack", FormatId(item)));
+    }
+    const auto selected = static_cast<ObjectId>(
+        dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
+    const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
+    if (who != selected)
+    {
+        // order action=control selects a party member wherever the
+        // party is; the binding SelectPartyMemberIndexMessage, named
+        // here before, selected nobody at camp (turn-based-agent,
+        // 2026-10-03, #31).
+        throw ToolError(std::format("equip: the inventory screen equips the character the interface has "
+                                    "selected, {} now; select {} first: order {{\"action\": \"control\", "
+                                    "\"id\": \"{}\"}}",
+                                    FormatId(selected), FormatId(who), FormatId(who)));
+    }
+    const auto set = api::GetActiveWeaponSet(who);
+    Json answer = {{"action", action},
+                   {"item", ItemJson(item, false)},
+                   {"creature", Brief(who)},
+                   {"cursor", bench.Events().Next()}};
+    if (action == "unequip")
+    {
+        return Unequip(item, std::move(answer));
+    }
+    const auto mask = api::GetM2DAInt(k::TABLE_ITEMS, L"EquippableSlots", api::GetBaseItemType(item));
+    const std::int32_t slot = SlotFor(args, mask);
+    const auto weaponSet = slot <= 2 ? set : -1;
+    const ObjectId before = ItemInSlot(who, slot, weaponSet);
+    if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.EquipItem {} {}", item, slot)))
+    {
+        throw ToolError("equip: the game took no equip");
+    }
+    const ObjectId after = ItemInSlot(who, slot, weaponSet);
+    answer["slot"] = std::string(SlotName(slot));
+    answer["before"] = ItemJson(before, false);
+    answer["after"] = ItemJson(after, false);
+    answer["equipped"] = after == item;
+    if (after != item)
+    {
+        WhyNotOn(item, who, answer);
+    }
+    return answer;
+}
+
+} // namespace
+
 static void AddEquip(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
@@ -674,167 +911,7 @@ static void AddEquip(Bench &bench, const Watch &watch)
                         {"id", {{"type", "string"}, {"description", "The creature: the one selected"}}}}},
                       {"required", {"item"}}},
                  Thread::Frame},
-        [&bench, &watch](const Json &raw) -> ToolResult {
-            RequireWorld(watch, "equip");
-            const Args args(raw, "equip");
-            const auto action = args.Choice("action", {"equip", "unequip"}, "equip");
-            const ObjectId item = args.Id("item", "an item, as inspect kind=inventory and kind=equipment list them");
-            if (api::GetObjectType(item) != k::OBJECT_TYPE_ITEM)
-            {
-                throw ToolError(
-                    std::format("equip: {} is not an item; inspect kind=inventory lists the pack", FormatId(item)));
-            }
-            const auto selected = static_cast<ObjectId>(
-                dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
-            const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
-            if (who != selected)
-            {
-                // order action=control selects a party member wherever the
-                // party is; the binding SelectPartyMemberIndexMessage, named
-                // here before, selected nobody at camp (turn-based-agent,
-                // 2026-10-03, #31).
-                throw ToolError(std::format("equip: the inventory screen equips the character the interface has "
-                                            "selected, {} now; select {} first: order {{\"action\": \"control\", "
-                                            "\"id\": \"{}\"}}",
-                                            FormatId(selected), FormatId(who), FormatId(who)));
-            }
-            const auto set = api::GetActiveWeaponSet(who);
-            Json answer = {{"action", action},
-                           {"item", ItemJson(item, false)},
-                           {"creature", Brief(who)},
-                           {"cursor", bench.Events().Next()}};
-            if (action == "unequip")
-            {
-                const auto slot = api::GetItemEquipSlot(item);
-                if (SlotName(slot).empty())
-                {
-                    throw ToolError("equip: that item is not worn; inspect kind=equipment says what is");
-                }
-                if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.UnequipItem {}", item)))
-                {
-                    throw ToolError("equip: the game took no unequip");
-                }
-                answer["slot"] = std::string(SlotName(slot));
-                answer["unequipped"] = SlotName(api::GetItemEquipSlot(item)).empty();
-                return answer;
-            }
-            const auto mask = api::GetM2DAInt(k::TABLE_ITEMS, L"EquippableSlots", api::GetBaseItemType(item));
-            std::int32_t slot = -1;
-            if (const auto &wanted = args.Raw().value("slot", Json()); wanted.is_number_integer())
-            {
-                slot = wanted.get<std::int32_t>();
-            }
-            else if (wanted.is_string())
-            {
-                for (const auto &named : kSlots)
-                {
-                    if (named.name == wanted.get<std::string>())
-                    {
-                        slot = named.id;
-                    }
-                }
-            }
-            else
-            {
-                for (std::int32_t bit = 0; bit < 31 && slot < 0; ++bit)
-                {
-                    slot = (mask >> bit) & 1 ? bit : -1;
-                }
-            }
-            if (slot < 0 || slot > 30 || ((mask >> slot) & 1) == 0)
-            {
-                std::string fits;
-                for (const auto &named : kSlots)
-                {
-                    if ((mask >> named.id) & 1)
-                    {
-                        fits += (fits.empty() ? "" : ", ") + std::string(named.name);
-                    }
-                }
-                throw ToolError("equip: that item does not go there; it goes in: " +
-                                (fits.empty() ? std::string("nothing (it is not worn)") : fits));
-            }
-            const auto weaponSet = slot <= 2 ? set : -1;
-            const ObjectId before = ItemInSlot(who, slot, weaponSet);
-            if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.EquipItem {} {}", item, slot)))
-            {
-                throw ToolError("equip: the game took no equip");
-            }
-            const ObjectId after = ItemInSlot(who, slot, weaponSet);
-            answer["slot"] = std::string(SlotName(slot));
-            answer["before"] = ItemJson(before, false);
-            answer["after"] = ItemJson(after, false);
-            answer["equipped"] = after == item;
-            if (after != item)
-            {
-                // The game's own verdict on the creature using it
-                // (CanUseItem), which its inventory screen's requirement
-                // lines follow: Alistair's Helm of the Legion was refused
-                // with nothing said (turn-based-agent, 2026-10-05, #31). The
-                // lines themselves (DAExternalCommands.GetItemRequirements)
-                // come back as objects this GFx cannot hand over.
-                const bool canUse = api::CanUseItem(who, item) != 0;
-                answer["canUse"] = canUse;
-                // And the lines themselves, as the inventory screen asks for
-                // them: a shown screen's DAExternalCommands.GetItemRequirements
-                // raises the engine's handler, which leaves its answer, one
-                // string, in the movie's fsc_retval before the movie splits
-                // it (lib-agent read the handler, 2026-10-05). That is the
-                // root's: the function's register 1 is _root (flags 0x6a),
-                // and DAExternalCommands.fsc_retval read null in play while
-                // the call answered the split list (turn-based-agent,
-                // 2026-10-05; "0;Requires: 36 strength;" at the root). Asked of
-                // the first screen shown that has DAExternalCommands: the
-                // quickbar is not shown while a picker, a conversation or a
-                // full screen is up (turn-based-agent, 2026-10-05).
-                for (const wchar_t *screen : {L"Quickbar", L"Inventory", L"CharacterRecord", L"Store"})
-                {
-                    auto movie = dao::gui::ScreenMovie(screen);
-                    if (!movie)
-                    {
-                        continue;
-                    }
-                    const std::array<dao::gui::Value, 2> ids{dao::gui::Value::Number(static_cast<double>(item)),
-                                                             dao::gui::Value::Number(static_cast<double>(who))};
-                    if (!movie->Call("DAExternalCommands.GetItemRequirements", ids))
-                    {
-                        continue;
-                    }
-                    using Type = dao::gui::Value::Type;
-                    const auto said = movie->Get("_root.fsc_retval");
-                    if (said && (said->type == Type::String || said->type == Type::StringW))
-                    {
-                        answer["requirements"] = ItemRequirements(said->text);
-                        break;
-                    }
-                }
-                answer["note"] = canUse ? "the game did not put it on, though it says the creature can use it: the "
-                                          "creature cannot change equipment now "
-                                          "(GUI.SelectedChar.CanChangeEquipment), or the slot is held"
-                                        : "the game says " + Narrow(api::GetName(who)) +
-                                              " cannot use it (CanUseItem): a requirement not met, most often "
-                                              "an attribute (strength for heavy armour), or a restriction; the "
-                                              "inventory screen's tooltip names it";
-                // An item's own restrictions are among its properties:
-                // Warden's Oath, "Restrict: player", was refused for a
-                // follower with no reason given (turn-based-agent, 2026-10-03,
-                // #31).
-                Json restrictions = Json::array();
-                for (const auto &property : ItemJson(item, true).value("properties", Json::array()))
-                {
-                    const std::string label = property.value("label", std::string());
-                    if (label.find("Restrict") != std::string::npos || label.find("restrict") != std::string::npos)
-                    {
-                        restrictions.push_back(label);
-                    }
-                }
-                if (!restrictions.empty())
-                {
-                    answer["restrictions"] = std::move(restrictions);
-                }
-            }
-            return answer;
-        });
+        [&bench, &watch](const Json &raw) -> ToolResult { return ToolEquip(bench, watch, raw); });
 }
 
 } // namespace eluvian::game

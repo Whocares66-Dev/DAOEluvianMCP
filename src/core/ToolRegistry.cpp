@@ -193,6 +193,8 @@ Json ToolRegistry::Describe() const
             schema["properties"][property]["type"] = "string";
             schema["properties"][property]["enum"] = kinds;
             Json required = schema.value("required", Json::array());
+            // json's iterators are not std::ranges ranges (#77):
+            // NOLINTNEXTLINE(modernize-use-ranges)
             if (std::find(required.begin(), required.end(), property) == required.end())
             {
                 required.push_back(property);

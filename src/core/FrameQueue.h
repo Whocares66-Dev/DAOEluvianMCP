@@ -126,7 +126,7 @@ class FrameQueue
 
     mutable std::mutex mutex_;
     std::deque<std::shared_ptr<Task>> tasks_;
-    std::atomic<std::thread::id> frameThread_{};
+    std::atomic<std::thread::id> frameThread_;
     bool closed_ = false;
 };
 

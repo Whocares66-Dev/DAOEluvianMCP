@@ -1,10 +1,17 @@
 # clang-tidy configuration.
 #
-# Correctness and performance checks only. Nothing here is a style opinion:
-# modernize-*, readability-*, google-*, llvm-*, hicpp-* and the like are left
-# at their default (off), and formatting is clang-format's job with a stock
-# style. The bar for a check being here is that a finding is a plausible bug
-# or a real cost, not a matter of taste.
+# Correctness and performance checks, and since 2026-10-05 (the user: "style
+# & readability also matter. We want to write good clean code, avoid
+# complexity"; #77, as the address library's d2ded5c) readability-* and
+# modernize-* less the ones that are taste alone. The bar for a check being
+# here is that a finding is a plausible bug, a real cost, or code that reads
+# worse than it need; a check that only prefers one spelling of the same
+# thing to another is left out below, with why. google-*, llvm-*, hicpp-*
+# and the like stay off, and formatting is clang-format's job with a stock
+# style.
+#
+# Most of readability-* and modernize-* can rewrite what they find:
+# clang-tidy -p build/debug --fix <file>. Read the diff it makes.
 #
 # Run:  cmake --build --preset debug --target tidy   (see cmake/Quality.cmake)
 Checks: >
@@ -31,7 +38,22 @@ Checks: >
   -performance-no-int-to-ptr,
   -performance-enum-size,
   portability-*,
-  -portability-avoid-pragma-once
+  -portability-avoid-pragma-once,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-uppercase-literal-suffix,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -modernize-use-designated-initializers,
+  -modernize-avoid-c-arrays,
+  -modernize-use-scoped-lock
+
+# A function harder to follow than this is split or simplified (the check's
+# own default, said here so it is seen).
+CheckOptions:
+  readability-function-cognitive-complexity.Threshold: 25
 
 # Excluded, and why:
 #   bugprone-easily-swappable-parameters   a design lint, fires on (int, int)
@@ -58,6 +80,23 @@ Checks: >
 #   misc-unused-parameters                 the compiler already warns (C4100)
 #   portability-avoid-pragma-once          every header here uses #pragma once,
 #                                          and MSVC and clang-cl both keep it
+#   readability-magic-numbers              an engine constant, an offset or a
+#                                          tuned limit IS a number, said with
+#                                          its reason in the comment beside it
+#   readability-identifier-length          taste: i, id and at are names
+#   readability-uppercase-literal-suffix   taste: 0x10u or 0x10U
+#   modernize-use-trailing-return-type     taste: rewrites every signature to
+#                                          `auto f() -> T` for nothing
+#   modernize-use-nodiscard                wants [[nodiscard]] on every const
+#                                          getter; a result dropped where it
+#                                          matters is bugprone-unused-return-value's
+#   modernize-use-designated-initializers  good where a struct is spelled out
+#                                          by hand, but it also fires on every
+#                                          row of a table of them
+#   modernize-avoid-c-arrays               a struct that mirrors the game's
+#                                          memory has the game's arrays in it
+#   modernize-use-scoped-lock              std::lock_guard over one mutex is
+#                                          already the plain thing
 
 # Our headers anywhere under src. The lint target passes this checkout's src
 # as an absolute path instead (cmake/Quality.cmake), which is stricter; this

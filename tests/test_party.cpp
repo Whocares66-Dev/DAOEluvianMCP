@@ -21,7 +21,10 @@ struct Follower
 {
     std::string name;
     std::string tag;
-    int left, right, y; // where the follower shows, in the view's pixels
+    // Where the follower shows, in the view's pixels.
+    int left = 0;
+    int right = 0;
+    int y = 0;
 };
 
 struct Picker
@@ -47,92 +50,111 @@ struct Picker
     {
         bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener},
                           [this](const Json &) -> ToolResult { return Json{{"mode", mode}}; });
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            if (args.value("kind", "") == "game")
-            {
-                Json party = Json::array();
-                for (const auto &member : chosen)
-                {
-                    party.push_back(Json{{"name", member.name}, {"tag", member.tag}});
-                    if (settling > 0)
-                    {
-                        break; // the hero alone until the game settles
-                    }
-                }
-                settling = std::max(0, settling - 1);
-                return Json{{"party", party}};
-            }
-            Json values = Json::array();
-            for (const auto &path : args.at("paths"))
-            {
-                values.push_back(Read(path.get<std::string>()));
-            }
-            return Json{{"values", values}};
-        });
-        bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
-            if (status < 0)
-            {
-                throw ToolError("script: not now"); // the status unread
-            }
-            return Json{{"value", status}}; // GetPartyPickerGUIStatus
-        });
+        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeScript(args); });
         bench.Tools().Add(ToolSpec{"screen", "", {}, Thread::Listener}, [](const Json &) -> ToolResult {
             return Json{{"view", {{"width", 1600}, {"height", 1000}}}};
         });
-        bench.Tools().Add(ToolSpec{"pointer", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            if (args.value("release", false))
+        bench.Tools().Add(ToolSpec{"pointer", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakePointer(args); });
+        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInput(args); });
+        AddPartyTool(bench, std::chrono::milliseconds(0));
+    }
+
+    // The stand-in's inspect.
+    ToolResult FakeInspect(const Json &args)
+    {
+        if (args.value("kind", "") == "game")
+        {
+            Json party = Json::array();
+            for (const auto &member : chosen)
             {
-                pointed.clear();
-                return Json{{"released", true}};
+                party.push_back(Json{{"name", member.name}, {"tag", member.tag}});
+                if (settling > 0)
+                {
+                    break; // the hero alone until the game settles
+                }
             }
-            pointed = args.at("pixel").get<std::vector<int>>();
-            const Follower *under = nullptr;
+            settling = std::max(0, settling - 1);
+            return Json{{"party", party}};
+        }
+        Json values = Json::array();
+        for (const auto &path : args.at("paths"))
+        {
+            values.push_back(Read(path.get<std::string>()));
+        }
+        return Json{{"values", values}};
+    }
+
+    // The stand-in's script.
+    ToolResult FakeScript(const Json & /*args*/)
+    {
+        if (status < 0)
+        {
+            throw ToolError("script: not now"); // the status unread
+        }
+        return Json{{"value", status}}; // GetPartyPickerGUIStatus
+    }
+
+    // The stand-in's pointer.
+    ToolResult FakePointer(const Json &args)
+    {
+        if (args.value("release", false))
+        {
+            pointed.clear();
+            return Json{{"released", true}};
+        }
+        pointed = args.at("pixel").get<std::vector<int>>();
+        const Follower *under = nullptr;
+        for (const auto &follower : scene)
+        {
+            if (pointed[0] >= follower.left && pointed[0] <= follower.right && std::abs(pointed[1] - follower.y) <= 40)
+            {
+                under = &follower;
+            }
+        }
+        if (under != nullptr || !sticky)
+        {
+            hovered = under != nullptr ? under->name : "";
+        }
+        return Json{{"held", true}};
+    }
+
+    // The stand-in's input.
+    ToolResult FakeInput(const Json &args)
+    {
+        const std::string text = args.value("message", args.value("binding", ""));
+        sent.push_back(text);
+        if (text == "SelectPartyMemberUnderCursorMessage" && !pointed.empty() && chosen.size() < 4)
+        {
             for (const auto &follower : scene)
             {
-                if (pointed[0] >= follower.left && pointed[0] <= follower.right &&
-                    std::abs(pointed[1] - follower.y) <= 40)
+                if (follower.name == hovered)
                 {
-                    under = &follower;
+                    chosen.push_back(follower);
                 }
             }
-            if (under != nullptr || !sticky)
+        }
+        else if (text.starts_with("GameModeController.UnselectPartyMember "))
+        {
+            const auto at = chosen.begin() + std::stoi(text.substr(text.rfind(' ') + 1));
+            if (at->name != kept)
             {
-                hovered = under != nullptr ? under->name : "";
+                chosen.erase(at);
             }
-            return Json{{"held", true}};
-        });
-        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
-            const std::string text = args.value("message", args.value("binding", ""));
-            sent.push_back(text);
-            if (text == "SelectPartyMemberUnderCursorMessage" && !pointed.empty() && chosen.size() < 4)
-            {
-                for (const auto &follower : scene)
-                {
-                    if (follower.name == hovered)
-                    {
-                        chosen.push_back(follower);
-                    }
-                }
-            }
-            else if (text.starts_with("GameModeController.UnselectPartyMember "))
-            {
-                const auto at = chosen.begin() + std::stoi(text.substr(text.rfind(' ') + 1));
-                if (at->name != kept)
-                {
-                    chosen.erase(at);
-                }
-            }
-            else if (text == "GameModeController.SubmitPartyChanges")
-            {
-                mode = "explore";
-            }
-            else if (text == "GameModeController.ClearPartyPicker")
-            {
-                chosen.resize(1); // the hero stays
-            }
-            return Json{{"sent", true}};
-        });
-        AddPartyTool(bench, std::chrono::milliseconds(0));
+        }
+        else if (text == "GameModeController.SubmitPartyChanges")
+        {
+            mode = "explore";
+        }
+        else if (text == "GameModeController.ClearPartyPicker")
+        {
+            chosen.resize(1); // the hero stays
+        }
+        return Json{{"sent", true}};
     }
 
     Json Read(const std::string &path) const
@@ -151,7 +173,7 @@ struct Picker
         return Json{{"path", path}, {"found", true}, {"text", name ? chosen[slot].name : chosen[slot].tag}};
     }
 
-    Json Party(Json args)
+    Json Party(const Json &args)
     {
         return bench.Invoke("party", args).data;
     }

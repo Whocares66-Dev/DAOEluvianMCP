@@ -93,7 +93,7 @@ struct Talker
             for (std::size_t i = 0; i < nodes[at].replies.size(); ++i)
             {
                 replies.push_back(
-                    Json{{"place", i}, {"index", at * 10 + static_cast<int>(i)}, {"text", nodes[at].replies[i]}});
+                    Json{{"place", i}, {"index", (at * 10) + static_cast<int>(i)}, {"text", nodes[at].replies[i]}});
             }
         }
         return replies;
@@ -141,7 +141,7 @@ struct Talker
         }
     }
 
-    Json Dialogue(Json args)
+    Json Dialogue(const Json &args)
     {
         return bench.Invoke("dialogue", args).data;
     }

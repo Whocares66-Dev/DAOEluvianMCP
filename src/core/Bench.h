@@ -44,9 +44,13 @@ struct BenchOptions
     // How long a frame tool's call may wait for a frame to take it.
     std::chrono::milliseconds frameTimeout{5000};
     std::size_t eventCapacity = 4096;
-    EventBus::FrameSource frame = {}; // stamps each event with the frame it came in
+    // `= {}` on these two is not redundant: BenchOptions is built as an
+    // aggregate leaving them out, and clang's missing-field-initializers
+    // wants each such field to have one (#77).
+    // Stamps each event with the frame it came in.
+    EventBus::FrameSource frame = {}; // NOLINT(readability-redundant-member-init): above
     // Told of every call as it ends, on the thread that made it (a listener's).
-    std::function<void(const CallRecord &)> onCall = {};
+    std::function<void(const CallRecord &)> onCall = {}; // NOLINT(readability-redundant-member-init): above
 };
 
 class Bench

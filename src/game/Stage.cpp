@@ -110,6 +110,74 @@ ObjectId StageRemoveEffects(const Args &args, Json &answer)
     return id;
 }
 
+// `ids`: the creatures named, each one checked.
+std::vector<ObjectId> NamedCreatures(const Json &ids)
+{
+    if (!ids.is_array())
+    {
+        throw ToolError("stage: `ids` is a list of creature ids; leave it out for the party");
+    }
+    std::vector<ObjectId> who;
+    for (const auto &value : ids)
+    {
+        const auto id = ParseId(value);
+        if (!id || api::GetObjectType(*id) != k::OBJECT_TYPE_CREATURE)
+        {
+            throw ToolError(
+                std::format("stage: {} in `ids` is no creature; inspect kind=creatures lists them", value.dump()));
+        }
+        who.push_back(*id);
+    }
+    return who;
+}
+
+// Every cooldown of a creature's abilities cleared: how many were running.
+int ClearCooldowns(ObjectId id)
+{
+    int cleared = 0;
+    for (const auto kind : {dao::abilities::Kind::Talent, dao::abilities::Kind::Spell, dao::abilities::Kind::Skill,
+                            dao::abilities::Kind::Item})
+    {
+        for (const std::int32_t ability : dao::abilities::Known(id, kind))
+        {
+            const auto cooldown = dao::abilities::GetCooldown(id, ability);
+            if (cooldown && cooldown->remaining > 0 && dao::abilities::SetCooldown(id, ability, 0, cooldown->total))
+            {
+                ++cleared;
+            }
+        }
+    }
+    return cleared;
+}
+
+// One creature back to before a fight: raised, its effects gone if
+// asked, full, its cooldowns cleared.
+Json ResetOne(ObjectId id, bool effects)
+{
+    Json entry = Brief(id);
+    if (api::IsDead(id) != 0)
+    {
+        if (const auto raise = api::Effect(k::EFFECT_TYPE_RESURRECTION); raise.get() != nullptr)
+        {
+            api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *raise.get(), id);
+        }
+        entry["raised"] = true;
+    }
+    if (effects)
+    {
+        api::RemoveEffectsByParameters(id, k::EFFECT_TYPE_INVALID, k::ABILITY_INVALID, kInvalidObject);
+    }
+    for (const auto property : {k::PROPERTY_DEPLETABLE_HEALTH, k::PROPERTY_DEPLETABLE_MANA_STAMINA})
+    {
+        api::SetCreatureProperty(id, property, api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL),
+                                 k::PROPERTY_VALUE_CURRENT);
+    }
+    entry["cooldownsCleared"] = ClearCooldowns(id);
+    entry["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
+    entry["manaOrStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
+    return entry;
+}
+
 // Back to before a fight, so many fights run in one launch (turn-based-
 // agent's balance runs, 2026-10-02): the party, or the creatures named,
 // raised if fallen (the rules' resurrection effect, as the scripts' own
@@ -122,62 +190,13 @@ ObjectId StageReset(const Args &args, Json &answer)
     std::vector<ObjectId> who(party.begin(), party.end());
     if (args.Has("ids"))
     {
-        const Json &ids = args.Raw().at("ids");
-        if (!ids.is_array())
-        {
-            throw ToolError("stage: `ids` is a list of creature ids; leave it out for the party");
-        }
-        who.clear();
-        for (const auto &value : ids)
-        {
-            const auto id = ParseId(value);
-            if (!id || api::GetObjectType(*id) != k::OBJECT_TYPE_CREATURE)
-            {
-                throw ToolError(
-                    std::format("stage: {} in `ids` is no creature; inspect kind=creatures lists them", value.dump()));
-            }
-            who.push_back(*id);
-        }
+        who = NamedCreatures(args.Raw().at("ids"));
     }
     const bool effects = args.Bool("effects", false);
     Json reset = Json::array();
     for (const ObjectId id : who)
     {
-        Json entry = Brief(id);
-        if (api::IsDead(id) != 0)
-        {
-            if (const auto raise = api::Effect(k::EFFECT_TYPE_RESURRECTION); raise.get() != nullptr)
-            {
-                api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *raise.get(), id);
-            }
-            entry["raised"] = true;
-        }
-        if (effects)
-        {
-            api::RemoveEffectsByParameters(id, k::EFFECT_TYPE_INVALID, k::ABILITY_INVALID, kInvalidObject);
-        }
-        for (const auto property : {k::PROPERTY_DEPLETABLE_HEALTH, k::PROPERTY_DEPLETABLE_MANA_STAMINA})
-        {
-            api::SetCreatureProperty(id, property, api::GetCreatureProperty(id, property, k::PROPERTY_VALUE_TOTAL),
-                                     k::PROPERTY_VALUE_CURRENT);
-        }
-        int cleared = 0;
-        for (const auto kind : {dao::abilities::Kind::Talent, dao::abilities::Kind::Spell, dao::abilities::Kind::Skill,
-                                dao::abilities::Kind::Item})
-        {
-            for (const std::int32_t ability : dao::abilities::Known(id, kind))
-            {
-                const auto cooldown = dao::abilities::GetCooldown(id, ability);
-                if (cooldown && cooldown->remaining > 0 && dao::abilities::SetCooldown(id, ability, 0, cooldown->total))
-                {
-                    ++cleared;
-                }
-            }
-        }
-        entry["cooldownsCleared"] = cleared;
-        entry["health"] = Depletable(id, k::PROPERTY_DEPLETABLE_HEALTH);
-        entry["manaOrStamina"] = Depletable(id, k::PROPERTY_DEPLETABLE_MANA_STAMINA);
-        reset.push_back(std::move(entry));
+        reset.push_back(ResetOne(id, effects));
     }
     // The fight's dead only: those seen to die since the last reset, not
     // the bodies the area held before (twelve of the player's earlier
