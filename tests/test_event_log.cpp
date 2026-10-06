@@ -56,6 +56,29 @@ TEST_CASE("every event the bus emits is a line in the file, in the bus's order",
     std::filesystem::remove(path);
 }
 
+TEST_CASE("a line in the file is the event as the events tool gives it, byte for byte", "[event-log]")
+{
+    const auto path = TempFile("eluvian-test-event-line.jsonl");
+    Event event;
+    event.seq = 7;
+    event.frame = 1234;
+    event.ms = 56.5;
+    event.topic = "mymod.state";
+    event.payload = Json{{"z", 1}, {"a", {{"list", {1, 2, 3}}, {"name", "Lyna"}}}, {"empty", Json::object()}};
+    {
+        EventLog log(path);
+        REQUIRE(log.Open());
+        log.Write(event);
+    }
+    std::ifstream in(path, std::ios::binary);
+    std::string line;
+    REQUIRE(std::getline(in, line));
+    // Written without copying the payload (#70), and the same as before.
+    CHECK(line == event.ToJson().dump(-1, ' ', false, Json::error_handler_t::replace));
+    in.close();
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("an event is in the file as it is written, before the file closes", "[event-log]")
 {
     const auto path = TempFile("eluvian-test-events-through.jsonl");

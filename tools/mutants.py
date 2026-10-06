@@ -2115,6 +2115,19 @@ MUTANTS = [
         "if (!engineTried_)",
         "if (!engineTried_ || wentToReached_)",
     ),
+    # the event file's line, written without copying the payload (#70)
+    Mutant(
+        "the event file leaves the payload out",
+        EVENTLOG,
+        'line += ",\\"payload\\":" + dump(event.payload);',
+        'line += ",\\"payload\\":null";',
+    ),
+    Mutant(
+        "the event file leaves the frame out",
+        EVENTLOG,
+        'line += ",\\"frame\\":" + dump(Json(event.frame));',
+        'line += "";',
+    ),
 ]
 
 
