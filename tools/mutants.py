@@ -2141,6 +2141,19 @@ MUTANTS = [
         "if (std::filesystem::file_size(path, error) > 0 && !error)",
         "if (std::filesystem::exists(path, error) && !error)",
     ),
+    # #42: a pin not on the city's map is looked for on the other, swapped to once.
+    Mutant(
+        "travel never swaps a city's map for the other",
+        TRAVEL,
+        "if (pin == nullptr && !other.empty() && !swapped_)",
+        "if (pin == nullptr && other.empty() && !swapped_)",
+    ),
+    Mutant(
+        "travel swaps a city's maps back and forth",
+        TRAVEL,
+        "            swapped_ = true;\n",
+        "            swapped_ = false;\n",
+    ),
 ]
 
 

@@ -76,6 +76,9 @@ struct World
     bool closedByTravel = false;       // the map movie's mark, as a pin's click sets it
     bool partyKept = false;            // whether the party went with the hero
     bool fadeMap = false;              // whether the map up is the Fade's own
+    std::string shownMap = "Ferelden"; // the map shown, of a city's two
+    std::string otherMap;              // the other, its toggle's, if any
+    Json otherPins = Json::array();    // the other map's pins
     Json pins = Json::array(
         {Json{{"index", 0}, {"name", "Ostagar"}, {"tag", "wm_ostagar"}, {"area", "ost100ar"}, {"state", "completed"}},
          Json{{"index", 1}, {"name", "Lothering"}, {"tag", "wm_lothering"}, {"area", "lot100ar"}, {"state", "active"}},
@@ -133,6 +136,8 @@ struct World
                 return Json{{"up", mapUp},
                             {"screen", fadeMap ? "FadeMap" : "WorldMap"},
                             {"map", fadeMap ? "fade" : "world"},
+                            {"shown", shownMap},
+                            {"other", otherMap.empty() ? Json(nullptr) : Json(otherMap)},
                             {"at", area},
                             {"pins", pins}};
             }
@@ -348,6 +353,11 @@ struct World
             }
             const std::string message = args.value("message", "");
             messages.push_back(message);
+            if (message == "WorldMap.WorldMapSwapMaps" && !otherMap.empty())
+            {
+                std::swap(shownMap, otherMap);
+                std::swap(pins, otherPins);
+            }
             // A pin's click: the party goes there, or into an encounter on
             // the way, over a load.
             const std::string click = "GameModeController.AreaTransition " + area + " ";
@@ -821,6 +831,39 @@ TEST_CASE("a pin of the world map, the map up, is travelled to by its name in an
     CHECK(world.screenCalls[1]["args"] == Json::array({"WorldMap.LastClickedPinIndex", 1}));
     CHECK(world.partyKept);
     CHECK(world.orders.empty());
+}
+
+TEST_CASE("a pin on the other of a city's two maps is swapped to and travelled to", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.shownMap = "Denerim";
+    world.otherMap = "Ferelden";
+    world.otherPins = world.pins;
+    world.pins = Json::array({Json{{"index", 0},
+                                   {"name", "Market District"},
+                                   {"tag", "wm_den_market"},
+                                   {"area", "den200ar"},
+                                   {"state", "active"}}});
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["swapped"] == true);
+    REQUIRE(world.messages.size() == 2);
+    CHECK(world.messages[0] == "WorldMap.WorldMapSwapMaps");
+    CHECK(world.messages[1] == "GameModeController.AreaTransition ruins 1");
+}
+
+TEST_CASE("a pin on neither of a city's maps is said of both, swapped once", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.shownMap = "Denerim";
+    world.otherMap = "Ferelden";
+    world.otherPins = world.pins;
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Orzammar"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("on the Ferelden map or the other"));
+    CHECK(world.messages == std::vector<std::string>{"WorldMap.WorldMapSwapMaps"}); // once, not back and forth
 }
 
 TEST_CASE("of two pins of one name the active one is taken", "[travel]")

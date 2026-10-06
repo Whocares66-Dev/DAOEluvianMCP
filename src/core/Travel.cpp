@@ -206,9 +206,40 @@ class Journey
             }
         }
         const std::string others = active.empty() ? std::string("none") : active;
+        const std::string shown = map->value("shown", Json()).is_string() ? map->at("shown").get<std::string>() : "";
+        const std::string other = map->value("other", Json()).is_string() ? map->at("other").get<std::string>() : "";
+        if (pin == nullptr && !other.empty() && !swapped_)
+        {
+            // Not on the map shown, and there is another, a city's and the
+            // world's: swapped to as the map's toggle button does, and looked
+            // for again there (#42).
+            swapped_ = true;
+            if (!Ask("input", Json{{"message", "WorldMap.WorldMapSwapMaps"}}))
+            {
+                return End(false, *stopped_);
+            }
+            steps_.push_back(Json{{"did", "swap to the " + other + " map"}, {"result", "asked"}});
+            const auto swapUntil = Clock::now() + std::min(Left(), milliseconds(3000));
+            while (Clock::now() < swapUntil)
+            {
+                const auto again = Ask("inspect", Json{{"kind", "worldmap"}});
+                if (again && again->value("shown", Json()) != map->value("shown", Json()))
+                {
+                    break;
+                }
+                std::this_thread::sleep_for(milliseconds(250));
+            }
+            answer_["swapped"] = true;
+            return Map(false);
+        }
         if (pin == nullptr)
         {
-            return End(false, "no pin " + to_.dump() + " on the world map; the active ones: " + others);
+            std::string where = shown.empty() ? std::string("the world map") : "the " + shown + " map";
+            if (swapped_)
+            {
+                where += " or the other";
+            }
+            return End(false, "no pin " + to_.dump() + " on " + where + "; the active ones: " + others);
         }
         answer_["pin"] = *pin;
         const std::string name = pin->value("name", std::string());
@@ -1163,6 +1194,7 @@ class Journey
     std::string area_;      // `area`: the area to reach, by an exit that leads there
     Json exitAt_;           // the exit chosen, as inspect kind=exits gave it
     std::string keyTurned_; // the door used a second time, its key's first use having unlocked it
+    bool swapped_ = false;  // whether the map up was swapped for the other once, looking for the pin
     std::string fromArea_;  // the area's tag before the crossing
     std::string startArea_; // the area's tag as the journey began
     Json to_;               // `to`: a world map pin's name, tag or index

@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <format>
 
 namespace eluvian::game
 {
@@ -30,6 +31,9 @@ namespace
 {
 
 constexpr int kMostPins = 256;
+// The world maps table (worldmaps.gda): a map's Type is its row, its Label
+// the map's name (worldmap.gfx's _2DA.TABLE_WORLDMAPS).
+constexpr std::int32_t kTableWorldMaps = 171;
 
 std::string PinState(int state)
 {
@@ -89,7 +93,10 @@ void AddWorldMap(Bench &bench, const Watch &watch)
                  "be travelled to; not active, greyed, unlockable, completed, destroyed). travel with `to` (a "
                  "pin's name, tag or index) crosses to one, with the map up (a travel to the area's world-map "
                  "exit opens it). The pins are read as the map screen reads them; with the map never opened "
-                 "this game, there may be none. The map is closed as its Close button closes it: input "
+                 "this game, there may be none. In a city the map up may be the city's: `shown` names the map "
+                 "shown and `other` the one its toggle swaps to (input {\"message\": "
+                 "\"WorldMap.WorldMapSwapMaps\"}, as the button does; travel `to` swaps by itself for a pin on "
+                 "the other). The map is closed as its Close button closes it: input "
                  "{\"message\": \"GUI.HideFullScreenGUI\"} (WorldMap.WorldMapClosed is the screen's report "
                  "that it closed, not the close)."},
         [&watch](const Json &) -> ToolResult {
@@ -120,9 +127,35 @@ void AddWorldMap(Bench &bench, const Watch &watch)
                          {"state", PinState(static_cast<int>(dao::data::Number(base + L".State").value_or(0)))},
                          {"type", dao::data::Number(base + L".Type").value_or(0)}});
             }
+            // Two maps at once in a city: the map shown is the primary,
+            // the other the secondary, and the map's toggle button sends
+            // WorldMap.WorldMapSwapMaps, enabled while the secondary is not
+            // 0. Each map's Type is a row of the world maps table (171),
+            // whose Label names it (worldmap.gfx's GetCurrentMap,
+            // GetOtherMap and UpdateWorldMap, read 2026-10-04). Denerim's
+            // market opened the city's map, and a pin of the world's was
+            // not on it (turn-based-agent, 2026-10-04, #42).
+            const auto mapName = [](std::wstring_view map) -> Json {
+                const auto type = dao::data::Number(std::wstring(map) + L".Type");
+                if (!type)
+                {
+                    return nullptr;
+                }
+                const std::string label =
+                    Narrow(api::GetM2DAString(kTableWorldMaps, L"Label", static_cast<std::int32_t>(*type)));
+                return label.empty() ? Json(std::format("map {}", static_cast<int>(*type))) : Json(label);
+            };
+            // The other map is there when its Type is not 0, as the movie's
+            // UpdateWorldMap reads GetOtherMap() + ".Type": WorldMap.
+            // SecondaryMap itself is a node with no number, and read so no
+            // second map was ever said, Denerim's swap never made
+            // (turn-based-agent, 2026-10-05, #42).
+            const bool other = !fade && dao::data::Number(L"WorldMap.SecondaryMap.Type").value_or(0) != 0;
             return Json{{"up", screen.has_value()},
                         {"screen", screen ? Json(Narrow(screen->name)) : Json(nullptr)},
                         {"map", screen ? Json(fade ? "fade" : "world") : Json(nullptr)},
+                        {"shown", fade ? Json(nullptr) : mapName(L"WorldMap.PrimaryMap")},
+                        {"other", other ? mapName(L"WorldMap.SecondaryMap") : Json(nullptr)},
                         {"at", TreeText(fade ? L"WorldMap.FadeMap.PlayerLocation.AreaTag"
                                              : L"WorldMap.PrimaryMap.PlayerLocation.AreaTag")},
                         {"count", pins.size()},
