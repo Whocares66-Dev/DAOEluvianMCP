@@ -208,6 +208,15 @@ class Looting
         answer_["closed"] = closed;
         if (pressed.value("full", false))
         {
+            // Nothing more can be taken, and the panel up holds the game in
+            // gui mode for the next verb: closed here, as its Close button
+            // does (turn-based-agent, 2026-10-04, #55).
+            const auto shut = Ask("game", Json{{"action", "press"}, {"button", "Close"}});
+            answer_["closed"] = shut.has_value() && (!shut->contains("panel") || shut->at("panel").is_null());
+            if (answer_["closed"].get<bool>())
+            {
+                return End(true, "the backpack is full: what is `left` stays in the container; its panel closed");
+            }
             return End(true, "the backpack is full: what is `left` stays in the container, and its panel stays up; "
                              "game action=press button=Close closes it");
         }

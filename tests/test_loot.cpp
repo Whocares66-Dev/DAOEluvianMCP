@@ -23,6 +23,7 @@ struct Chest
     bool opens = true;        // whether a use opens it
     bool starts = true;       // whether a use starts at all: on empty remains it does not
     bool full = false;        // whether the backpack is full
+    bool staysUp = false;     // whether the panel stays up after Take All, though all was taken
     Json popup = nullptr;     // a message box the use brings instead
     std::string opensInstead; // another container, whose panel the use opens
     std::string brings;       // the mode the use brings: a fight, a conversation
@@ -106,11 +107,16 @@ struct Chest
             {
                 throw ToolError("game: no message box and no loot panel is up");
             }
+            if (args.value("button", "") == "Close")
+            {
+                panel.clear();
+                return Json{{"panel", nullptr}};
+            }
             Json answer = {{"container", {{"id", panel}}},
                            {"taken", full ? Json::array() : items},
                            {"left", full ? items : Json::array()},
                            {"full", full}};
-            if (!full)
+            if (!full && !staysUp)
             {
                 panel.clear();
             }
@@ -356,14 +362,25 @@ TEST_CASE("a panel that comes a moment after the use has ended is waited for", "
     CHECK(answer["closed"] == true);
 }
 
-TEST_CASE("a full backpack leaves the rest in the container and its panel up", "[loot]")
+TEST_CASE("a panel that stays up after Take All is said to", "[loot]")
+{
+    Chest chest;
+    chest.staysUp = true;
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    CHECK(answer["looted"] == true);
+    CHECK(answer["closed"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the panel is still up"));
+}
+
+TEST_CASE("a full backpack leaves the rest in the container and closes its panel", "[loot]")
 {
     Chest chest;
     chest.full = true;
     const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
     CHECK(answer["looted"] == true);
     CHECK(answer["full"] == true);
-    CHECK(answer["closed"] == false);
+    CHECK(answer["closed"] == true);
     CHECK(answer["left"].size() == 1);
-    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("button=Close"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("its panel closed"));
+    CHECK(chest.calls.back() == "game press Close");
 }

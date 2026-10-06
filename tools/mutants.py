@@ -2020,6 +2020,19 @@ MUTANTS = [
         'PointsLeft(last) > 0 ? "levelled; points are left to spend"',
         'PointsLeft(last) >= 0 ? "levelled; points are left to spend"',
     ),
+    # #55: a full pack's panel closed by loot itself.
+    Mutant(
+        "loot leaves a full pack's panel up",
+        LOOT,
+        'Json{{"action", "press"}, {"button", "Close"}}',
+        'Json{{"action", "press"}, {"button", "Nothing"}}',
+    ),
+    Mutant(
+        "loot says a full pack's panel stays up when it closed",
+        LOOT,
+        'if (answer_["closed"].get<bool>())',
+        'if (!answer_["closed"].get<bool>())',
+    ),
 ]
 
 
