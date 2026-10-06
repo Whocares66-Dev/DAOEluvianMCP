@@ -325,7 +325,8 @@ struct Rogue
             {
                 talents.push_back(Json{{"id", id}, {"state", state}});
             }
-            return Json{{"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}, {"skills", skillPoints}}},
+            return Json{{"abilityPage", "talents"},
+                        {"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}, {"skills", skillPoints}}},
                         {"attributes", {{"strength", strength}}},
                         {"talents", talents},
                         {"spells", spell ? Json::array({Json{{"id", 60}, {"state", "learnable"}}}) : Json::array()},
@@ -491,6 +492,7 @@ TEST_CASE("offers are read with the screen up and nothing spent, the screen aban
     REQUIRE(answer["talents"].size() == 3); // an ability each, flat
     CHECK(answer["talents"][1]["id"] == 8);
     CHECK(answer["talents"][1]["state"] == "learnable");
+    CHECK(answer["abilityPage"] == "talents"); // the screen's page, as the read gives it (#71)
     CHECK(rogue.sent ==
           std::vector<std::string>{"GUI.GoToLevelUp 130 0", "GUI.HideFullScreenGUI", "GUILevelUp.CharGenEnd 130 1 0"});
     CHECK(rogue.levels == 1); // nothing spent

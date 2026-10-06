@@ -2152,6 +2152,13 @@ MUTANTS = [
         "            swapped_ = true;\n",
         "            swapped_ = false;\n",
     ),
+    # the screen's ability page, passed on (#71)
+    Mutant(
+        "levelup's offers leave the screen's ability page out",
+        LEVELUP,
+        'if (read->contains("abilityPage"))',
+        'if (read->contains("abilityPages"))',
+    ),
 ]
 
 

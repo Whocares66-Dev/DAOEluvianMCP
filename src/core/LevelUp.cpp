@@ -341,6 +341,12 @@ class Levelling
         {
             answer_[key] = read->value(key, Json());
         }
+        // Which of talents and spells the screen shows, where it said (#71):
+        // the other list is empty, the class having none to take.
+        if (read->contains("abilityPage"))
+        {
+            answer_["abilityPage"] = read->at("abilityPage");
+        }
         return End(true, "the screen's offers: levelup with `abilities` (learnable ids) and `attributes` spends "
                          "points on them");
     }
