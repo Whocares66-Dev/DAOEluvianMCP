@@ -611,6 +611,22 @@ class Journey
                         wentToReached_ = *result != kCleared;
                         continue;
                     }
+                    // As far as the search got, and no nearer: its way can
+                    // end at the target from far off where the game walks
+                    // on. In the darkspawn tunnels under Ostagar an exit two
+                    // rooms away was "in the way" 69 m off, and from a little
+                    // further on the next travel walked there and through
+                    // (turn-based-agent, 2026-10-05, #67). The engine's own
+                    // move to it, once, before saying so.
+                    if (!engineTried_)
+                    {
+                        engineTried_ = true;
+                        if (EngineMove("the engine's own move, the search's way ending at the target"))
+                        {
+                            lastWalk.reset();
+                            continue;
+                        }
+                    }
                     return End(false, "the target itself stands in the way of the walk, " +
                                           std::to_string(std::lround(distance)) +
                                           " m off, and the walk gets no nearer: order use on it walks up to it");
@@ -761,6 +777,20 @@ class Journey
             // walk stopped dead where a player walks through
             // (turn-based-agent, 2026-10-04, #53). Short straight steps
             // toward the goal, the walk asked again after each, once.
+            // The engine's own move to the goal first: through an open door
+            // at Soldier's Peak the search found none, where MoveToLocation
+            // walked straight in and the straight steps got no nearer
+            // (turn-based-agent, 2026-10-05, #67). The game's path is the
+            // authority; the search only plans.
+            if (walk.value("result", std::string()) == "none" && !engineTried_ && exit_.empty() && area_.empty())
+            {
+                engineTried_ = true;
+                if (EngineMove("the engine's own move, the search having found none"))
+                {
+                    lastWalk.reset();
+                    continue;
+                }
+            }
             if (walk.value("result", std::string()) == "none" && !straightTried_ && exit_.empty() && area_.empty())
             {
                 straightTried_ = true;
@@ -810,6 +840,29 @@ class Journey
         why += std::format(" is {:.0f} m off", nearest.value("distance", 0.0));
         answer_["fightNear"] = nearest;
         return why;
+    }
+
+    // The engine's own move to the goal, in one: true if it was ordered,
+    // the journey to go on.
+    bool EngineMove(const std::string &step)
+    {
+        Json ask = where_;
+        ask.update(Json{{"kind", "geometry"}, {"id", who_}});
+        const auto read = Ask("inspect", ask);
+        if (!read)
+        {
+            return false;
+        }
+        const auto to = Point(read->value("to", Json()));
+        if (!to)
+        {
+            return false;
+        }
+        // Whatever it ends in, the walk is asked again from where it left
+        // the walker, and the straight steps follow if it still finds none.
+        return Order(Json{{"action", "move"}, {"id", who_}, {"point", Json::array({(*to)[0], (*to)[1], (*to)[2]})}},
+                     "MoveToLocation", step)
+            .has_value();
     }
 
     // Steps straight toward the goal, each kStraightStep, until the walk
@@ -1117,6 +1170,7 @@ class Journey
     bool byClick_ = false;
     bool wentToReached_ = false;
     bool straightTried_ = false; // whether straight steps were tried where the walk found none (#53)
+    bool engineTried_ = false;   // whether the engine's own move was tried where the walk found none (#67)
     bool measured_ = false;      // whether `distance` was measured after the last order
     std::optional<std::string> stopped_;
     Json doors_ = Json::array();

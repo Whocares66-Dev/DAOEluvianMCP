@@ -2089,6 +2089,32 @@ MUTANTS = [
         'Json said = {{"ignored", ignored}};',
         "Json said = Json::object();",
     ),
+    # where the search finds none, the engine's own move first (#67)
+    Mutant(
+        "travel gives the engine no move of its own where the search finds none",
+        TRAVEL,
+        "if (EngineMove())",
+        "if (false)",
+    ),
+    Mutant(
+        "travel tries the engine's own move again and again",
+        TRAVEL,
+        '== "none" && !engineTried_ && exit_.empty()',
+        '== "none" && exit_.empty()',
+    ),
+    # the engine's own move where the search's way ends at the target from afar (#67)
+    Mutant(
+        "travel gives up on a target named from afar without the engine's own move",
+        TRAVEL,
+        "if (EngineMove(\"the engine's own move, the search's way ending at the target\"))",
+        "if (!engineTried_ && EngineMove(\"the engine's own move, the search's way ending at the target\"))",
+    ),
+    Mutant(
+        "travel tries the engine's own move on a target named from afar again and again",
+        TRAVEL,
+        "if (!engineTried_)",
+        "if (!engineTried_ || wentToReached_)",
+    ),
 ]
 
 

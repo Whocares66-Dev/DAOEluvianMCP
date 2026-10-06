@@ -64,6 +64,7 @@ struct World
     bool blockerFirst = false;  // whether a text blocker to the same place is nearer than the exit
     std::string exitNoWalk;     // the search's word for a walk to the exit it cannot make, if it cannot
     double strip = -1;          // beyond this distance the search finds none, though straight steps cross
+    bool farFails = false;      // whether a move of more than a metre from within the strip fails INVALID_PATH
     bool tooClose = false;      // whether the exit's use fails from closer than 2 m
     Json popup = nullptr;
     bool mapExit = false;              // whether the exit opens the world map instead of leading somewhere
@@ -243,6 +244,10 @@ struct World
                     at = door + 0.5; // stops at the door
                     hidden = false;  // which the search names from now on
                     result = "COMMAND_FAILED_PATH_ACTION_REQUIRED";
+                }
+                else if (farFails && at > strip && std::abs(at - to) > 1.0)
+                {
+                    result = "COMMAND_FAILED_INVALID_PATH"; // from within the strip the engine finds none either
                 }
                 else if (!stuck)
                 {
@@ -469,11 +474,27 @@ TEST_CASE("a move the game refuses ends the journey with the game's word for it"
     CHECK(world.orders.size() == 1);
 }
 
-TEST_CASE("where the search finds none, straight steps cross and the walk goes on", "[travel]")
+TEST_CASE("where the search finds none, the engine's own move goes through", "[travel]")
 {
-    World world; // a doorway's strip the search takes for no ground, 2 m deep
+    World world; // an open doorway the search takes for no ground, which the engine walks through
     world.shut = false;
     world.strip = 28;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    const auto did = [&answer](const std::string &what) {
+        return std::ranges::count_if(
+            answer["steps"], [&what](const Json &step) { return step.value("did", std::string()).starts_with(what); });
+    };
+    CHECK(did("the engine's own move") == 1);
+    CHECK(did("straight step") == 0);
+}
+
+TEST_CASE("where the search and the engine's own move find none, straight steps cross and the walk goes on", "[travel]")
+{
+    World world; // a doorway's strip, 2 m deep, that only short steps cross
+    world.shut = false;
+    world.strip = 28;
+    world.farFails = true;
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == true);
     const auto steps = std::ranges::count_if(
@@ -486,7 +507,7 @@ TEST_CASE("where the search finds none, straight steps cross and the walk goes o
     const auto stopped = stuck.Travel();
     CHECK(stopped["arrived"] == false);
     CHECK_THAT(stopped["reason"].get<std::string>(), ContainsSubstring("a straight step toward it got no nearer"));
-    CHECK(stuck.orders.size() == 1);
+    CHECK(stuck.orders.size() == 2); // the engine's own move, then one straight step
 }
 
 TEST_CASE("a move that fails beside its target, where the target stands, is there", "[travel]")
@@ -539,7 +560,22 @@ TEST_CASE("a target in its own way far off is walked up to first, as far as the 
     const auto stopped = short_.Travel();
     CHECK(stopped["arrived"] == false);
     CHECK_THAT(stopped["reason"].get<std::string>(), ContainsSubstring("11 m off, and the walk gets no nearer"));
-    CHECK(short_.orders.size() == 1);
+    REQUIRE(short_.orders.size() == 2); // as far as the search got, then the engine's own move, once (#67)
+    CHECK(short_.orders[1]["point"][0] == 0);
+}
+
+TEST_CASE("a target the search names from afar, no nearer, is walked to by the engine's own move", "[travel]")
+{
+    World world; // an exit two rooms away (#67): the search's way ends where the walker stands
+    world.blocksItself = true;
+    world.door = 1;
+    world.reach = 29; // as far as the search got is where the walk began, 30 m off
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    REQUIRE(world.orders.size() == 2);
+    CHECK(world.orders[0]["point"][0] == 30); // as far as the search got: no nearer
+    CHECK(world.orders[1]["point"][0] == 0);  // the engine's own move to it
+    CHECK_THAT(answer["steps"][1]["did"].get<std::string>(), ContainsSubstring("the engine's own move"));
 }
 
 TEST_CASE("the cursor is taken as the journey begins, so its events are read from it", "[travel]")
