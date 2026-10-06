@@ -31,6 +31,10 @@ constexpr double kNoNearer = 0.25;
 constexpr double kNearOwnWay = 4.0;
 // How much nearer a leg to the search's end must bring the walker for another (#82).
 constexpr double kLegGain = 2.0;
+
+// How near a target a walk that ended short is said to be in a use's
+// reach, the use's click walking the rest (#80).
+constexpr double kUseReach = 5.0;
 // Where the search finds no walk and names nothing, steps this long toward
 // the goal, at most this many, each at least kStraightGain nearer (#53).
 constexpr double kStraightStep = 0.5;
@@ -1295,6 +1299,15 @@ class Journey
         }
         answer_["arrived"] = arrived;
         answer_["reason"] = std::move(reason);
+        // A move to a large object's point ends where its collision
+        // begins, while a use's click walks to the object's own use point
+        // (the high dragon's remains, a sarcophagus: turn-based-agent,
+        // 2026-10-05, #80).
+        if (!arrived && where_.contains("target") && exit_.empty() && area_.empty() &&
+            answer_.value("distance", kUseReach + 1) <= kUseReach)
+        {
+            answer_["hint"] = "order use on the target walks up to it, as a click does";
+        }
         answer_["who"] = who_;
         answer_["opened"] = doors_;
         answer_["steps"] = steps_;

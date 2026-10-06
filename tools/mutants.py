@@ -2306,6 +2306,31 @@ MUTANTS = [
         "        if (before_.empty() || before_ == who_)",
         "        if (before_.empty())",
     ),
+    # a walk ended short of a large object, the use's click walking the rest (#80)
+    Mutant(
+        "loot gives up on a large container its walk ended just short of",
+        LOOT,
+        '            if (distance > kUseReach || mode != "explore")',
+        '            if (distance > 0 || mode != "explore")',
+    ),
+    Mutant(
+        "loot uses a container its walk ended far short of",
+        LOOT,
+        '            if (distance > kUseReach || mode != "explore")',
+        '            if (distance > kUseReach * 10 || mode != "explore")',
+    ),
+    Mutant(
+        "loot uses a container though a fight stopped its walk",
+        LOOT,
+        '            if (distance > kUseReach || mode != "explore")',
+        "            if (distance > kUseReach || mode.empty())",
+    ),
+    Mutant(
+        "travel short of a large target does not say a use walks the rest",
+        TRAVEL,
+        '            answer_.value("distance", kUseReach + 1) <= kUseReach)',
+        '            answer_.value("distance", kUseReach + 1) < 0)',
+    ),
 ]
 
 

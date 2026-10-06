@@ -40,6 +40,7 @@ struct Chest
     int panelIn = 0;                 // gui reads until its panel comes; 0: come, or none coming
     bool walkOpens = false;          // whether the walk opens the target itself on the way, stopped by its pause
     std::string controlled = "0x82"; // the creature controlled
+    double shortBy = 0;              // a walk that ends this short with no way the last of it, if not 0
 
     Chest()
     {
@@ -67,7 +68,16 @@ struct Chest
                         {"distance", 2.0},
                         {"opened", Json::array({Json{{"id", panel}}})}};
         }
+        if (shortBy > 0)
+        {
+            return Json{{"arrived", false},
+                        {"reason", "the walk failed: COMMAND_FAILED_INVALID_PATH"},
+                        {"distance", shortBy},
+                        {"mode", "explore"},
+                        {"opened", Json::array()}};
+        }
         return Json{{"arrived", arrives},
+                    {"mode", arrives ? "explore" : "combat"},
                     {"reason", arrives ? "there" : "a fight began"},
                     {"distance", 1.0},
                     {"opened", Json::array()}};
@@ -472,4 +482,25 @@ TEST_CASE("the one controlled named as the looter is no hand-over", "[loot]")
     CHECK(answer["looted"] == true);
     CHECK_FALSE(answer.contains("controlled"));
     CHECK(chest.calls.back() == "game press Take All");
+}
+
+TEST_CASE("a walk that ends a little short of a large container is followed by the use, which walks the rest", "[loot]")
+{
+    Chest chest;
+    chest.shortBy = 1.9; // the high dragon's remains
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    CHECK(answer["looted"] == true);
+    CHECK(answer["walk"]["arrived"] == false);
+    CHECK_THAT(answer["walk"]["note"].get<std::string>(), ContainsSubstring("walks the rest"));
+    CHECK(chest.calls == std::vector<std::string>{"travel", "order use", "game press Take All"});
+}
+
+TEST_CASE("a walk that ends far short is said, and nothing is used", "[loot]")
+{
+    Chest chest;
+    chest.shortBy = 12;
+    const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
+    CHECK(answer["looted"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("INVALID_PATH"));
+    CHECK(chest.calls == std::vector<std::string>{"travel"});
 }

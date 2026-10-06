@@ -1443,3 +1443,21 @@ TEST_CASE("the pin of the area the party is in closes the map and is said at onc
     CHECK(answer["reason"] == "the party is in Lothering already: its pin only closed the map");
     CHECK_FALSE(world.mapUp);
 }
+
+TEST_CASE("a walk to a large target that fails a little short says a use walks the rest", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    world.failsAt = 1.9; // the high dragon's remains, on a slope
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK(answer["hint"] == "order use on the target walks up to it, as a click does");
+
+    World far; // failing far off: no hint
+    far.shut = false;
+    far.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    const auto there = far.Travel();
+    CHECK(there["arrived"] == false);
+    CHECK_FALSE(there.contains("hint"));
+}

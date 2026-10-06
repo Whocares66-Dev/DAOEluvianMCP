@@ -30,6 +30,13 @@ constexpr milliseconds kPanelGrace{1500};
 // five spiders' remains in the Elven Ruins (turn-based-agent, 2026-10-02).
 constexpr milliseconds kNoUse{3000};
 
+// How short of a container a walk may end and the use still be given: a
+// move to a large object's point ends where its collision begins, while
+// the use's click walks its user to the object's own use point. 1.9 m
+// from the high dragon's remains the walk failed and the click opened
+// them (turn-based-agent, 2026-10-05, #80).
+constexpr double kUseReach = 5.0;
+
 // One looting: its arguments, its clock, and the answer it builds.
 class Looting
 {
@@ -131,7 +138,16 @@ class Looting
         }
         if (!walked.value("arrived", false))
         {
-            return End(false, "the walk there stopped: " + reason);
+            // Short of it, near enough, and nothing else afoot: the use
+            // walks the rest. A fight or a conversation that stopped the
+            // walk is said, as before.
+            const double distance = walked.value("distance", kUseReach + 1);
+            const std::string mode = walked.value("mode", std::string("explore"));
+            if (distance > kUseReach || mode != "explore")
+            {
+                return End(false, "the walk there stopped: " + reason);
+            }
+            answer_["walk"]["note"] = "the walk ended short; the use's click walks the rest";
         }
         return Open();
     }
