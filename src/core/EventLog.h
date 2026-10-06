@@ -3,7 +3,8 @@
 // holds the last few thousand and is gone with the game; a balance run of
 // many fights, or a game that crashed, is read from here afterwards
 // (turn-based-agent's runs, 2026-10-02; the bridge's game_events reads it
-// while no game runs). Written anew by each game, beside the logs.
+// while no game runs). Written anew by each game, beside the logs; the run
+// before's is kept as <name>.previous.jsonl (#74).
 #pragma once
 
 #include "core/EventBus.h"
@@ -18,9 +19,13 @@ namespace eluvian
 class EventLog
 {
   public:
-    // Opens `path` empty. Stops writing past `most` bytes, with a last
-    // line saying so, so a run that never ends does not fill the disk.
+    // Opens `path` empty, the file there before moved to PreviousOf(path).
+    // Stops writing past `most` bytes, with a last line saying so, so a run
+    // that never ends does not fill the disk.
     explicit EventLog(const std::filesystem::path &path, std::size_t most = 256U << 20);
+
+    // eluvian.events.jsonl's is eluvian.events.previous.jsonl.
+    [[nodiscard]] static std::filesystem::path PreviousOf(const std::filesystem::path &path);
 
     [[nodiscard]] bool Open() const
     {

@@ -557,6 +557,22 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["isError"])
         self.assertIn("eluvian.events.jsonl", result["content"][0]["text"])
 
+    def test_the_run_befores_events_are_read_with_previous(self) -> None:
+        # A launch after a crash keeps the crash's run beside the new one (#74).
+        (self.folder / "eluvian.events.jsonl").write_text(
+            json.dumps({"seq": 1, "topic": "now"}) + "\n", encoding="utf-8"
+        )
+        missing = self.call("game_events", {"previous": True})
+        self.assertTrue(missing["isError"])
+        self.assertIn("eluvian.events.previous.jsonl", missing["content"][0]["text"])
+        (self.folder / "eluvian.events.previous.jsonl").write_text(
+            json.dumps({"seq": 7, "topic": "before"}) + "\n", encoding="utf-8"
+        )
+        before = self.call("game_events", {"previous": True})["structuredContent"]
+        self.assertEqual([e["topic"] for e in before["events"]], ["before"])
+        now = self.call("game_events")["structuredContent"]
+        self.assertEqual([e["topic"] for e in now["events"]], ["now"])
+
     def test_a_game_that_crashed_starting_is_answered_with_its_crash_log(self) -> None:
         self.down()
         self.processes.pids.clear()

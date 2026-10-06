@@ -127,5 +127,41 @@ TEST_CASE("each game writes its file anew", "[event-log]")
     const auto lines = Lines(path);
     REQUIRE(lines.size() == 1);
     CHECK(lines[0]["payload"]["run"] == 1);
+    // The run before's is kept beside it (#74): a crash's, before the launch after.
+    const auto previous = EventLog::PreviousOf(path);
+    CHECK(previous.filename().string().ends_with("eluvian-test-events-anew.previous.jsonl"));
+    const auto before = Lines(previous);
+    REQUIRE(before.size() == 1);
+    CHECK(before[0]["payload"]["run"] == 0);
     std::filesystem::remove(path);
+    std::filesystem::remove(previous);
+}
+
+TEST_CASE("only one run before is kept, and an empty file is not kept over it", "[event-log]")
+{
+    const auto path = TempFile("eluvian-test-events-kept.jsonl");
+    const auto previous = EventLog::PreviousOf(path);
+    for (int run = 0; run < 3; ++run)
+    {
+        EventLog log(path);
+        if (run < 2)
+        {
+            EventBus bus;
+            bus.SetRecorder([&log](const Event &event) { log.Write(event); });
+            bus.Emit("run", Json{{"run", run}});
+        }
+    }
+    // The third run wrote nothing: the second's events stay where they were, the first's are gone.
+    CHECK(Lines(path).empty());
+    const auto before = Lines(previous);
+    REQUIRE(before.size() == 1);
+    CHECK(before[0]["payload"]["run"] == 1);
+    {
+        EventLog again(path); // and a fourth: the third's empty file does not replace the second's
+    }
+    const auto still = Lines(previous);
+    REQUIRE(still.size() == 1);
+    CHECK(still[0]["payload"]["run"] == 1);
+    std::filesystem::remove(path);
+    std::filesystem::remove(previous);
 }

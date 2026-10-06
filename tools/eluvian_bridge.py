@@ -82,6 +82,8 @@ def documents_folder() -> Path:
 CLAIM_FILE = "game.claim.json"
 # Every event of the last run, a JSON object a line (core/EventLog.h).
 EVENTS_FILE = "eluvian.events.jsonl"
+# The run before's, kept when a game starts (EventLog::PreviousOf, #74).
+PREVIOUS_EVENTS_FILE = "eluvian.events.previous.jsonl"
 # Its name until 2026-10-02. A bridge started before then writes this one, and a claim there
 # went unseen by one started after, which launched over a tester's run (2026-10-02): both
 # are read until no bridge with the old name runs.
@@ -351,12 +353,14 @@ BRIDGE_TOOLS = [
             '`since` (a seq; default the first), `topic` (a name, a prefix ending in ".*", or a '
             "list of them), `limit` (default 500). Answers `events` as the events tool gives them, "
             "`next` to read on from, `count` matched, and `running` (whether a game runs now, "
-            "whose file it is then). A new game starts the file again."
+            "whose file it is then). A new game starts the file again, keeping the run before's: "
+            "`previous: true` reads that one (a crash's, after a launch)."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "since": {"type": "integer"},
+                "previous": {"type": "boolean"},
                 "topic": {
                     "description": 'A topic, a prefix like "turnbased.*", or a list'
                 },
@@ -636,11 +640,17 @@ class Bridge:
 
     def game_events(self, arguments: dict) -> dict:
         """The run's events from the file the game writes (core/EventLog.h)."""
-        file = self.game.folder / EVENTS_FILE
+        previous = arguments.get("previous") is True
+        name = PREVIOUS_EVENTS_FILE if previous else EVENTS_FILE
+        file = self.game.folder / name
         if not file.exists():
             return text_result(
-                f"game_events: no {EVENTS_FILE} in {self.game.folder}; a game with Eluvian "
-                "writes it from its start",
+                f"game_events: no {name} in {self.game.folder}; "
+                + (
+                    "a game with Eluvian keeps the run before's there when it starts"
+                    if previous
+                    else "a game with Eluvian writes it from its start"
+                ),
                 is_error=True,
             )
         since = arguments.get("since", 0)

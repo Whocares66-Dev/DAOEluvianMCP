@@ -2128,6 +2128,19 @@ MUTANTS = [
         'line += ",\\"frame\\":" + dump(Json(event.frame));',
         'line += "";',
     ),
+    # the run before's event file kept beside the new one (#74)
+    Mutant(
+        "the event file does not keep the run before's",
+        EVENTLOG,
+        'std::filesystem::rename(path, previous, error);',
+        '(void)previous;',
+    ),
+    Mutant(
+        'the event file keeps an empty run over the one before',
+        EVENTLOG,
+        'if (std::filesystem::file_size(path, error) > 0 && !error)',
+        'if (std::filesystem::exists(path, error) && !error)',
+    ),
 ]
 
 

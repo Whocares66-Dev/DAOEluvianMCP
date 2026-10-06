@@ -1,6 +1,7 @@
 #include "core/EventLog.h"
 
 #include <string>
+#include <system_error>
 
 namespace eluvian
 {
@@ -25,10 +26,31 @@ std::string Line(const Event &event)
     return line;
 }
 
+// The run before's file, moved aside before this run's is opened: a crash
+// is followed by a launch, and the truncation lost the events wanted most
+// (the darkspawn tunnels' travel, turn-based-agent, 2026-10-05, #74). One
+// is kept. A file that cannot be moved is written over, as before.
+std::filesystem::path MovedAside(const std::filesystem::path &path)
+{
+    std::error_code error;
+    if (std::filesystem::file_size(path, error) > 0 && !error)
+    {
+        const auto previous = EventLog::PreviousOf(path);
+        std::filesystem::remove(previous, error);
+        std::filesystem::rename(path, previous, error);
+    }
+    return path;
+}
+
 } // namespace
 
+std::filesystem::path EventLog::PreviousOf(const std::filesystem::path &path)
+{
+    return path.parent_path() / (path.stem().string() + ".previous" + path.extension().string());
+}
+
 EventLog::EventLog(const std::filesystem::path &path, std::size_t most)
-    : out_(path, std::ios::binary | std::ios::trunc), most_(most)
+    : out_(MovedAside(path), std::ios::binary | std::ios::trunc), most_(most)
 {
 }
 
