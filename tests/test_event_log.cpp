@@ -186,6 +186,7 @@ TEST_CASE("events emitted from many threads are all in the file, in the bus's or
         EventBus bus(64); // a small buffer: the file keeps what it forgets
         bus.SetRecorder([&log](const std::shared_ptr<const Event> &event) { log.Write(event); });
         std::vector<std::thread> emitters;
+        emitters.reserve(kThreads);
         for (int t = 0; t < kThreads; ++t)
         {
             emitters.emplace_back([&bus, t] {

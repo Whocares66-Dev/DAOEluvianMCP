@@ -107,6 +107,27 @@ std::string_view SlotName(std::int32_t slot)
     return {};
 }
 
+// The screen shows one ability page of the two, by class: levelup.gfx's
+// specializations_mc_init sets LevelUp.nAbilityType to CharGen.SPELLS
+// (2) for a class whose TABLE_CLASS row uses mana (bUsesMana), and to
+// CharGen.TALENTS (1) otherwise (read 2026-10-05). The engine fills both
+// lists all the same, and a rogue's offers listed a mage's spells as
+// learnable (turn-based-agent, 2026-10-05, #71): the page the screen
+// does not show is left empty, as the screen leaves it.
+// 0 where it could not be read.
+int ShownAbilityPage()
+{
+    int shown = 0;
+    if (auto movie = dao::gui::ScreenMovie(L"LevelUp"))
+    {
+        if (const auto type = movie->Get("LevelUp.nAbilityType"); type && type->type == dao::gui::Value::Type::Number)
+        {
+            shown = static_cast<int>(type->number);
+        }
+    }
+    return shown;
+}
+
 // What the level-up screen offers, read as the screen reads it (#5): it asks
 // the engine "GameModeController.FindAbilityChains <creature> <type> 2" (2,
 // DISPLAYMODE_LEVELUP) for each page, and the engine fills the data tree's
@@ -149,21 +170,7 @@ Json LevelUpOffers()
         const wchar_t *path;
         const char *name;
     };
-    // The screen shows one ability page of the two, by class: levelup.gfx's
-    // specializations_mc_init sets LevelUp.nAbilityType to CharGen.SPELLS
-    // (2) for a class whose TABLE_CLASS row uses mana (bUsesMana), and to
-    // CharGen.TALENTS (1) otherwise (read 2026-10-05). The engine fills both
-    // lists all the same, and a rogue's offers listed a mage's spells as
-    // learnable (turn-based-agent, 2026-10-05, #71): the page the screen
-    // does not show is left empty, as the screen leaves it.
-    int shown = 0;
-    if (auto movie = dao::gui::ScreenMovie(L"LevelUp"))
-    {
-        if (const auto type = movie->Get("LevelUp.nAbilityType"); type && type->type == dao::gui::Value::Type::Number)
-        {
-            shown = static_cast<int>(type->number);
-        }
-    }
+    const int shown = ShownAbilityPage(); // talents 1, spells 2 (#71)
     if (shown == 1 || shown == 2)
     {
         answer["abilityPage"] = shown == 2 ? "spells" : "talents";
