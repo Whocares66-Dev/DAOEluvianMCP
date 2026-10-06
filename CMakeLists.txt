@@ -151,6 +151,7 @@ add_library(
     src/core/Origin.cpp
     src/core/Party.cpp
     src/core/Placeables.cpp
+    src/core/Ready.cpp
     src/core/Requirements.cpp
     src/core/Rest.cpp
     src/core/Scenario.cpp
