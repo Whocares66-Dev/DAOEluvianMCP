@@ -60,6 +60,8 @@ struct World
     bool crosses = true;            // whether using the exit takes the party out
     int exitUnlocks = 0;            // uses of the exit that only unlock it, before one goes through
     int slowLoad = 0;               // health calls the exit's load is said for, if more than one (#99)
+    bool secondExit = false;        // another active exit to the forest, a little further (#101)
+    bool firstFails = false;        // the first exit's use fails, near or a step back (#101)
     bool exitActive = true;         // whether the exit is active
     bool loads = false;             // whether the crossing loads the other area over a health call
     int loadingFor = 0;             // health calls an area's loading is still said for
@@ -137,6 +139,11 @@ struct World
     {
         Json exits = Json::array(
             {Json{{"id", "0x1f5"}, {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}}, {"active", exitActive}}});
+        if (secondExit)
+        {
+            exits.push_back(
+                Json{{"id", "0x1f6"}, {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}}, {"active", true}});
+        }
         if (blockerFirst)
         {
             // Nearer, to the same place, and only a line of text.
@@ -388,6 +395,10 @@ struct World
             result = FakeMove(args);
         }
         else if (action == "use" && args.value("target", "") == "0x1f5")
+        {
+            result = firstFails ? "COMMAND_FAILED" : FakeUseExit();
+        }
+        else if (action == "use" && args.value("target", "") == "0x1f6")
         {
             result = FakeUseExit();
         }
@@ -1574,4 +1585,41 @@ TEST_CASE("as near as the walk goes, far from the target, is not arrived", "[tra
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("as near as the walk goes"));
     CHECK(answer["distance"] == 20);
+}
+
+TEST_CASE("an exit whose use fails for good gives way to another to the same area", "[travel]")
+{
+    World world; // two exits to the forest, the first's use failing near and a step back
+    world.shut = false;
+    world.at = 1;
+    world.secondExit = true;
+    world.firstFails = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 20000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["exit"]["id"] == "0x1f6");
+    CHECK(
+        std::ranges::any_of(answer["steps"], [](const Json &step) { return step["did"] == "another exit to forest"; }));
+}
+
+TEST_CASE("with no other exit to the area, the failed use is said as before", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.firstFails = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 20000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("the use of 0x1f5 ended COMMAND_FAILED"));
+}
+
+TEST_CASE("an exit named by id is not traded for another when its use fails", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.secondExit = true;
+    world.firstFails = true;
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 20000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK(std::ranges::none_of(world.orders, [](const Json &order) { return order.value("target", "") == "0x1f6"; }));
 }

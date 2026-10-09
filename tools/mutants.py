@@ -194,8 +194,8 @@ MUTANTS = [
     Mutant(
         "travel takes an exit that is not active",
         TRAVEL,
-        '(exit_.empty() && area == area_ && exit.value("active", true) && !blocker))',
-        "(exit_.empty() && area == area_ && !blocker))",
+        '(exit_.empty() && area == area_ && exit.value("active", true) && !blocker && !tried_.contains(id)))',
+        "(exit_.empty() && area == area_ && !blocker && !tried_.contains(id)))",
     ),
     Mutant(
         "travel's crossing ends before the other area is in place",
@@ -1417,8 +1417,8 @@ MUTANTS = [
     Mutant(
         "travel takes a text blocker for the way to an area",
         TRAVEL,
-        'exit.value("active", true) && !blocker))',
-        'exit.value("active", true)))',
+        'exit.value("active", true) && !blocker && !tried_.contains(id)))',
+        'exit.value("active", true) && !tried_.contains(id)))',
     ),
     Mutant(
         "travel waits out a command that ended unseen",
@@ -2507,6 +2507,25 @@ MUTANTS = [
         GIFT,
         "    if (!taken)\n    {",
         "    if (taken && !taken)\n    {",
+    ),
+    # another exit to the same area where the first's use fails (#101)
+    Mutant(
+        "travel gives up at the first exit to an area whose use fails",
+        TRAVEL,
+        "        Json crossed = CrossAny();\n",
+        "        Json crossed = Cross();\n",
+    ),
+    Mutant(
+        "travel tries the same failed exit again",
+        TRAVEL,
+        '(exit_.empty() && area == area_ && exit.value("active", true) && !blocker && !tried_.contains(id)))',
+        '(exit_.empty() && area == area_ && exit.value("active", true) && !blocker && tried_.size() < 99))',
+    ),
+    Mutant(
+        "travel trades an exit named by id for another",
+        TRAVEL,
+        '        while (!area_.empty() && !crossed.value("arrived", false) &&',
+        '        while (!crossed.value("arrived", false) &&',
     ),
 ]
 

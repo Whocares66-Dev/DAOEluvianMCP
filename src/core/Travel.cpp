@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -171,7 +172,7 @@ class Journey
         {
             return walked;
         }
-        Json crossed = Cross();
+        Json crossed = CrossAny();
         if (to_.is_null() || crossed.value("arrived", false))
         {
             return crossed;
@@ -180,6 +181,38 @@ class Journey
     }
 
   private:
+    // Across by the exit chosen, and, for an `area`, by the next active
+    // exit to it where that one's use fails for good: of the Gnawed
+    // Noble Tavern's two exits to the market, 1 m apart, one failed from
+    // near and a step back while the other's click went through at once
+    // (turn-based-agent, 2026-10-09, #101). Each is tried once.
+    Json CrossAny()
+    {
+        Json crossed = Cross();
+        while (!area_.empty() && !crossed.value("arrived", false) &&
+               crossed.value("reason", std::string()).starts_with("the use of "))
+        {
+            tried_.insert(where_.at("target").get<std::string>());
+            if (!ChooseExit())
+            {
+                return crossed;
+            }
+            steps_.push_back(
+                Json{{"did", "another exit to " + area_}, {"result", where_.at("target").get<std::string>()}});
+            lastWalk_.reset();
+            legFrom_.reset();
+            lastEnd_.reset();
+            wentToReached_ = false;
+            const Json walked = Walk();
+            if (!walked.value("arrived", false) && !walked.value("reason", std::string()).starts_with("no walk there"))
+            {
+                return walked;
+            }
+            crossed = Cross();
+        }
+        return crossed;
+    }
+
     // Across the world map to a pin, as a click on it: the map's script
     // sends "GameModeController.AreaTransition <where the party is> <the
     // pin's index>" (worldmap.gfx, read and tried in play by
@@ -408,8 +441,9 @@ class Journey
     }
 
     // The exit to go by: the one named, or the nearest active one that
-    // leads to the area named, from inspect kind=exits.
-    void ChooseExit()
+    // leads to the area named and was not tried yet, from inspect
+    // kind=exits. False if no other is left, after the first.
+    bool ChooseExit()
     {
         const Json listed = bench_.Invoke("inspect", Json{{"kind", "exits"}, {"near", who_}}).data;
         const Json exits = listed.value("exits", Json::array());
@@ -428,14 +462,18 @@ class Journey
                                 "inspect kind=exits lists the ways out");
             }
             if ((!exit_.empty() && id == exit_) ||
-                (exit_.empty() && area == area_ && exit.value("active", true) && !blocker))
+                (exit_.empty() && area == area_ && exit.value("active", true) && !blocker && !tried_.contains(id)))
             {
                 exitAt_ = exit;
                 where_["target"] = id;
                 answer_["exit"] = exit;
-                return;
+                return true;
             }
             places += (places.empty() ? "" : ", ") + area;
+        }
+        if (!tried_.empty())
+        {
+            return false;
         }
         if (!exit_.empty())
         {
@@ -1453,6 +1491,7 @@ class Journey
     bool byClick_ = false;
     std::optional<double> legFrom_;                // the distance as the last leg to the search's end began (#82)
     std::optional<double> upTo_;                   // `upTo`: the most of the walk to make (#90)
+    std::set<std::string> tried_;                  // the exits to the area whose use failed for good (#101)
     bool cut_ = false;                             // whether the walk was cut to `upTo` already
     std::optional<std::array<double, 3>> lastEnd_; // where that leg was sent
     bool wentToReached_ = false;
