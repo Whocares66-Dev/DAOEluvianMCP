@@ -1954,8 +1954,8 @@ MUTANTS = [
     Mutant(
         "levelup calls a grey specialization locked though no point is left",
         LEVELUP,
-        "else if (*points < 1)",
-        "else if (*points < -1)",
+        "else if (points < 1)",
+        "else if (points < -1)",
     ),
     Mutant(
         "levelup presses a specialization had already",
@@ -1980,12 +1980,6 @@ MUTANTS = [
         LEVELUP,
         "if (!*taking)",
         "if (!*taking && ability < 0)",
-    ),
-    Mutant(
-        "levelup reads one specialization fewer than the screen found",
-        LEVELUP,
-        "n < static_cast<int>(*found)",
-        "n + 1 < static_cast<int>(*found)",
     ),
     Mutant(
         "levelup forgets a specialization taken before a refusal",
@@ -2564,6 +2558,25 @@ MUTANTS = [
         TRAVEL,
         '            walk.at("blocker").value("action", kActionAreaTransition) == kActionAreaTransition;',
         '            walk.at("blocker").value("action", 0) == kActionAreaTransition;',
+    ),
+    # a specialization listed by its icons and taken by name (#106)
+    Mutant(
+        "levelup lists the specializations by the screen's count, not its icons",
+        LEVELUP,
+        "        for (int n = 0; n < kMostSpecializations; ++n)",
+        '        for (int n = 0; n < static_cast<int>(Number("LevelUp.nSpecializationsFound").value_or(0)); ++n)',
+    ),
+    Mutant(
+        "levelup takes a specialization last, after the abilities",
+        LEVELUP,
+        "                chosen_.insert(chosen_.begin(), special.id);",
+        "                chosen_.push_back(special.id);",
+    ),
+    Mutant(
+        "levelup takes the specialization asked by name in its own case only",
+        LEVELUP,
+        "specialization_.is_string() && lower(special.name) == lower(specialization_.get<std::string>());",
+        "specialization_.is_string() && special.name == specialization_.get<std::string>();",
     ),
 ]
 

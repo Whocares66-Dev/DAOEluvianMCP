@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -64,6 +65,9 @@ Page PageNamed(const std::string &page)
 // point), as specializations_mc_init fills them (levelup.gfx); read in play
 // for Lyna, Wynne and Oghren (turn-based-agent, 2026-10-05, #64).
 constexpr const char *kSpecializations = "specializations_mc.Scrollable_mc";
+// More icons than any class has specializations: Origins' four, Awakening's
+// two more (#106).
+constexpr int kMostSpecializations = 16;
 
 // The paths in a list this GFx gives as its string: comma-joined.
 std::vector<std::string> Split(const std::string &text)
@@ -145,7 +149,7 @@ class Levelling
     Levelling(Bench &bench, const Args &args, milliseconds show)
         : bench_(bench), show_(milliseconds(args.Integer("showMs", show.count(), 0, 10000)))
     {
-        const bool chosen = args.Has("abilities") || args.Has("attributes");
+        const bool chosen = args.Has("abilities") || args.Has("attributes") || args.Has("specialization");
         auto_ = args.Bool("auto", false);
         offers_ = args.Bool("offers", false);
         if ((auto_ ? 1 : 0) + (offers_ ? 1 : 0) + (chosen ? 1 : 0) != 1)
@@ -168,6 +172,15 @@ class Levelling
                     throw ToolError("levelup: each of `abilities` is an ability's id, a number, from `offers`");
                 }
                 chosen_.push_back(ability.get<std::int32_t>());
+            }
+        }
+        if (args.Has("specialization"))
+        {
+            specialization_ = args.Raw().at("specialization");
+            if (!specialization_.is_string() && !specialization_.is_number_integer())
+            {
+                throw ToolError("levelup: `specialization` is one the screen offers, by name or ability id, from "
+                                "`offers`");
             }
         }
         if (args.Has("attributes"))
@@ -489,6 +502,10 @@ class Levelling
             return End(false, refused_);
         }
         std::this_thread::sleep_for(show_);
+        if (auto unknown = ChooseSpecialization())
+        {
+            return unknown;
+        }
         if (auto abandoned = TakeAbilities())
         {
             return abandoned;
@@ -522,25 +539,66 @@ class Levelling
         std::string icon;
     };
 
+    // The specialization `specialization` names, by name (any case) or
+    // ability id, put first among the abilities to take: taken as a click on
+    // its icon takes it, so its own chain can be spent on after it in the
+    // same call (#106). Nothing, or the refusal naming those listed.
+    std::optional<Json> ChooseSpecialization()
+    {
+        if (specialization_.is_null())
+        {
+            return std::nullopt;
+        }
+        const auto listed = Specializations().value_or(std::vector<Special>{});
+        const auto lower = [](std::string text) {
+            std::ranges::transform(text, text.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return text;
+        };
+        for (const auto &special : listed)
+        {
+            const bool byId = specialization_.is_number_integer() && specialization_.get<std::int32_t>() == special.id;
+            const bool byName =
+                specialization_.is_string() && lower(special.name) == lower(specialization_.get<std::string>());
+            if (byId || byName)
+            {
+                chosen_.insert(chosen_.begin(), special.id);
+                return std::nullopt;
+            }
+        }
+        std::string names;
+        for (const auto &special : listed)
+        {
+            names += (names.empty() ? "" : ", ") + special.name + " (" + special.state + ")";
+        }
+        Close(false);
+        return End(false, "no specialization " + specialization_.dump() +
+                              " on the screen; it lists: " + (names.empty() ? std::string("none") : names));
+    }
+
     // The specializations the screen lists for the creature; nothing with
     // `refused_` said.
     std::optional<std::vector<Special>> Specializations()
     {
-        const auto found = Number("LevelUp.nSpecializationsFound");
-        const auto points = Number("LevelUp.nSpecializationPoints");
-        if (!found || !points)
-        {
-            return std::nullopt;
-        }
+        // Counted by the icons themselves, read until one is missing: in
+        // Awakening the screen showed six (icon0 to icon5, the two new ones
+        // not grey) and the tool listed none, LevelUp.nSpecializationsFound
+        // not reading as the icons stand (turn-based-agent, 2026-10-09,
+        // #106).
+        const double points = Number("LevelUp.nSpecializationPoints").value_or(0);
         std::vector<Special> specializations;
-        for (int n = 0; n < static_cast<int>(*found); ++n)
+        for (int n = 0; n < kMostSpecializations; ++n)
         {
             const std::string icon = std::string(kSpecializations) + ".icon" + std::to_string(n);
-            const auto name = Movie(Json{{"get", icon + ".sName"}});
             const auto id = Number(icon + ".nSpecializationAbilityID");
+            if (!id)
+            {
+                break;
+            }
+            const auto name = Movie(Json{{"get", icon + ".sName"}});
             const auto selected = Movie(Json{{"get", icon + ".bSelected"}});
             const auto grey = Movie(Json{{"get", icon + ".bGrey"}});
-            if (!name || !id || !selected || !grey)
+            if (!name || !selected || !grey)
             {
                 return std::nullopt;
             }
@@ -556,7 +614,7 @@ class Levelling
             {
                 state = "learnable";
             }
-            else if (*points < 1)
+            else if (points < 1)
             {
                 state = "no point to spend";
             }
@@ -959,8 +1017,9 @@ class Levelling
     bool canLevelUp_ = false; // whether the creature had a level-up waiting when asked
     std::vector<std::int32_t> chosen_;
     Json raise_ = Json::object();
-    std::string n_;     // the creature's id in decimal, as the screen's messages carry it
-    std::string shown_; // the scene of the page shown, once one is
+    Json specialization_; // `specialization`: one to take, by name or id (#106)
+    std::string n_;       // the creature's id in decimal, as the screen's messages carry it
+    std::string shown_;   // the scene of the page shown, once one is
     std::optional<std::vector<Special>> specializations_; // as the screen listed them, once read
     std::map<std::int32_t, std::string> icons_;           // its abilities' icons
     std::string id_;
@@ -979,7 +1038,11 @@ void AddLevelUpTool(Bench &bench, milliseconds show)
             "Spend a creature's level-up points as the game's level-up screen does, so its rules hold, for "
             "`id` (default the creature controlled). One of: `offers`: true, what the screen offers, nothing "
             "spent (`points`, `attributes`, and the class's `talents`, `spells` and `skills`, each a list "
-            "of abilities with `id`, `name` and `state`: `has`, `learnable` now, or `not yet`); `abilities` "
+            "of abilities with `id`, `name` and `state`: `has`, `learnable` now, or `not yet`; and the "
+            "`specializations`, each `id`, `name` and `state`: `has`, `learnable`, `locked` or `no point to "
+            "spend`); `specialization` (one `offers` lists, by name or id, taken first, as a click on its icon, "
+            "so its chain can be spent on in the same call; refused saying why: taken, locked, no point), "
+            "`abilities` "
             "(ids `offers` lists as learnable, the first of a chain before the next) and `attributes` ({\"strength\": "
             "2, ...}), spent as the screen's buttons spend "
             "them, an ability not learnable refusing the lot with nothing spent; or `auto`: true, the screen's "
@@ -1002,6 +1065,8 @@ void AddLevelUpTool(Bench &bench, milliseconds show)
                     {{"type", "array"}, {"description", "Ability ids to take, learnable in `offers`, in order"}}},
                    {"attributes",
                     {{"type", "object"}, {"description", R"(Points per attribute: {"strength": 2, "cunning": 1})"}}},
+                   {"specialization",
+                    {{"description", "A specialization to take, by name or ability id, from `offers`"}}},
                    {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
             Thread::Listener},
         [&bench, show](const Json &raw) -> ToolResult {

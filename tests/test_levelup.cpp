@@ -47,6 +47,7 @@ struct Rogue
     };
     std::vector<Special> specials;
     int specialPoints = 0;
+    bool foundUnread = false;       // the screen's count of them reads nothing, its icons there all the same (#106)
     std::vector<int> specialStored; // picks its icons stored, which an unfinished end reverts
     std::vector<std::string> sent;  // input's messages, in order
     std::vector<Json> movie;        // input's calls into the screen's movie, in order
@@ -209,6 +210,10 @@ struct Rogue
     // The movie's value at `path`.
     Json MovieGet(const std::string &path) const
     {
+        if (path == "LevelUp.nSpecializationsFound" && foundUnread)
+        {
+            return Json{{"type", "undefined"}, {"value", nullptr}};
+        }
         if (path == "LevelUp.nSpecializationsFound" || path == "LevelUp.nSpecializationPoints")
         {
             return Json{{"type", "number"},
@@ -764,4 +769,53 @@ TEST_CASE("attributes spent by name leave the specialization point, none taken a
                                [](const auto &special) { return special.selected && special.id != 4025; }));
     CHECK(std::ranges::none_of(rogue.sent,
                                [](const std::string &text) { return text.starts_with("GUILevelUp.AutoLevelUp"); }));
+}
+
+TEST_CASE("offers list the specializations by their icons, the screen's count of them unread", "[levelup]")
+{
+    Rogue rogue; // Lyna in Awakening: six icons shown, the tool had listed none
+    Specials(rogue);
+    rogue.foundUnread = true;
+    const auto answer = rogue.LevelUp(Json{{"offers", true}, {"showMs", 0}});
+    REQUIRE(answer["specializations"].size() == 4);
+    CHECK(answer["specializations"][2] == Json{{"id", 4029}, {"name", "Ranger"}, {"state", "learnable"}});
+}
+
+TEST_CASE("a specialization is taken by name, its icon clicked, alone or with attributes", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    rogue.foundUnread = true;
+    const auto answer = rogue.LevelUp(Json{{"specialization", "ranger"}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    CHECK(answer["specialization"] == Json{{"id", 4029}, {"name", "Ranger"}});
+    CHECK(rogue.specials[2].selected);
+    CHECK(rogue.specialPoints == 0);
+    Rogue both; // with a level's attribute points too
+    Specials(both);
+    both.levels = 1;
+    both.LevelUp(Json{{"specialization", 4014}, {"attributes", {{"strength", 3}}}, {"showMs", 0}});
+    CHECK(both.specials[0].selected);
+    CHECK(both.strength == 13);
+}
+
+TEST_CASE("a specialization the screen does not list is refused, naming those it does", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    const auto answer = rogue.LevelUp(Json{{"specialization", "Reaver"}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no specialization \"Reaver\""));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Ranger (learnable)"));
+    CHECK(rogue.specialPoints == 1);
+}
+
+TEST_CASE("a locked specialization asked by name is refused as by id, nothing spent", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    const auto answer = rogue.LevelUp(Json{{"specialization", "Duelist"}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Duelist: it is locked"));
+    CHECK(rogue.specialPoints == 1);
 }
