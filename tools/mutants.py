@@ -2411,6 +2411,13 @@ MUTANTS = [
         "                usedAgain = true;\n                succeeded.reset();",
         "                succeeded.reset();",
     ),
+    # the answer on the call's record, for the log (#98)
+    Mutant(
+        "a call's record does not carry its answer",
+        BENCH,
+        "        record({}, &result.data);",
+        "        record({}, nullptr);",
+    ),
 ]
 
 

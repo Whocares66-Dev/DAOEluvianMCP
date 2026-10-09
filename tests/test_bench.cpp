@@ -262,12 +262,14 @@ TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
         Json args;
         Thread thread;
         std::string error;
+        Json answer;
     };
     std::vector<Seen> seen;
     BenchOptions options;
     options.onCall = [&seen](const CallRecord &call) {
         CHECK(call.ms >= 0);
-        seen.push_back(Seen{std::string(call.tool), call.args, call.thread, std::string(call.error)});
+        seen.push_back(Seen{std::string(call.tool), call.args, call.thread, std::string(call.error),
+                            call.answer != nullptr ? *call.answer : Json()});
     };
     Bench bench(options);
     bench.Tools().Add(ToolSpec{"echo", "Echo.", {}, Thread::Listener},
@@ -288,6 +290,8 @@ TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
     CHECK(seen[0].args["id"] == "0x7d9");
     CHECK(seen[0].thread == Thread::Listener);
     CHECK(seen[0].error.empty());
+    CHECK(seen[0].answer["id"] == "0x7d9"); // what it answered, for the log to say
     CHECK(seen[1].error == "refuse: not now");
+    CHECK(seen[1].answer.is_null());
     CHECK(seen[2].error == "broke");
 }

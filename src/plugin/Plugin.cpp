@@ -144,7 +144,16 @@ void LogCall(const CallRecord &call)
     const bool routine =
         call.tool == "health" || call.tool == "events" || call.tool == "wait_for" || call.tool == "log";
     const auto level = routine ? spdlog::level::debug : spdlog::level::info;
-    if (call.error.empty())
+    if (call.error.empty() && call.tool == "health" && call.answer != nullptr && call.answer->is_object())
+    {
+        // What health said, the frames' state and the game's mode: these
+        // lines were all there was of a crash's last thirteen seconds,
+        // and did not say the game was loading (lib-agent, 2026-10-08,
+        // #98).
+        spdlog::log(level, "call {} {}: answered in {:.0f} ms: state {}, mode {}", call.tool, args, call.ms,
+                    call.answer->value("state", std::string("?")), call.answer->value("mode", std::string("?")));
+    }
+    else if (call.error.empty())
     {
         spdlog::log(level, "call {} {}: answered in {:.0f} ms", call.tool, args, call.ms);
     }

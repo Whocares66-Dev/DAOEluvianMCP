@@ -37,6 +37,10 @@ struct CallRecord
     Thread thread = Thread::Frame;
     double ms = 0;          // from the call to its answer
     std::string_view error; // empty when it answered
+    // What it answered, null with a refusal: health's state and mode in
+    // the log were the trace a crash's last seconds wanted (lib-agent,
+    // 2026-10-08, #98).
+    const Json *answer = nullptr;
 };
 
 struct BenchOptions

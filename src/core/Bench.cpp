@@ -41,12 +41,12 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
     // misspelt argument is often why a tool refuses (#61).
     const Json ignored = tools_.Unknown(tool, args);
     const auto start = std::chrono::steady_clock::now();
-    const auto record = [&](std::string_view error) {
+    const auto record = [&](std::string_view error, const Json *answer = nullptr) {
         if (options_.onCall)
         {
             const double ms =
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            options_.onCall(CallRecord{tool, args, thread, ms, error});
+            options_.onCall(CallRecord{tool, args, thread, ms, error, answer});
         }
     };
     try
@@ -64,7 +64,7 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
             auto arguments = std::make_shared<const Json>(args);
             result = frames_.RunAndWait([handler, arguments] { return (*handler)(*arguments); }, options_.frameTimeout);
         }
-        record({});
+        record({}, &result.data);
         // First, where it is read: after a long list it went unseen
         // (turn-based-agent, 2026-10-05, #66).
         if (!ignored.empty() && result.data.is_object())
