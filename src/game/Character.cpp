@@ -1041,36 +1041,38 @@ ToolResult ToolGift(Bench &bench, const Watch &watch, const Json &raw)
         throw ToolError("gift: the game made no gift event");
     }
     api::SignalEvent(to, *event.get(), 1);
-    return Json{{"to", Brief(to)},
-                {"item", ItemJson(item, false)},
-                {"approvalBefore", before},
-                {"approvalAfter", api::GetFollowerApproval(to)},
-                {"given", !Holds(hero, item)},
-                {"cursor", cursor},
-                {"note", "the scripts move the item and change the approval; a special gift may start a "
-                         "conversation: inspect kind=game says the mode, and the events from `cursor` what "
-                         "followed"}};
+    // Handled a frame or more later, whatever the flag says: the gift
+    // tool (core/Gift.cpp) reads gift.state until it is (#81).
+    return Json{{"to", Brief(to)}, {"item", ItemJson(item, false)}, {"approvalBefore", before}, {"cursor", cursor}};
+}
+
+// What the gift has done so far: the follower's approval, and whether the
+// item is still in the pack.
+ToolResult ToolGiftState(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "gift");
+    const Args args(raw, "gift");
+    const ObjectId to = args.Id("to", "a follower");
+    const ObjectId item = args.Id("item", "an item");
+    return Json{{"approval", api::GetFollowerApproval(to)}, {"held", Holds(api::GetHero(), item)}};
 }
 
 } // namespace
 
 static void AddGift(Bench &bench, const Watch &watch)
 {
-    bench.Tools().Add(
-        ToolSpec{"gift",
-                 "Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, "
-                 "so its scripts change the approval and move the item, and a special gift may start a "
-                 "conversation. `to`, a follower in the party; `item`, an item of base type Gift from inspect "
-                 "kind=inventory. Answers the approval before and after (`approvalBefore`, `approvalAfter`; "
-                 "inspect kind=character's follower.approval reads it too), whether the item left the pack "
-                 "(`given`), and `cursor` for the events that followed.",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"to", {{"type", "string"}, {"description", "The follower's id"}}},
-                        {"item", {{"type", "string"}, {"description", "The gift's id"}}}}},
-                      {"required", {"to", "item"}}},
-                 Thread::Frame},
-        [&bench, &watch](const Json &raw) -> ToolResult { return ToolGift(bench, watch, raw); });
+    // The gift tool's steps, unlisted: the tool itself is core/Gift.cpp's.
+    const Json which = {{"type", "object"},
+                        {"properties", {{"to", {{"type", "string"}}}, {"item", {{"type", "string"}}}}},
+                        {"required", {"to", "item"}}};
+    ToolSpec give{"gift.give", "The gift's event signalled: the `gift` tool's first step.", which, Thread::Frame};
+    give.listed = false;
+    bench.Tools().Add(std::move(give),
+                      [&bench, &watch](const Json &raw) -> ToolResult { return ToolGift(bench, watch, raw); });
+    ToolSpec state{"gift.state", "The follower's approval and whether the item is held: the `gift` tool's read.", which,
+                   Thread::Frame};
+    state.listed = false;
+    bench.Tools().Add(std::move(state), [&watch](const Json &raw) -> ToolResult { return ToolGiftState(watch, raw); });
 }
 
 } // namespace eluvian::game

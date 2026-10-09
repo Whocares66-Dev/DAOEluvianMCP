@@ -13,6 +13,7 @@
 #include "core/Conversation.h"
 #include "core/Craft.h"
 #include "core/EventLog.h"
+#include "core/Gift.h"
 #include "core/Http.h"
 #include "core/LevelUp.h"
 #include "core/Loot.h"
@@ -235,6 +236,7 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     AddScenarioTool(g->bench, whyNothing);
     AddWaitUntilTool(g->bench);
     AddWaitReadyTool(g->bench);
+    AddGiftTool(g->bench);
     AddTravelTool(g->bench);
     AddDialogueTool(g->bench);
     // A second on each screen a tool opens and closes in one call, so that

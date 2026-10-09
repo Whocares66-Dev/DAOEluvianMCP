@@ -115,6 +115,7 @@ CRAFT = "src/core/Craft.cpp"
 CONVERSATION = "src/core/Conversation.cpp"
 PLACEABLES = "src/core/Placeables.cpp"
 GFXLIST = "src/core/GfxList.cpp"
+GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
@@ -2475,6 +2476,37 @@ MUTANTS = [
         TRAVEL,
         "        return End(distance <= std::max(within_, kUseReach), std::move(reason));",
         "        return End(distance >= 0, std::move(reason));",
+    ),
+    # a gift answered once the game has taken it (#81)
+    Mutant(
+        "a gift answers as it is signalled",
+        GIFT,
+        "    while (!taken)\n",
+        "    while (!taken && false)\n",
+    ),
+    Mutant(
+        "a gift is not taken when the item leaves the pack",
+        GIFT,
+        '            taken = !state.value("held", true) || state.value("approval", Json()) != before;',
+        '            taken = state.value("approval", Json()) != before;',
+    ),
+    Mutant(
+        "a gift is not taken when the approval moves",
+        GIFT,
+        '            taken = !state.value("held", true) || state.value("approval", Json()) != before;',
+        '            taken = !state.value("held", true);',
+    ),
+    Mutant(
+        "a gift waits past its budget",
+        GIFT,
+        "        if (taken || Clock::now() - started >= budget)",
+        "        if (taken)",
+    ),
+    Mutant(
+        "a gift says nothing of a gift not taken",
+        GIFT,
+        "    if (!taken)\n    {",
+        "    if (taken && !taken)\n    {",
     ),
 ]
 

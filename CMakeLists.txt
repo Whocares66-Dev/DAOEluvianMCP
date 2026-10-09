@@ -152,6 +152,7 @@ add_library(
     src/core/Origin.cpp
     src/core/Party.cpp
     src/core/GfxList.cpp
+    src/core/Gift.cpp
     src/core/Placeables.cpp
     src/core/Ready.cpp
     src/core/Requirements.cpp
