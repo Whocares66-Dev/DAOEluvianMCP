@@ -68,8 +68,19 @@ extern/DAOLib the submodule
 
 ```powershell
 .\tools\build.ps1 -Preset debug -Test -Format -Lint
+```
+
+That is all a commit on a feature branch needs (`-Preset core -Test` is the faster loop while the work is in the core); a build for play (a `deploy-*` branch) adds the `release` build it deploys, `-Preset release -Test`. The rest is the merge's (the user, 2026-10-09: "We should only run them when ready to merge to master. If we find an issue later in dev, we can just fix it on the dev branch. We squash before merging to master anyway"; until then the whole of it ran before every commit and every build for play, and three gated side by side kept the machine loaded for a night).
+
+## Before a merge to master
+
+Once, on the commits that will merge:
+
+```powershell
+.\tools\build.ps1 -Preset debug -Test -Format -Lint
 .\tools\build.ps1 -Preset debug-asan -Test
 .\tools\build.ps1 -Preset debug-analyze
+.\tools\build.ps1 -Preset release -Test
 ```
 
 A change to `src/core`'s logic also runs `python tools\mutants.py` (from the shell `tools\build.ps1 -Preset core` ran in: `.\tools\build.ps1 -Preset core; python tools\mutants.py`), and every mutant must be caught; a new promise gets a mutant, and a survivor the test that catches it. Each mutant breaks one promise with a small edit; the workers each break their own copy of the core under `build\mutants\wN`, at below normal priority, so the working tree is only read (`-j N` sets how many at a time; names filter). The tests run there with every core busy and twenty copies at once, so a test that needs millisecond scheduling, or shares a temporary file's name with its copies, fails there with nothing broken and counts a mutant caught that is not (three such, 2026-10-03): a mutant caught that should not be is run alone (`-j 1` and its name). A mutant's text is the code as the formatter leaves it: write and run mutants after `-Format`, or a later format leaves them matching nothing (four such, 2026-10-03). `-Preset core-cov -Coverage` shows what the tests never run; the mutants, what they run without checking.
