@@ -59,6 +59,7 @@ struct World
     std::string area = "ruins";     // the area's tag
     bool crosses = true;            // whether using the exit takes the party out
     int exitUnlocks = 0;            // uses of the exit that only unlock it, before one goes through
+    int slowLoad = 0;               // health calls the exit's load is said for, if more than one (#99)
     bool exitActive = true;         // whether the exit is active
     bool loads = false;             // whether the crossing loads the other area over a health call
     int loadingFor = 0;             // health calls an area's loading is still said for
@@ -276,7 +277,7 @@ struct World
             // still says loading for one more health call.
             area = "forest";
             mode = "loading";
-            loadingFor = 1;
+            loadingFor = slowLoad > 0 ? slowLoad : 1;
             bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "area"}});
             bench.Events().Emit("eluvian.script.area_loaded", Json{{"receiver", "module"}});
         }
@@ -362,6 +363,10 @@ struct World
     // The stand-in's order.
     ToolResult FakeOrder(const Json &args)
     {
+        if (mode == "loading")
+        {
+            throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
+        }
         if (doorLoads && !shut)
         {
             throw ToolError("order: an area is loading; wait_for topic \"eluvian.mode.changed\" and try again");
@@ -869,6 +874,7 @@ TEST_CASE("a thing whose walk's end none can stand on is reached when a move bri
     World world;
     world.shut = false;
     world.stuck = true; // a cocoon overhead: each move ends where it began
+    world.at = 4;       // beneath it, 4 m off (the Elven Ruins' was 4 m up)
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == true);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("as near as the walk goes"));
@@ -1216,7 +1222,7 @@ TEST_CASE("an exit named ahead is not used as a door: as far as the search got, 
     World world;
     world.exitAhead = true;
     const auto answer = world.Travel();
-    CHECK(answer["arrived"] == true); // a thing is used from as near as the walk goes
+    CHECK(answer["arrived"] == false); // 11 m off, beyond the exit: as near as the walk goes, not there (#100)
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("0x240e9 World Map, an exit"));
     CHECK(answer["exitAhead"]["id"] == "0x240e9");
     REQUIRE(world.orders.size() == 1);
@@ -1249,7 +1255,7 @@ TEST_CASE("a thing in the way that is not interactive is walked up to, not used"
     beside.inert = true;
     beside.inertStays = true;
     const auto target = beside.Travel();
-    CHECK(target["arrived"] == true);
+    CHECK(target["arrived"] == false); // 11 m off, behind it: as near as the walk goes, not there (#100)
     CHECK_THAT(target["reason"].get<std::string>(), ContainsSubstring("as near as the walk goes: 0x2a1b4"));
 }
 
@@ -1540,4 +1546,32 @@ TEST_CASE("upTo is for a target or a point, and more than nothing", "[travel]")
     World world;
     CHECK_THROWS_WITH(world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"upTo", 10}}), ContainsSubstring("upTo"));
     CHECK_THROWS_WITH(world.Travel(Json{{"upTo", 0}}), ContainsSubstring("more than 0"));
+}
+
+TEST_CASE("an exit's load longer than the grace is waited for, not met with a second use", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.crosses = false;
+    world.loads = true;
+    world.slowLoad = 6; // three seconds of loading, at a health call each half second
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 8000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(std::count_if(world.orders.begin(), world.orders.end(),
+                        [](const Json &order) { return order["action"] == "use"; }) == 1);
+    // Not asked during the load either, the game refusing it there.
+    CHECK(std::ranges::none_of(answer["steps"], [](const Json &step) { return step["did"] == "use 0x1f5 again"; }));
+}
+
+TEST_CASE("as near as the walk goes, far from the target, is not arrived", "[travel]")
+{
+    World world; // the walker gets no nearer, 20 m off, with 6 asked
+    world.shut = false;
+    world.at = 20;
+    world.stuck = true;
+    const auto answer = world.Travel(Json{{"within", 6}});
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("as near as the walk goes"));
+    CHECK(answer["distance"] == 20);
 }

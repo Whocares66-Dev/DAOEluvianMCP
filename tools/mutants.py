@@ -1592,18 +1592,6 @@ MUTANTS = [
         'const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");',
         "const bool exitAhead = false;",
     ),
-    Mutant(
-        "travel takes a target behind an exit ahead for unreached",
-        TRAVEL,
-        'return End(true, "as near as the walk goes: " + why + " (order use',
-        'return End(false, "as near as the walk goes: " + why + " (order use',
-    ),
-    Mutant(
-        "travel takes a target behind a thing not interactive for unreached",
-        TRAVEL,
-        'return End(true, "as near as the walk goes: " + why);',
-        'return End(false, "as near as the walk goes: " + why);',
-    ),
     # #50: a blocker that is not interactive is not used.
     Mutant(
         "travel uses a thing in the way that is not interactive",
@@ -2403,14 +2391,14 @@ MUTANTS = [
     Mutant(
         "travel waits out a key-locked exit its first use unlocked",
         TRAVEL,
-        "            if (succeeded && !usedAgain && Clock::now() - *succeeded > kUnlockGrace)",
-        "            if (succeeded && usedAgain && Clock::now() - *succeeded > kUnlockGrace)",
+        "        if (!succeeded || usedAgain || Clock::now() - *succeeded <= kUnlockGrace)",
+        "        if (!succeeded || !usedAgain || Clock::now() - *succeeded <= kUnlockGrace)",
     ),
     Mutant(
         "travel uses an exit again and again",
         TRAVEL,
-        "                usedAgain = true;\n                succeeded.reset();",
-        "                succeeded.reset();",
+        "        usedAgain = true;\n        succeeded.reset();",
+        "        succeeded.reset();",
     ),
     # the answer on the call's record, for the log (#98)
     Mutant(
@@ -2474,6 +2462,19 @@ MUTANTS = [
         GFXLIST,
         "        joined = comma == std::string_view::npos ? std::string_view() : joined.substr(comma + 1);",
         "        joined = std::string_view();",
+    ),
+    # a crossing's load waited through; as near as the walk goes, near only (#99, #100)
+    Mutant(
+        "travel uses an exit again during its load",
+        TRAVEL,
+        '        if (answer_.value("mode", std::string()) == "loading")',
+        '        if (answer_.value("mode", std::string()) == "dialog")',
+    ),
+    Mutant(
+        "travel says arrived as near as the walk goes however far",
+        TRAVEL,
+        "        return End(distance <= std::max(within_, kUseReach), std::move(reason));",
+        "        return End(distance >= 0, std::move(reason));",
     ),
 ]
 

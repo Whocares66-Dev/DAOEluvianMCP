@@ -498,20 +498,37 @@ class Journey
             {
                 return std::move(*end);
             }
-            if (succeeded && !usedAgain && Clock::now() - *succeeded > kUnlockGrace)
-            {
-                usedAgain = true;
-                succeeded.reset();
-                if (!Ask("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}}))
-                {
-                    return End(false, *stopped_);
-                }
-                steps_.push_back(Json{{"did", "use " + exit + " again"},
-                                      {"result", "asked: the first use ended, and no load began (a key's "
-                                                 "first use unlocks)"}});
-            }
+            UseOnceMore(exit, succeeded, usedAgain);
         }
         return End(false, "the party did not leave in the time given; the exit was used");
+    }
+
+    // A key-locked exit's second use (#96): once its first use ended in
+    // success and no load began within kUnlockGrace. Never once a load has
+    // begun, which is the crossing under way: a second use ordered during
+    // one was refused (an area is loading), and the refusal ended a
+    // crossing that went through (turn-based-agent, 2026-10-09, #99). A
+    // refusal is said in the steps, and the crossing waits on.
+    void UseOnceMore(const std::string &exit, std::optional<Clock::time_point> &succeeded, bool &usedAgain)
+    {
+        if (answer_.value("mode", std::string()) == "loading")
+        {
+            usedAgain = true;
+        }
+        if (!succeeded || usedAgain || Clock::now() - *succeeded <= kUnlockGrace)
+        {
+            return;
+        }
+        usedAgain = true;
+        succeeded.reset();
+        if (!Ask("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}}))
+        {
+            steps_.push_back(Json{{"did", "use " + exit + " again"}, {"result", *stopped_}});
+            stopped_.reset();
+            return;
+        }
+        steps_.push_back(Json{{"did", "use " + exit + " again"},
+                              {"result", "asked: the first use ended, and no load began (a key's first use unlocks)"}});
     }
 
     // A use of the exit that failed: tried once more from a step back,
@@ -773,7 +790,7 @@ class Journey
         const double length = walk.value("length", distance);
         if (length < 0.5)
         {
-            return End(true, "as near as the walk goes");
+            return AsNear("as near as the walk goes");
         }
         // A walk whose end the creature cannot stand on, under a
         // thing that fills its place or hangs overhead: each move
@@ -786,7 +803,7 @@ class Journey
         {
             if (where_.contains("target"))
             {
-                return End(true, "as near as the walk goes: the last move brought it no nearer");
+                return AsNear("as near as the walk goes: the last move brought it no nearer");
             }
             return End(false, "the walk goes no nearer: the last move brought it no nearer");
         }
@@ -872,7 +889,7 @@ class Journey
                                   std::to_string(std::lround(distance)) +
                                   " m off, and the walk gets no nearer: order use on it walks up to it");
         }
-        return End(true, "as near as the walk goes: the target itself stands in the way");
+        return AsNear("as near as the walk goes: the target itself stands in the way");
     }
 
     std::optional<Json> ShutForGood(const Json &walk, const std::string &blocker)
@@ -1003,7 +1020,7 @@ class Journey
                               ", an exit, stands in the way; it is not used on the way, as it leaves the area";
             if (where_.contains("target"))
             {
-                return End(true, "as near as the walk goes: " + why + " (order use on the target walks the rest)");
+                return AsNear("as near as the walk goes: " + why + " (order use on the target walks the rest)");
             }
             return End(false, "no walk there: " + why);
         }
@@ -1015,7 +1032,7 @@ class Journey
                               "it, a trigger near it perhaps (inspect kind=triggers)";
             if (where_.contains("target"))
             {
-                return End(true, "as near as the walk goes: " + why);
+                return AsNear("as near as the walk goes: " + why);
             }
             return End(false, "no walk there: " + why);
         }
@@ -1383,6 +1400,16 @@ class Journey
         {
             answer_.erase("distance");
         }
+    }
+
+    // A target reached as near as the walk goes counts as arrived near it
+    // only: within `within`, or a use's reach (#80) for a thing that fills
+    // its own place. 20 m from an archer where no path led, with `within`
+    // 6, it read arrived (turn-based-agent, 2026-10-09, #100).
+    Json AsNear(std::string reason)
+    {
+        const double distance = answer_.value("distance", 0.0);
+        return End(distance <= std::max(within_, kUseReach), std::move(reason));
     }
 
     Json End(bool arrived, std::string reason)
