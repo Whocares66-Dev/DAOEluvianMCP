@@ -156,6 +156,10 @@ std::string PlaceableLine(const Json &p)
     if (lock.value("keyRequired", false))
     {
         line += ", key " + lock.value("keyTag", std::string());
+        if (lock.contains("keyHeld"))
+        {
+            line += lock.value("keyHeld", false) ? " (held)" : " (not held)";
+        }
     }
     if (!p.value("interactive", true))
     {
@@ -172,6 +176,24 @@ std::string PlaceableLine(const Json &p)
 // kind=placeables reads them, so a door the story keeps shut (pick level
 // 10000) is told from one a use opens (#33), and where it leads if it is an
 // exit, which no use on the way opens (#38).
+// A placeable's lock: whether its key is required, the key's tag, the
+// pick level, and whether the party carries the key, which a door whose
+// key is required opens to and nothing else (#40). The party's things
+// are the hero's. For a walk's blocker and for kind=placeables alike: a
+// driver read a door's lock only through the walk (#93).
+Json LockJson(ObjectId id)
+{
+    const std::wstring key = api::GetPlaceableKeyTag(id);
+    Json lock = {{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
+                 {"keyTag", Narrow(key)},
+                 {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
+    if (!key.empty())
+    {
+        lock["keyHeld"] = api::CountItemsByTag(api::GetHero(), key) > 0;
+    }
+    return lock;
+}
+
 Json BlockerJson(ObjectId id)
 {
     Json blocker = Brief(id);
@@ -180,16 +202,7 @@ Json BlockerJson(ObjectId id)
         blocker["state"] = api::GetPlaceableState(id);
         blocker["stateName"] = PlaceableStateWord(id);
         blocker["interactive"] = api::GetObjectInteractive(id) != 0; // nothing uses one that is not (#50)
-        const std::wstring key = api::GetPlaceableKeyTag(id);
-        blocker["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
-                               {"keyTag", Narrow(key)},
-                               {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
-        // Whether the party carries the key: a door whose key is required
-        // opens to nothing else (#40). The party's things are the hero's.
-        if (!key.empty())
-        {
-            blocker["lock"]["keyHeld"] = api::CountItemsByTag(api::GetHero(), key) > 0;
-        }
+        blocker["lock"] = LockJson(id);
         if (Json leads = LeadsTo(id, false); !leads.is_null())
         {
             blocker["leadsTo"] = std::move(leads);
@@ -521,9 +534,7 @@ ToolResult KindPlaceables(const Watch &watch, const Json &raw)
         placeable["active"] = active;
         placeable["interactive"] = api::GetObjectInteractive(id) != 0;
         placeable["popup"] = Narrow(api::GetPlaceablePopupText(id));
-        placeable["lock"] = Json{{"keyRequired", api::GetPlaceableKeyRequired(id) != 0},
-                                 {"keyTag", Narrow(api::GetPlaceableKeyTag(id))},
-                                 {"pickLevel", api::GetPlaceablePickLockLevel(id)}};
+        placeable["lock"] = LockJson(id);
         if (auto leads = LeadsTo(id, false); !leads.is_null())
         {
             placeable["leadsTo"] = std::move(leads);
@@ -1118,9 +1129,11 @@ void AddInspect(Bench &bench, const Watch &watch)
         KindSpec{"placeables",
                  "The doors, chests, levers and other placeables in the area (or within `radius` of `near`), "
                  "nearest first: id, name, tag, template, position, distance, `state` (the placeable's own "
-                 "number: a door's or a chest's changes when it opens), whether it is active and can be "
-                 "interacted with, what its tooltip says, and its lock: whether it needs a key, the key's tag, "
-                 "and the level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
+                 "number: a door's or a chest's changes when it opens) and `stateName` (shut, locked, open, "
+                 "destroyed), what a use of it does now (`action`, `actionName`: loot, unlock, open, use, ...), "
+                 "whether it is active and can be interacted with, what its tooltip says, and its `lock`: "
+                 "whether it needs a key, the key's tag and whether the party holds it (`keyHeld`), and the "
+                 "level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
                  "waypoint's there). order action=use uses one. `interactive: true` keeps only those that can be "
                  "used; `brief: true` answers a line each (`lines`) instead."},
         [&watch](const Json &raw) -> ToolResult { return KindPlaceables(watch, raw); });
