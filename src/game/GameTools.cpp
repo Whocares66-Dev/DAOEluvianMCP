@@ -47,6 +47,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddGui(bench, watch);
     AddStore(bench, watch);
     AddWorldMap(bench, watch);
+    AddTactics(bench, watch);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);

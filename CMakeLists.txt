@@ -151,6 +151,7 @@ add_library(
     src/core/Mcp.cpp
     src/core/Origin.cpp
     src/core/Party.cpp
+    src/core/GfxList.cpp
     src/core/Placeables.cpp
     src/core/Ready.cpp
     src/core/Requirements.cpp
@@ -255,6 +256,7 @@ add_daolib_plugin(
         src/game/Script.cpp
         src/game/Shared.cpp
         src/game/Stage.cpp
+        src/game/Tactics.cpp
         src/game/Store.cpp
         src/game/WorldMap.cpp
         src/plugin/HostApi.cpp

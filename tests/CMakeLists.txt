@@ -34,6 +34,7 @@ add_executable(
     test_log_tail.cpp
     test_loot.cpp
     test_party.cpp
+    test_gfx_list.cpp
     test_placeables.cpp
     test_mcp.cpp
     test_origin.cpp

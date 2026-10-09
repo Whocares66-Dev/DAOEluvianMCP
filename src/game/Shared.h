@@ -239,6 +239,48 @@ class DeathWatch
     std::map<ObjectId, Entry> watched_;
 };
 
+// A row of one of the game's rule tables: its id, the designers' label, and
+// its name in the player's language where the table has one.
+Json Rule(std::int32_t table, std::int32_t row);
+
+// An engine FSCommand, as a screen's DAExternalCommands calls it: the
+// engine's handler leaves its answer in the movie's _root.fsc_retval (and a
+// list's parallel second one in fsc_retval2), a list as its elements
+// comma-joined. Asked of the first screen shown that has DAExternalCommands:
+// the quickbar is not shown while a picker, a conversation or a full screen
+// is up (turn-based-agent, 2026-10-05). Nothing if no screen took it.
+struct ExternalAnswer
+{
+    std::string first;  // fsc_retval, as text
+    std::string second; // fsc_retval2, as text; empty if none
+};
+std::optional<ExternalAnswer> ExternalCommand(std::string_view command, std::span<const dao::gui::Value> args);
+
+// Another party member made the one the interface has selected, for a
+// screen that acts on GUI.SelectedChar (the inventory, the tactics), and
+// control given back to whom had it as the call ends, a refusal too (#86).
+class SelectedFor
+{
+  public:
+    SelectedFor(ObjectId who, ObjectId selected, std::string_view tool);
+    SelectedFor(const SelectedFor &) = delete;
+    SelectedFor &operator=(const SelectedFor &) = delete;
+    SelectedFor(SelectedFor &&) = delete;
+    SelectedFor &operator=(SelectedFor &&) = delete;
+    ~SelectedFor();
+
+    // Says the hand-over in the answer, if there was one.
+    void Say(Json &answer) const;
+
+  private:
+    ObjectId before_;
+    bool handed_ = false;
+};
+
+// The character the interface has selected (GUI.SelectedChar.ID), or the
+// one controlled where the tree has none.
+ObjectId SelectedCharacter();
+
 DeathWatch &Deaths();
 
 // Each tool's registration, in its own file.
@@ -257,5 +299,6 @@ void AddCharacter(Bench &bench, const Watch &watch); // inspect's character, equ
 void AddGui(Bench &bench, const Watch &watch);       // inspect's gui
 void AddStore(Bench &bench, const Watch &watch);
 void AddWorldMap(Bench &bench, const Watch &watch); // inspect's worldmap
+void AddTactics(Bench &bench, const Watch &watch);
 
 } // namespace eluvian::game

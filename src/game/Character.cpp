@@ -18,32 +18,6 @@ namespace eluvian::game
 namespace
 {
 
-// A row of one of the game's rule tables: its id, the designers' label, and
-// its name in the player's language where the table has one.
-Json Rule(std::int32_t table, std::int32_t row)
-{
-    Json rule = {{"id", row}, {"label", Narrow(api::GetM2DAString(table, L"Label", row))}};
-    // The tables do not agree on the column: classes and base items keep
-    // the name's string reference in NameStrRef, races in Name.
-    auto name = api::GetM2DAInt(table, L"NameStrRef", row);
-    if (name <= 0)
-    {
-        name = api::GetM2DAInt(table, L"Name", row);
-    }
-    if (name <= 0)
-    {
-        name = api::GetM2DAInt(table, L"StrRef", row); // the tactics' tables
-    }
-    if (name > 0)
-    {
-        if (const auto text = Narrow(dao::tlk::String(static_cast<std::uint32_t>(name))); !text.empty())
-        {
-            rule["name"] = text;
-        }
-    }
-    return rule;
-}
-
 struct Named
 {
     std::int32_t id;
@@ -866,27 +840,14 @@ std::int32_t SlotFor(const Args &args, std::int32_t mask)
 // full screen is up (turn-based-agent, 2026-10-05).
 std::optional<Json> Requirements(ObjectId item, ObjectId who)
 {
-    for (const wchar_t *screen : {L"Quickbar", L"Inventory", L"CharacterRecord", L"Store"})
+    const std::array<dao::gui::Value, 2> ids{dao::gui::Value::Number(static_cast<double>(item)),
+                                             dao::gui::Value::Number(static_cast<double>(who))};
+    const auto said = ExternalCommand("GetItemRequirements", ids);
+    if (!said)
     {
-        auto movie = dao::gui::ScreenMovie(screen);
-        if (!movie)
-        {
-            continue;
-        }
-        const std::array<dao::gui::Value, 2> ids{dao::gui::Value::Number(static_cast<double>(item)),
-                                                 dao::gui::Value::Number(static_cast<double>(who))};
-        if (!movie->Call("DAExternalCommands.GetItemRequirements", ids))
-        {
-            continue;
-        }
-        using Type = dao::gui::Value::Type;
-        const auto said = movie->Get("_root.fsc_retval");
-        if (said && (said->type == Type::String || said->type == Type::StringW))
-        {
-            return ItemRequirements(said->text);
-        }
+        return std::nullopt;
     }
-    return std::nullopt;
+    return ItemRequirements(said->first);
 }
 
 // An item's own restrictions are among its properties:
@@ -936,64 +897,6 @@ void WhyNotOn(ObjectId item, ObjectId who, Json &answer)
     }
 }
 
-// Another party member made the one selected for an equip, and control
-// given back to whom had it as the call ends, a refusal too (#86).
-class SelectedFor
-{
-  public:
-    SelectedFor(ObjectId who, ObjectId selected) : before_(api::GetMainControlled())
-    {
-        if (who == selected)
-        {
-            return;
-        }
-        if (!PartyOf(api::GetHero()).contains(who))
-        {
-            throw ToolError(std::format("equip: {} is not in the party; the inventory screen equips a party "
-                                        "member (inspect kind=game lists the party)",
-                                        FormatId(who)));
-        }
-        api::SetPrimaryControlled(who);
-        handed_ = true;
-        const auto now = static_cast<ObjectId>(
-            dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
-        if (now != who)
-        {
-            throw ToolError(std::format("equip: control passed to {} but the interface still selects {}, "
-                                        "and the inventory screen equips that one; nothing was equipped. "
-                                        "order {{\"action\": \"control\", \"id\": \"{}\"}}, then "
-                                        "equip again",
-                                        FormatId(who), FormatId(now), FormatId(who)));
-        }
-    }
-    SelectedFor(const SelectedFor &) = delete;
-    SelectedFor &operator=(const SelectedFor &) = delete;
-    SelectedFor(SelectedFor &&) = delete;
-    SelectedFor &operator=(SelectedFor &&) = delete;
-    ~SelectedFor()
-    {
-        if (handed_ && before_ != kInvalidObject)
-        {
-            api::SetPrimaryControlled(before_);
-        }
-    }
-
-    // Says the hand-over in the answer, if there was one.
-    void Say(Json &answer) const
-    {
-        if (handed_)
-        {
-            answer["selectedFirst"] = true;
-            answer["controlled"] = Brief(before_);
-            answer["note"] = "control passed to the creature for the equip and back to whom had it";
-        }
-    }
-
-  private:
-    ObjectId before_;
-    bool handed_ = false;
-};
-
 ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
 {
     RequireWorld(watch, "equip");
@@ -1014,7 +917,7 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
     // (turn-based-agent, 2026-10-03, #31). Another one is selected so,
     // equipped, and control given back, where the driver did both by
     // hand (#86).
-    const SelectedFor selection(who, selected);
+    const SelectedFor selection(who, selected, "equip");
     const auto set = api::GetActiveWeaponSet(who);
     Json answer = {{"action", action},
                    {"item", ItemJson(item, false)},

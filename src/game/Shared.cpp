@@ -4,6 +4,8 @@
 
 #include "core/Placeables.h"
 
+#include "dao/Data.h"
+
 #include <algorithm>
 #include <cwctype>
 #include <regex>
@@ -379,6 +381,100 @@ Json DurationJson(dao::script::EffectDurationType type)
 // An ability by id and its name in the player's language ("Fireball");
 // null for none. The names come from the data tables, loaded by the main
 // menu (dao/Abilities.h).
+// A row of one of the game's rule tables: its id, the designers' label, and
+// its name in the player's language where the table has one.
+Json Rule(std::int32_t table, std::int32_t row)
+{
+    Json rule = {{"id", row}, {"label", Narrow(api::GetM2DAString(table, L"Label", row))}};
+    // The tables do not agree on the column: classes and base items keep
+    // the name's string reference in NameStrRef, races in Name.
+    auto name = api::GetM2DAInt(table, L"NameStrRef", row);
+    if (name <= 0)
+    {
+        name = api::GetM2DAInt(table, L"Name", row);
+    }
+    if (name <= 0)
+    {
+        name = api::GetM2DAInt(table, L"StrRef", row); // the tactics' tables
+    }
+    if (name > 0)
+    {
+        if (const auto text = Narrow(dao::tlk::String(static_cast<std::uint32_t>(name))); !text.empty())
+        {
+            rule["name"] = text;
+        }
+    }
+    return rule;
+}
+
+ObjectId SelectedCharacter()
+{
+    return static_cast<ObjectId>(
+        dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
+}
+
+SelectedFor::SelectedFor(ObjectId who, ObjectId selected, std::string_view tool) : before_(api::GetMainControlled())
+{
+    if (who == selected)
+    {
+        return;
+    }
+    if (!PartyOf(api::GetHero()).contains(who))
+    {
+        throw ToolError(std::format("{}: {} is not in the party; the screen acts on a party member (inspect "
+                                    "kind=game lists the party)",
+                                    tool, FormatId(who)));
+    }
+    api::SetPrimaryControlled(who);
+    handed_ = true;
+    if (const ObjectId now = SelectedCharacter(); now != who)
+    {
+        throw ToolError(std::format("{}: control passed to {} but the interface still selects {}, and the screen "
+                                    "acts on that one; nothing was done. order {{\"action\": \"control\", \"id\": "
+                                    "\"{}\"}}, then {} again",
+                                    tool, FormatId(who), FormatId(now), FormatId(who), tool));
+    }
+}
+
+SelectedFor::~SelectedFor()
+{
+    if (handed_ && before_ != kInvalidObject)
+    {
+        api::SetPrimaryControlled(before_);
+    }
+}
+
+void SelectedFor::Say(Json &answer) const
+{
+    if (handed_)
+    {
+        answer["selectedFirst"] = true;
+        answer["controlled"] = Brief(before_);
+        answer["note"] = "control passed to the creature for the screen's work and back to whom had it";
+    }
+}
+
+std::optional<ExternalAnswer> ExternalCommand(std::string_view command, std::span<const dao::gui::Value> args)
+{
+    const std::string method = "DAExternalCommands." + std::string(command);
+    for (const wchar_t *screen : {L"Quickbar", L"Inventory", L"CharacterRecord", L"Store", L"Tactics"})
+    {
+        auto movie = dao::gui::ScreenMovie(screen);
+        if (!movie || !movie->Call(method.c_str(), args))
+        {
+            continue;
+        }
+        const auto first = movie->Get("_root.fsc_retval");
+        if (!first)
+        {
+            continue;
+        }
+        const auto second = movie->Get("_root.fsc_retval2");
+        return ExternalAnswer{first->text, second ? second->text : std::string()};
+    }
+    return std::nullopt;
+}
+
 Json AbilityJson(std::int32_t ability)
 {
     if (ability <= 0)

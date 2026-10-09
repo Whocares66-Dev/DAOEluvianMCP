@@ -114,6 +114,7 @@ LEVELUP = "src/core/LevelUp.cpp"
 CRAFT = "src/core/Craft.cpp"
 CONVERSATION = "src/core/Conversation.cpp"
 PLACEABLES = "src/core/Placeables.cpp"
+GFXLIST = "src/core/GfxList.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
@@ -2448,6 +2449,31 @@ MUTANTS = [
         TRAVEL,
         "            if (*upTo_ <= 0)",
         "            if (*upTo_ < 0)",
+    ),
+    # a movie's list, comma-joined (#89)
+    Mutant(
+        "a movie's list keeps a blank before an element",
+        GFXLIST,
+        "        while (!element.empty() && element.front() == ' ')",
+        "        while (!element.empty() && element.front() == 'x')",
+    ),
+    Mutant(
+        "a movie's list keeps a blank after an element",
+        GFXLIST,
+        "        while (!element.empty() && element.back() == ' ')",
+        "        while (!element.empty() && element.back() == 'x')",
+    ),
+    Mutant(
+        "a movie's list takes a number with something after it",
+        GFXLIST,
+        "        if (error == std::errc() && end == element.data() + element.size() && !element.empty())",
+        "        if (error == std::errc() && !element.empty())",
+    ),
+    Mutant(
+        "a movie's list stops at its first comma",
+        GFXLIST,
+        "        joined = comma == std::string_view::npos ? std::string_view() : joined.substr(comma + 1);",
+        "        joined = std::string_view();",
     ),
 ]
 
