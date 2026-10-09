@@ -303,12 +303,117 @@ class Journey
             answer_["swapped"] = true;
             return Map(false);
         }
+        if (auto byCity = ByCity(map))
+        {
+            return std::move(*byCity);
+        }
         std::string where = shown.empty() ? std::string("the world map") : "the " + shown + " map";
         if (swapped_)
         {
             where += " or the other";
         }
         return End(false, "no pin " + to_.dump() + " on " + where + "; the active ones: " + others);
+    }
+
+    // The map of the designer maps (inspect kind=maps) that holds the pin
+    // `to` names: its tag and the areas its pins lead to. Nothing if none.
+    std::optional<std::pair<std::string, std::set<std::string>>> MapHolding()
+    {
+        const auto maps = Ask("inspect", Json{{"kind", "maps"}});
+        if (!maps)
+        {
+            return std::nullopt;
+        }
+        for (const Json &map : maps->value("maps", Json::array()))
+        {
+            const Json pins = map.value("pins", Json::array());
+            if (std::ranges::none_of(pins, [this](const Json &pin) { return Names(pin); }))
+            {
+                continue;
+            }
+            std::set<std::string> areas;
+            for (const Json &pin : pins)
+            {
+                areas.insert(pin.value("area", std::string()));
+            }
+            return std::make_pair(map.value("tag", std::string()), std::move(areas));
+        }
+        return std::nullopt;
+    }
+
+    // A pin on a map not up: a city's district, from outside the city
+    // (#91). The wide map leads into a city by an area the two share: its
+    // Denerim pin goes to den200ar_market, a pin of denerim.map too
+    // (lib-agent, 2026-10-09). So the map holding the pin is found, and the
+    // shown map's active pin into one of its areas; the party goes there,
+    // uses the area's way to the map, which opens the city's, and takes the
+    // pin there. Once a journey; nothing if there is no such way.
+    std::optional<Json> ByCity(const Json &map)
+    {
+        if (cityTried_)
+        {
+            return std::nullopt;
+        }
+        cityTried_ = true;
+        const auto holding = MapHolding();
+        if (!holding)
+        {
+            return std::nullopt;
+        }
+        const Json pins = map.value("pins", Json::array());
+        const auto entry = std::ranges::find_if(pins, [&holding](const Json &pin) {
+            return pin.value("state", std::string()) == "active" &&
+                   holding->second.contains(pin.value("area", std::string()));
+        });
+        if (entry == pins.end())
+        {
+            return std::nullopt;
+        }
+        steps_.push_back(Json{{"did", "to " + to_.dump() + " by " + entry->value("name", std::string())},
+                              {"result", "a pin of the " + holding->first + " map"}});
+        const Json wanted = to_;
+        to_ = entry->value("tag", std::string());
+        const Json there = Map(false);
+        to_ = wanted;
+        if (!there.value("arrived", false))
+        {
+            return std::make_optional(there);
+        }
+        return std::make_optional(OpenCityMap());
+    }
+
+    // In the city's entry area: its way to the map used, which opens the
+    // city's, and the pin `to` names taken there.
+    Json OpenCityMap()
+    {
+        const auto listed = Ask("inspect", Json{{"kind", "exits"}, {"near", who_}});
+        const Json exits = listed ? listed->value("exits", Json::array()) : Json::array();
+        const auto way = std::ranges::find_if(exits, [](const Json &exit) {
+            return exit.value("active", true) && !exit.value("blocker", false) &&
+                   exit.value(Json::json_pointer("/leadsTo/area"), std::string()) == "world_map";
+        });
+        if (way == exits.end())
+        {
+            return End(false, "in " + answer_.value(Json::json_pointer("/area/tag"), std::string()) +
+                                  ", the way into the city, no exit leads to the map: travel with `exit` and `to` "
+                                  "from one that does");
+        }
+        exitAt_ = *way;
+        where_ = Json{{"target", way->value("id", std::string())}};
+        answer_["exit"] = *way;
+        fromArea_ = answer_.value(Json::json_pointer("/area/tag"), std::string());
+        startArea_ = fromArea_;
+        lastWalk_.reset();
+        legFrom_.reset();
+        lastEnd_.reset();
+        wentToReached_ = false;
+        Json walked = Walk();
+        if (!walked.value("arrived", false) && !walked.value("reason", std::string()).starts_with("no walk there"))
+        {
+            return walked;
+        }
+        Cross();
+        return Map(true);
     }
 
     // The pin `to` names, the active one where two share a name; the
@@ -1492,6 +1597,7 @@ class Journey
     std::optional<double> legFrom_;                // the distance as the last leg to the search's end began (#82)
     std::optional<double> upTo_;                   // `upTo`: the most of the walk to make (#90)
     std::set<std::string> tried_;                  // the exits to the area whose use failed for good (#101)
+    bool cityTried_ = false;                       // whether a pin was looked for by its city (#91)
     bool cut_ = false;                             // whether the walk was cut to `upTo` already
     std::optional<std::array<double, 3>> lastEnd_; // where that leg was sent
     bool wentToReached_ = false;

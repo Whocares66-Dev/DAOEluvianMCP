@@ -19,6 +19,8 @@
 
 #include "dao/Data.h"
 #include "dao/Gui.h"
+#include "dao/Resources.h"
+#include "dao/core/Gff4.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -151,8 +153,79 @@ ToolResult KindWorldmap(const Watch &watch, const Json & /*args*/)
 
 } // namespace
 
+namespace
+{
+
+// Every map's pins, outside a city too, as the game's designer maps hold
+// them (modules\single player\data\designermaps.erf): GFF4 of type MAPO,
+// MapTag and MapPinList, each pin a MAPP with its name (a talk-table
+// string), tag and the area it leads to (lib-agent, read 2026-10-09, #91).
+// The labels are xoreos's (DAOLib's dev/gff4_fields.csv). The files hold a
+// pin's first state; the story changes it, and kind=worldmap's pins are the
+// live ones.
+constexpr std::array<const wchar_t *, 5> kMapFiles = {L"wide_open_world.map", L"denerim.map", L"denerim_climax.map",
+                                                      L"underground_map.map", L"fade_map.map"};
+constexpr std::uint32_t kMapTag = 24000;
+constexpr std::uint32_t kMapPinList = 24002;
+constexpr std::uint32_t kMapPinName = 24006;
+constexpr std::uint32_t kMapPinTag = 24007;
+constexpr std::uint32_t kMapPinAreatag = 24008;
+constexpr std::uint32_t kNoString = 0xFFFFFFFF;
+
+Json MapPins(const dao::core::gff4::Struct &root)
+{
+    Json pins = Json::array();
+    for (const auto &pin : root.Structs(kMapPinList))
+    {
+        Json entry = {{"tag", Narrow(pin.String(kMapPinTag).value_or(L""))},
+                      {"area", Narrow(pin.String(kMapPinAreatag).value_or(L""))}};
+        if (const auto name = pin.Tlk(kMapPinName); name && name->strref != kNoString)
+        {
+            entry["name"] = Narrow(dao::tlk::String(name->strref));
+        }
+        pins.push_back(std::move(entry));
+    }
+    return pins;
+}
+
+ToolResult KindMaps(const Watch &watch)
+{
+    RequireWorld(watch, "inspect");
+    Json maps = Json::array();
+    for (const wchar_t *file : kMapFiles)
+    {
+        const auto bytes = dao::resources::Read(file);
+        if (!bytes)
+        {
+            continue;
+        }
+        const auto parsed = dao::core::gff4::File::Parse(*bytes);
+        const auto root = parsed ? parsed->Root() : std::nullopt;
+        if (!root)
+        {
+            continue;
+        }
+        Json pins = MapPins(*root);
+        maps.push_back(Json{{"file", Narrow(file)},
+                            {"tag", Narrow(root->String(kMapTag).value_or(L""))},
+                            {"count", pins.size()},
+                            {"pins", std::move(pins)}});
+    }
+    return Json{{"count", maps.size()}, {"maps", std::move(maps)}};
+}
+
+} // namespace
+
 void AddWorldMap(Bench &bench, const Watch &watch)
 {
+    bench.Tools().AddKind(
+        "inspect",
+        KindSpec{"maps",
+                 "Every map's pins, the cities' too, as the game's designer maps hold them (`maps`: each map's "
+                 "`tag`, its file and its `pins`, each with `name`, `tag` and the `area` it leads to): which map "
+                 "a pin is on, from anywhere. These are the pins' first states; kind=worldmap gives the live "
+                 "ones of the map up. travel `to` a pin on a city's map reads it to go there by the city."},
+        [&watch](const Json &) -> ToolResult { return KindMaps(watch); });
     bench.Tools().AddKind(
         "inspect",
         KindSpec{"worldmap",

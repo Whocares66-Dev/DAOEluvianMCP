@@ -2527,6 +2527,25 @@ MUTANTS = [
         '        while (!area_.empty() && !crossed.value("arrived", false) &&',
         '        while (!crossed.value("arrived", false) &&',
     ),
+    # a district's pin reached by its city (#91)
+    Mutant(
+        "travel looks for a pin by no city",
+        TRAVEL,
+        "        if (auto byCity = ByCity(map))\n",
+        "        if (auto byCity = std::optional<Json>())\n",
+    ),
+    Mutant(
+        "travel takes any active pin for the city's way in",
+        TRAVEL,
+        '                   holding->second.contains(pin.value("area", std::string()));',
+        "                   !holding->second.empty();",
+    ),
+    Mutant(
+        "travel stays in the city's entry area",
+        TRAVEL,
+        "        Cross();\n        return Map(true);",
+        "        return Map(true);",
+    ),
 ]
 
 

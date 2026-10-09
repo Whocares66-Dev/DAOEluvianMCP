@@ -62,6 +62,10 @@ struct World
     int slowLoad = 0;               // health calls the exit's load is said for, if more than one (#99)
     bool secondExit = false;        // another active exit to the forest, a little further (#101)
     bool firstFails = false;        // the first exit's use fails, near or a step back (#101)
+    Json designerMaps;              // inspect kind=maps' answer, if given (#91)
+    Json cityPins;                  // the pins the map shows once opened from the city (#91)
+    bool exitToMap = false;         // the exit leads to the world map, its use opening it (#91)
+    bool mapExitUsed = false;       // whether the map's exit was used: the map opens only after
     bool exitActive = true;         // whether the exit is active
     bool loads = false;             // whether the crossing loads the other area over a health call
     int loadingFor = 0;             // health calls an area's loading is still said for
@@ -121,9 +125,13 @@ struct World
     // The world map as the stand-in shows it: up a few reads after its exit.
     Json FakeWorldMap()
     {
-        if (mapExit && !mapUp && mapLate-- == 0)
+        if (mapExit && mapExitUsed && !mapUp && mapLate-- == 0)
         {
             mapUp = true;
+            if (!cityPins.is_null())
+            {
+                pins = cityPins; // opened from the city: the city's map
+            }
         }
         return Json{{"up", mapUp},
                     {"screen", fadeMap ? "FadeMap" : "WorldMap"},
@@ -137,8 +145,9 @@ struct World
     // The area's exits: the forest's, behind a text blocker if asked.
     Json FakeExits() const
     {
-        Json exits = Json::array(
-            {Json{{"id", "0x1f5"}, {"leadsTo", {{"area", "forest"}, {"waypoint", "wp"}}}, {"active", exitActive}}});
+        Json exits = Json::array({Json{{"id", "0x1f5"},
+                                       {"leadsTo", {{"area", exitToMap ? "world_map" : "forest"}, {"waypoint", "wp"}}},
+                                       {"active", exitActive}}});
         if (secondExit)
         {
             exits.push_back(
@@ -276,6 +285,7 @@ struct World
         else if (mapExit)
         {
             mode = "gui"; // the map comes up a moment later, read by its reads
+            mapExitUsed = true;
         }
         else if (loads)
         {
@@ -348,6 +358,10 @@ struct World
         if (args.value("kind", "") == "gui")
         {
             return Json{{"popup", popup}};
+        }
+        if (args.value("kind", "") == "maps")
+        {
+            return designerMaps.is_null() ? Json{{"maps", Json::array()}} : designerMaps;
         }
         if (args.value("kind", "") == "worldmap")
         {
@@ -1622,4 +1636,71 @@ TEST_CASE("an exit named by id is not traded for another when its use fails", "[
     const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 20000}}).data;
     CHECK(answer["arrived"] == false);
     CHECK(std::ranges::none_of(world.orders, [](const Json &order) { return order.value("target", "") == "0x1f6"; }));
+}
+
+namespace
+{
+
+// The designer maps of a world with Denerim: the wide map's pins, and the
+// city's, its market the way in.
+Json DesignerMaps()
+{
+    const Json wide = {
+        {"tag", "worldmap"},
+        {"pins", Json::array({Json{{"name", "Denerim"}, {"tag", "wml_wow_denerim"}, {"area", "den200ar_market"}}})}};
+    const Json city = {
+        {"tag", "denerim"},
+        {"pins", Json::array({Json{{"name", "Market District"}, {"tag", "wml_den_market"}, {"area", "den200ar_market"}},
+                              Json{{"name", "Palace District"}, {"tag", "wml_den_palace"}, {"area", "den600ar"}}})}};
+    return Json{{"maps", Json::array({wide, city})}};
+}
+
+} // namespace
+
+TEST_CASE("a district's pin is reached from the wide map by its city, in one call", "[travel]")
+{
+    World world; // on the wide map, Denerim's pin among its own
+    world.mapUp = true;
+    world.shut = false;
+    world.at = 1;
+    world.pins.push_back(Json{{"index", 3},
+                              {"name", "Denerim"},
+                              {"tag", "wml_wow_denerim"},
+                              {"area", "den200ar_market"},
+                              {"state", "active"}});
+    world.designerMaps = DesignerMaps();
+    world.exitToMap = true; // the market's way to the map, which opens the city's
+    world.mapExit = true;
+    world.cityPins = Json::array({Json{{"index", 0},
+                                       {"name", "Palace District"},
+                                       {"tag", "wml_den_palace"},
+                                       {"area", "den600ar"},
+                                       {"state", "active"}}});
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Palace District"}, {"budgetMs", 20000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["area"]["tag"] == "den600ar");
+    CHECK(std::ranges::any_of(answer["steps"], [](const Json &step) {
+        return step.value("did", std::string()) == "to \"Palace District\" by Denerim";
+    }));
+}
+
+TEST_CASE("a pin on no map is said as before, the maps read", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.designerMaps = DesignerMaps();
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Orzammar Commons"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no pin"));
+}
+
+TEST_CASE("a district whose city has no active pin here is said as before", "[travel]")
+{
+    World world; // the wide map without Denerim's pin
+    world.mapUp = true;
+    world.designerMaps = DesignerMaps();
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Palace District"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no pin"));
+    CHECK(world.messages.empty()); // nothing clicked
 }
