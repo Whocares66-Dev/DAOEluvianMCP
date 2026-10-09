@@ -2398,6 +2398,19 @@ MUTANTS = [
         '            near["near"] = who_;',
         '            near["at"] = who_;',
     ),
+    # a key-locked exit's second use (#96)
+    Mutant(
+        "travel waits out a key-locked exit its first use unlocked",
+        TRAVEL,
+        "            if (succeeded && !usedAgain && Clock::now() - *succeeded > kUnlockGrace)",
+        "            if (succeeded && usedAgain && Clock::now() - *succeeded > kUnlockGrace)",
+    ),
+    Mutant(
+        "travel uses an exit again and again",
+        TRAVEL,
+        "                usedAgain = true;\n                succeeded.reset();",
+        "                succeeded.reset();",
+    ),
 ]
 
 

@@ -35,6 +35,12 @@ constexpr double kLegGain = 2.0;
 // How near a target a walk that ended short is said to be in a use's
 // reach, the use's click walking the rest (#80).
 constexpr double kUseReach = 5.0;
+
+// How long after an exit's use ended in success, with no load begun, it
+// is used once more: a key-locked exit's first use unlocks it, and only
+// the second goes through (den300ip_to_hospice_side, turn-based-agent,
+// 2026-10-06, #96).
+constexpr milliseconds kUnlockGrace{1500};
 // Where the search finds no walk and names nothing, steps this long toward
 // the goal, at most this many, each at least kStraightGain nearer (#53).
 constexpr double kStraightStep = 0.5;
@@ -333,7 +339,7 @@ class Journey
         const auto loaded = EventFilter::FromArgs(Json{{"topic", "eluvian.script.area_loaded"}});
         while (Left() > milliseconds(0))
         {
-            if (const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(2000))))
+            if (const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(500))))
             {
                 since = event->seq + 1;
             }
@@ -450,9 +456,11 @@ class Journey
             Json{{"topic", "eluvian.command.ended"}, {"match", {{"id", who_}, {"type", "UseObject"}}}});
         auto useSince = since;
         bool steppedBack = false;
+        bool usedAgain = false;
+        std::optional<Clock::time_point> succeeded;
         while (Left().count() > 0)
         {
-            const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(2000)));
+            const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(500)));
             if (event)
             {
                 since = event->seq + 1;
@@ -469,10 +477,26 @@ class Journey
                     }
                     continue;
                 }
+                if (result == "success")
+                {
+                    succeeded = Clock::now();
+                }
             }
             if (auto end = Crossed(to))
             {
                 return std::move(*end);
+            }
+            if (succeeded && !usedAgain && Clock::now() - *succeeded > kUnlockGrace)
+            {
+                usedAgain = true;
+                succeeded.reset();
+                if (!Ask("order", Json{{"action", "use"}, {"id", who_}, {"target", exit}}))
+                {
+                    return End(false, *stopped_);
+                }
+                steps_.push_back(Json{{"did", "use " + exit + " again"},
+                                      {"result", "asked: the first use ended, and no load began (a key's "
+                                                 "first use unlocks)"}});
             }
         }
         return End(false, "the party did not leave in the time given; the exit was used");

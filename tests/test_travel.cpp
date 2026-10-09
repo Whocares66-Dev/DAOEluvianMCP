@@ -56,6 +56,7 @@ struct World
     std::vector<Json> orders;
     std::string area = "ruins";     // the area's tag
     bool crosses = true;            // whether using the exit takes the party out
+    int exitUnlocks = 0;            // uses of the exit that only unlock it, before one goes through
     bool exitActive = true;         // whether the exit is active
     bool loads = false;             // whether the crossing loads the other area over a health call
     int loadingFor = 0;             // health calls an area's loading is still said for
@@ -247,6 +248,11 @@ struct World
         if (tooClose && at < 2)
         {
             return "COMMAND_FAILED";
+        }
+        if (exitUnlocks > 0)
+        {
+            --exitUnlocks; // a key held turned in the lock
+            return "success";
         }
         if (asks)
         {
@@ -1460,4 +1466,30 @@ TEST_CASE("a walk to a large target that fails a little short says a use walks t
     const auto there = far.Travel();
     CHECK(there["arrived"] == false);
     CHECK_FALSE(there.contains("hint"));
+}
+
+TEST_CASE("an exit whose first use only unlocks it is used once more, and goes through", "[travel]")
+{
+    World world; // locked by a key the party holds
+    world.shut = false;
+    world.at = 1;
+    world.exitUnlocks = 1;
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["area"]["tag"] == "forest");
+    CHECK(std::count_if(world.orders.begin(), world.orders.end(),
+                        [](const Json &order) { return order["action"] == "use"; }) == 2);
+}
+
+TEST_CASE("an exit used twice to no end is not used a third time", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.exitUnlocks = 5; // never goes through
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 7000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not leave"));
+    CHECK(std::count_if(world.orders.begin(), world.orders.end(),
+                        [](const Json &order) { return order["action"] == "use"; }) == 2);
 }
