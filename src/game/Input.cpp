@@ -172,8 +172,21 @@ Json MovieCall(const Args &args)
             throw ToolError("input: `set` wants a `value`");
         }
         texts.reserve(1);
+        // GFx's SetVariable makes a variable where none is, so done says only
+        // that it took the set: nExitPoint set without its LevelUp. answered
+        // done, and the screen, reading LevelUp.nExitPoint, threw the pick
+        // away (turn-based-agent, 2026-10-09, #107). Whether the path was
+        // there is asked first.
+        const bool existed = movie->IsAvailable(path.c_str());
         const bool done = movie->SetVariable(path.c_str(), value(args.Raw().at("value")));
-        return Json{{"screen", screen}, {"set", path}, {"done", done}};
+        Json answer = {{"screen", screen}, {"set", path}, {"done", done}, {"existed", existed}};
+        if (!existed)
+        {
+            answer["note"] = "the movie had no such path: the set made a new variable, which nothing reads unless "
+                             "the movie's scripts ask for it by this path; give the full path they use "
+                             "(get reads it, as LevelUp.nExitPoint)";
+        }
+        return answer;
     }
     const std::string function = args.String("call");
     const Json list = args.Raw().value("args", Json::array());
