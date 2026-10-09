@@ -358,6 +358,7 @@ constexpr std::array<Named, 4> kPoints = {
 } // namespace
 
 static void AddEquip(Bench &bench, const Watch &watch);
+static void AddGift(Bench &bench, const Watch &watch);
 
 namespace
 {
@@ -674,6 +675,7 @@ ToolResult KindItem(const Watch &watch, const Json &raw)
 void AddCharacter(Bench &bench, const Watch &watch)
 {
     AddEquip(bench, watch);
+    AddGift(bench, watch);
     bench.Tools().AddKind(
         "inspect",
         KindSpec{"character",
@@ -1068,6 +1070,104 @@ static void AddEquip(Bench &bench, const Watch &watch)
                       {"required", {"item"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolEquip(bench, watch, raw); });
+}
+
+namespace
+{
+
+// A gift, as the inventory's Give gives it. The Give's message has one
+// handler, the full-screen interface mode's (GameModeGUI, 0x00718210), which
+// moves nothing itself: it makes the script event EVENT_TYPE_GIFT_ITEM with
+// the player's creature as its creator and the item as object 0, and runs it
+// on the follower. The rest is the scripts' (rules_core.nss: the approval
+// change by Approval_HandleGift, then the module's gift handler moves the
+// item, changes the approval, and starts a special gift's conversation).
+// Read by lib-agent, 2026-10-05; Zevran had turned on the party with his
+// approval at 0, the driver having no way to give one (#81).
+constexpr std::int32_t kBaseItemTypeGift = 109; // BASE_ITEM_TYPE_GIFT, 2da_constants_h.nss
+
+bool Holds(ObjectId creature, ObjectId item)
+{
+    const auto items = api::GetItemsInInventory(creature, k::GET_ITEMS_OPTION_ALL);
+    for (std::size_t i = 0; i < items.Size(); ++i)
+    {
+        if (items.Object(i) == item)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+ToolResult ToolGift(Bench &bench, const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "gift");
+    const Args args(raw, "gift");
+    const ObjectId to = args.Id("to", "a follower, as inspect kind=game lists the party");
+    const ObjectId item = args.Id("item", "a gift in the pack, as inspect kind=inventory lists it");
+    const ObjectId hero = api::GetHero();
+    if (to == hero || !PartyOf(hero).contains(to))
+    {
+        throw ToolError(
+            std::format("gift: {} is not a follower in the party; inspect kind=game lists it", FormatId(to)));
+    }
+    if (api::GetObjectType(item) != k::OBJECT_TYPE_ITEM || !Holds(hero, item))
+    {
+        throw ToolError(
+            std::format("gift: {} is not an item in the pack; inspect kind=inventory lists it", FormatId(item)));
+    }
+    if (api::GetBaseItemType(item) != kBaseItemTypeGift)
+    {
+        throw ToolError(std::format("gift: {} is not a gift (its base type is {}); the inventory's Give takes "
+                                    "items of base type Gift",
+                                    FormatId(item), Rule(k::TABLE_ITEMS, api::GetBaseItemType(item)).dump()));
+    }
+    const auto cursor = bench.Events().Next();
+    const auto before = api::GetFollowerApproval(to);
+    auto event = api::Event(k::EVENT_TYPE_GIFT_ITEM);
+    if (event)
+    {
+        event = api::SetEventCreator(*event.get(), hero);
+    }
+    if (event)
+    {
+        event = api::SetEventObject(*event.get(), 0, item);
+    }
+    if (!event)
+    {
+        throw ToolError("gift: the game made no gift event");
+    }
+    api::SignalEvent(to, *event.get(), 1);
+    return Json{{"to", Brief(to)},
+                {"item", ItemJson(item, false)},
+                {"approvalBefore", before},
+                {"approvalAfter", api::GetFollowerApproval(to)},
+                {"given", !Holds(hero, item)},
+                {"cursor", cursor},
+                {"note", "the scripts move the item and change the approval; a special gift may start a "
+                         "conversation: inspect kind=game says the mode, and the events from `cursor` what "
+                         "followed"}};
+}
+
+} // namespace
+
+static void AddGift(Bench &bench, const Watch &watch)
+{
+    bench.Tools().Add(
+        ToolSpec{"gift",
+                 "Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, "
+                 "so its scripts change the approval and move the item, and a special gift may start a "
+                 "conversation. `to`, a follower in the party; `item`, an item of base type Gift from inspect "
+                 "kind=inventory. Answers the approval before and after (`approvalBefore`, `approvalAfter`; "
+                 "inspect kind=character's follower.approval reads it too), whether the item left the pack "
+                 "(`given`), and `cursor` for the events that followed.",
+                 Json{{"type", "object"},
+                      {"properties",
+                       {{"to", {{"type", "string"}, {"description", "The follower's id"}}},
+                        {"item", {{"type", "string"}, {"description", "The gift's id"}}}}},
+                      {"required", {"to", "item"}}},
+                 Thread::Frame},
+        [&bench, &watch](const Json &raw) -> ToolResult { return ToolGift(bench, watch, raw); });
 }
 
 } // namespace eluvian::game
