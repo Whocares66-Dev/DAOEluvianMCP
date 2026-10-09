@@ -488,6 +488,25 @@ std::map<std::int32_t, Giving> ItemsGiving(ObjectId id)
     return giving;
 }
 
+// An item's ability's cooldown, from what is running on the creature:
+// the record of an item's ability is only in the cooldown manager's
+// ticking list, which GetCooldown does not read, where a talent's is in
+// both (DAOLib #38, lib-agent, 2026-10-08). A driver wanted to know when a
+// held poultice comes back (turn-based-agent, 2026-10-08, #97). Nothing
+// when none is running: the item is ready.
+std::optional<dao::abilities::Cooldown> ItemCooldown(const std::vector<dao::abilities::RunningCooldown> &running,
+                                                     std::int32_t ability)
+{
+    for (const auto &each : running)
+    {
+        if (each.ability == ability)
+        {
+            return each.cooldown;
+        }
+    }
+    return std::nullopt;
+}
+
 // The abilities kind's handler, registered by AddCharacter.
 ToolResult KindAbilities(const Watch &watch, const Json &raw)
 {
@@ -495,18 +514,22 @@ ToolResult KindAbilities(const Watch &watch, const Json &raw)
     const Args args(raw, "inspect");
     const ObjectId id = CreatureOrControlled(args);
     const auto giving = ItemsGiving(id);
-    const auto list = [id, &giving](dao::abilities::Kind kind) {
+    const auto running = dao::abilities::Cooldowns(id);
+    const auto list = [id, &giving, &running](dao::abilities::Kind kind) {
         Json abilities = Json::array();
         for (const std::int32_t ability : dao::abilities::Known(id, kind))
         {
             Json entry = AbilityJson(ability);
-            if (const auto it = giving.find(ability); it != giving.end())
+            const auto it = giving.find(ability);
+            if (it != giving.end())
             {
                 entry["items"] = it->second.items;
                 entry["held"] = it->second.held;
             }
             const bool available = api::IsAbilityAvailable(id, ability) != 0;
-            const auto cooldown = dao::abilities::GetCooldown(id, ability);
+            const auto cooldown = kind == dao::abilities::Kind::Item || it != giving.end()
+                                      ? ItemCooldown(running, ability)
+                                      : dao::abilities::GetCooldown(id, ability);
             UseInto(entry, id, ability, available && (!cooldown || cooldown->remaining <= 0));
             if (cooldown && cooldown->remaining > 0)
             {
@@ -677,7 +700,8 @@ void AddCharacter(Bench &bench, const Watch &watch)
                  "\"Insufficient stamina\"), its `cost` in mana or stamina with its fatigue, and its cooldown. A "
                  "sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank "
                  "it has. An item's ability lists the `items` that give it (id, tag, name, stack) and how many "
-                 "are `held`, for order action=ability with `item` or `itemTag`. "
+                 "are `held`, for order action=ability with `item` or `itemTag`, and its `cooldown` (seconds "
+                 "`remaining` of `total`) while one runs, as a talent's: a poultice drunk, until it comes back. "
                  "`count` is the game's own count of them."},
         [&watch](const Json &raw) -> ToolResult { return KindAbilities(watch, raw); });
 
