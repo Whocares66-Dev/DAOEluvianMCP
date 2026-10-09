@@ -202,6 +202,9 @@ Json BlockerJson(ObjectId id)
         blocker["state"] = api::GetPlaceableState(id);
         blocker["stateName"] = PlaceableStateWord(id);
         blocker["interactive"] = api::GetObjectInteractive(id) != 0; // nothing uses one that is not (#50)
+        // What its use does: an exit's is the area transition, a door's to
+        // open, whatever its template's leadsTo says (#104).
+        blocker["action"] = api::GetPlaceableAction(id);
         blocker["lock"] = LockJson(id);
         if (Json leads = LeadsTo(id, false); !leads.is_null())
         {

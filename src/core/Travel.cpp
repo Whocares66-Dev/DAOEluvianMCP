@@ -59,6 +59,9 @@ constexpr int kCannotPick = 10000;
 constexpr int kLocked = 1;
 // How far back from an exit a failed use is tried again from, in metres.
 constexpr double kStepBack = 4.0;
+// A placeable's use that leaves the area (placeable_interactions' row 15,
+// core/Placeables.h names them).
+constexpr int kActionAreaTransition = 15;
 
 // One journey: its arguments, its clock, and the transcript it answers with.
 class Journey
@@ -907,7 +910,13 @@ class Journey
         // village door that was the World Map exit, used twice before
         // travel stopped (turn-based-agent, 2026-10-04, #38). It is gone
         // round as nothing named: as far as the search got, then said.
-        const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");
+        // A way out only if its use is the area transition, as the engine
+        // says (GetPlaceableAction, #88): Kristoff's room door carried a
+        // leadsTo its template took from the inn's street door, and its use
+        // only opens it (turn-based-agent, 2026-10-09, #104). With no action
+        // read, a leadsTo is taken at its word.
+        const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo") &&
+                               walk.at("blocker").value("action", kActionAreaTransition) == kActionAreaTransition;
         // So too a thing that is not interactive, which no use opens: the
         // East Brecilian Forest's heart has an Invisible Object across
         // the path, removed by a trigger's script as the party walks in
@@ -1063,7 +1072,13 @@ class Journey
             why += " (the story opens it, or its key; inspect kind=placeables says more)";
             return End(false, std::move(why));
         }
-        if (!blocker.empty() && locked && walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)
+        // Its key held, it opens all the same: Kristoff's room door in the
+        // Crown and Lion, at the cannot-pick level, was refused so with the
+        // key in the pack (turn-based-agent, 2026-10-09, #104); a use with
+        // the key unlocks it, and the second opens it (#66).
+        const bool keyHeld = walk.value(Json::json_pointer("/blocker/lock/keyHeld"), false);
+        if (!blocker.empty() && locked && !keyHeld &&
+            walk.value(Json::json_pointer("/blocker/lock/pickLevel"), 0) >= kCannotPick)
         {
             answer_["shutBy"] = walk.at("blocker");
             std::string why = "the way is shut by a door that cannot be opened: " + blocker;

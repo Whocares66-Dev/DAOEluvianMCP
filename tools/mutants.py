@@ -1590,8 +1590,8 @@ MUTANTS = [
     Mutant(
         "travel uses an exit ahead as a door",
         TRAVEL,
-        'const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo");',
-        "const bool exitAhead = false;",
+        'const bool exitAhead = !blocker.empty() && walk.at("blocker").contains("leadsTo") &&',
+        'const bool exitAhead = false && walk.at("blocker").contains("leadsTo") &&',
     ),
     # #50: a blocker that is not interactive is not used.
     Mutant(
@@ -2545,6 +2545,25 @@ MUTANTS = [
         TRAVEL,
         "        Cross();\n        return Map(true);",
         "        return Map(true);",
+    ),
+    # a room door is a door: its key held, its use only opening it (#104)
+    Mutant(
+        "travel refuses a door at the cannot-pick level whose key is held",
+        TRAVEL,
+        "        if (!blocker.empty() && locked && !keyHeld &&\n",
+        "        if (!blocker.empty() && locked &&\n",
+    ),
+    Mutant(
+        "travel takes any blocker with a leadsTo for an exit",
+        TRAVEL,
+        '            walk.at("blocker").value("action", kActionAreaTransition) == kActionAreaTransition;',
+        '            walk.at("blocker").value("action", kActionAreaTransition) >= 0;',
+    ),
+    Mutant(
+        "travel takes a blocker that says no action for a door",
+        TRAVEL,
+        '            walk.at("blocker").value("action", kActionAreaTransition) == kActionAreaTransition;',
+        '            walk.at("blocker").value("action", 0) == kActionAreaTransition;',
     ),
 ]
 

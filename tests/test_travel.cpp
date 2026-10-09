@@ -45,6 +45,8 @@ struct World
     bool inertStays = false;   // whether it stays when the walker comes up to it (no trigger there removes it)
     bool keyRequired = false;  // whether only the door's key opens it
     bool keyHeld = false;      // whether the party carries that key
+    bool doorLeadsOut = false; // whether the door's template says it leads out of the area (#104)
+    int doorAction = 0;        // what the door's use does, as the engine says; 0: not read (#104)
     int doorState = 1;         // the door's state: 1 locked, 0 shut and unlocked
     bool unlocksFirst = false; // whether a use with the key carried only unlocks the door, the key taken
     bool silentUse = false;    // whether a use's end is never said either
@@ -165,6 +167,29 @@ struct World
         return Json{{"exits", exits}};
     }
 
+    // The door the search names in the way, with its state and lock, and
+    // what its template and its use say (#104).
+    [[nodiscard]] Json DoorInTheWay(const std::string &id) const
+    {
+        Json blocker = {{"id", id},
+                        {"name", "Metal Door"},
+                        {"state", doorState},
+                        {"lock",
+                         {{"pickLevel", pickLevel},
+                          {"keyRequired", keyRequired},
+                          {"keyTag", "DoesNotExist"},
+                          {"keyHeld", keyHeld}}}};
+        if (doorLeadsOut)
+        {
+            blocker["leadsTo"] = Json{{"area", "coa100ar_city"}, {"waypoint", "coa100wp_from_inn"}};
+        }
+        if (doorAction > 0)
+        {
+            blocker["action"] = doorAction;
+        }
+        return blocker;
+    }
+
     // The walk's search as the stand-in answers it, by where the walker
     // stands and what is shut.
     Json FakeWalk(const Json &args) const
@@ -219,15 +244,7 @@ struct World
             walk = Json{{"found", false},
                         {"result", "something is in the way"},
                         {"reached", blocksItself ? Json::array({door + reach, 0, 0}) : Json(nullptr)},
-                        {"blocker",
-                         {{"id", blocksItself ? args.value("target", "") : std::string("0x1f1")},
-                          {"name", "Metal Door"},
-                          {"state", doorState},
-                          {"lock",
-                           {{"pickLevel", pickLevel},
-                            {"keyRequired", keyRequired},
-                            {"keyTag", "DoesNotExist"},
-                            {"keyHeld", keyHeld}}}}}};
+                        {"blocker", DoorInTheWay(blocksItself ? args.value("target", "") : std::string("0x1f1"))}};
         }
         else
         {
@@ -1703,4 +1720,37 @@ TEST_CASE("a district whose city has no active pin here is said as before", "[tr
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("no pin"));
     CHECK(world.messages.empty()); // nothing clicked
+}
+
+TEST_CASE("a door at the cannot-pick level whose key is held is used, not refused", "[travel]")
+{
+    World world; // Kristoff's room door, its key in the pack
+    world.keyRequired = true;
+    world.keyHeld = true;
+    world.pickLevel = 10000;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(std::ranges::any_of(world.orders, [](const Json &order) { return order["action"] == "use"; }));
+}
+
+TEST_CASE("a door whose template leads out but whose use only opens is used as a door", "[travel]")
+{
+    World world;
+    world.doorLeadsOut = true;
+    world.doorAction = 1; // open
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK_FALSE(answer.contains("exitAhead"));
+}
+
+TEST_CASE("a blocker whose use is the area transition, or says no action, is still an exit ahead", "[travel]")
+{
+    World transition;
+    transition.doorLeadsOut = true;
+    transition.doorAction = 15;
+    CHECK(transition.Travel()["arrived"] == false);
+    CHECK(std::ranges::none_of(transition.orders, [](const Json &order) { return order["action"] == "use"; }));
+    World unread; // no action read: its leadsTo taken at its word
+    unread.doorLeadsOut = true;
+    CHECK(unread.Travel()["arrived"] == false);
 }
