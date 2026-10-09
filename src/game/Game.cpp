@@ -208,6 +208,36 @@ Json GameForceLoad(std::uint64_t cursor)
                          "save refuses until another load)"}};
 }
 
+// The lowest manual slot no save holds, where a new manual save goes;
+// refused past the most the engine keeps.
+std::int32_t FreeManualSlot()
+{
+    std::set<std::int32_t> taken;
+    for (const auto &slot : dao::saves::List(dao::saves::Character()))
+    {
+        if (slot.kind == dao::saves::Kind::Manual)
+        {
+            taken.insert(slot.number);
+        }
+    }
+    std::int32_t number = 1;
+    while (taken.contains(number))
+    {
+        ++number;
+    }
+    // The engine refuses a manual save above its most, a literal in its
+    // save handler, and starts none: in Denerim's market every save
+    // was refused, Lyna having 500 (turn-based-agent, 2026-10-05;
+    // lib-agent's reading, DAOLib #37, #79).
+    if (number > dao::saves::MostSlot(dao::saves::Kind::Manual))
+    {
+        throw ToolError(std::format("game: {} has {} manual saves, the most the game keeps, and it "
+                                    "makes no more; free a slot (game_saves lists them, each a folder)",
+                                    Narrow(dao::saves::Character()), dao::saves::MostSlot(dao::saves::Kind::Manual)));
+    }
+    return number;
+}
+
 Json GameSave(const Args &args, std::uint64_t cursor)
 {
     if (g_forceLoaded)
@@ -227,19 +257,7 @@ Json GameSave(const Args &args, std::uint64_t cursor)
     // the free slot is found here, the lowest no save holds.
     if (number < 0 && kind == dao::saves::Kind::Manual)
     {
-        std::set<std::int32_t> taken;
-        for (const auto &slot : dao::saves::List(dao::saves::Character()))
-        {
-            if (slot.kind == kind)
-            {
-                taken.insert(slot.number);
-            }
-        }
-        number = 1;
-        while (taken.contains(number))
-        {
-            ++number;
-        }
+        number = FreeManualSlot();
     }
     // Tests may make saves of their own (the user, 2026-10-02): new
     // ones. A save already there is written over only when asked.

@@ -283,6 +283,26 @@ class Processes:
 
 SAVE_KINDS = (("Slot_", "manual"), ("AutoSave_", "auto"), ("QuickSave_", "quick"))
 
+# The most of each kind the game keeps: literals in its save handler, which
+# starts no save beyond them (DAOLib's dao::saves::MostSlot, read by lib-agent,
+# 2026-10-05). A character with 500 manual saves can make no more (#79).
+MOST_SAVES = {"manual": 500, "auto": 4, "quick": 1}
+
+
+def save_counts(saves: list[dict]) -> dict:
+    """Each character's saves of each kind against the most the game keeps."""
+    counts: dict = {}
+    for save in saves:
+        kinds = counts.setdefault(
+            save["character"],
+            {kind: {"count": 0, "most": most} for kind, most in MOST_SAVES.items()},
+        )
+        kinds[save["kind"]]["count"] += 1
+    for kinds in counts.values():
+        for entry in kinds.values():
+            entry["full"] = entry["count"] >= entry["most"]
+    return counts
+
 
 def list_saves(characters: Path, character: str | None = None) -> list[dict]:
     """The game's saves, newest first, from their folders:
@@ -369,7 +389,9 @@ BRIDGE_TOOLS = [
         "name": "game_saves",
         "description": (
             "The game's saves on disk, newest first: character, kind (manual, auto, quick), number, "
-            "the save's name (the area's, as the game names it), when it was saved, and its folder. "
+            "the save's name (the area's, as the game names it), when it was saved, and its folder; "
+            "`kinds`, each character's count of each kind against the most the game keeps "
+            "(500 manual, 4 auto, 1 quick: past it, `full`, a save is refused). "
             "Answers while the game is down, to choose what a test starts from."
         ),
         "inputSchema": {
@@ -1205,7 +1227,15 @@ class Bridge:
                 saves = list_saves(
                     self.characters, character if isinstance(character, str) else None
                 )
-                return reply(text_result({"count": len(saves), "saves": saves}))
+                return reply(
+                    text_result(
+                        {
+                            "count": len(saves),
+                            "kinds": save_counts(saves),
+                            "saves": saves,
+                        }
+                    )
+                )
             if name == "game_status":
                 return reply(text_result(self.game_status()))
             if name == "game_claim":

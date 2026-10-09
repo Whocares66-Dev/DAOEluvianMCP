@@ -637,6 +637,12 @@ class BridgeTest(unittest.TestCase):
         )
         only = self.call("game_saves", {"character": "lyna"})["structuredContent"]
         self.assertEqual(only["count"], 1)
+        kinds = self.call("game_saves")["structuredContent"]["kinds"]
+        self.assertEqual(
+            kinds["Aedan"]["manual"], {"count": 1, "most": 500, "full": False}
+        )
+        self.assertEqual(kinds["Aedan"]["quick"], {"count": 1, "most": 1, "full": True})
+        self.assertEqual(kinds["Lyna"]["auto"]["count"], 1)
         self.bridge.characters = self.folder / "nowhere"
         self.assertEqual(self.call("game_saves")["structuredContent"]["count"], 0)
 
