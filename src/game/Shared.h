@@ -300,5 +300,6 @@ void AddGui(Bench &bench, const Watch &watch);       // inspect's gui
 void AddStore(Bench &bench, const Watch &watch);
 void AddWorldMap(Bench &bench, const Watch &watch); // inspect's worldmap
 void AddTactics(Bench &bench, const Watch &watch);
+void AddBoard(Bench &bench, const Watch &watch);
 
 } // namespace eluvian::game

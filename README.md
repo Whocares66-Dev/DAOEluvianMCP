@@ -22,6 +22,7 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | `equip` | Put an item of the pack on, or take one off, as the inventory screen's paperdoll does, so the game's rules hold |
 | `gift` | Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, approval before and after |
 | `tactics` | A follower's tactics set as the tactics screen sets them, by name among what the engine offers; its choices; presets |
+| `board` | The quest board while it is up: its entries, accept one, close it, as its screen does |
 | `dialogue` | Answer the conversation on the screen: choose a reply, continue, skip a cutscene; or run on to the next choice in one call, with the lines spoken on the way |
 | `camera` | Read it; face a target, follow a creature, turn: so a screenshot shows what the test means |
 | `screen` | For the real mouse: a pixel to click a creature or object at (on its body, with nothing in front), a world point's pixel, what lies under a pixel; each as the game's pixels, a fraction of the picture and a desktop pixel |
