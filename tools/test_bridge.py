@@ -572,6 +572,50 @@ class BridgeTest(unittest.TestCase):
         self.assertIn("EXCEPTION_ACCESS_VIOLATION", text)
         self.assertIn("renderer as it starts", text)
 
+    def test_a_game_that_ended_itself_starting_is_answered_with_its_exit_log(
+        self,
+    ) -> None:
+        self.down()
+        self.processes.pids.clear()
+        start = self.processes.start
+
+        def start_and_end(environment: dict[str, str]) -> int:
+            pid = start(environment)
+            # As DAOLib's loader writes one (lib-agent, 2026-10-09): the build, the logger,
+            # the call, the system, the call stack whose frame 0 is the logger's own hook,
+            # and the return addresses on the stack.
+            (self.folder / "exit-2026-10-09-14-02-11.log").write_text(
+                "Dragon Age: Origins, DAOrigins.exe link stamp 0x4eb19d53\n"
+                "DAOLib exit logger\n"
+                "The game called ExitProcess with code 4294967295 (0xffffffff) before its first "
+                "frame: it ended itself, with no crash\n"
+                "SYSTEM: Windows 10\n"
+                "PROBABLE CALL STACK:\n"
+                "\t[ 0] 0x10001234 version.dll ExitHook+0x0\n"
+                "\t[ 1] 0x008edb57 DAOrigins.exe 0x008edb57\n"
+                "\t[ 2] 0x008edd96 DAOrigins.exe 0x008edd96 _exit+0xd\n"
+                "\n"
+                "RETURN ADDRESSES ON THE STACK:\n"
+                "\t[ 0] 0x008e9f2a DAOrigins.exe ___tmainCRTStartup+0x1a3\n",
+                encoding="utf-8",
+            )
+            self.processes.pids.clear()  # and it is gone
+            return pid
+
+        self.processes.start = start_and_end
+        result = self.call("game_launch", {"waitSeconds": 5})
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("ended itself while starting", text)
+        self.assertIn("exit-2026-10-09-14-02-11.log", text)
+        self.assertIn("The game called ExitProcess with code 4294967295", text)
+        ended = json.loads(text)["exit"]
+        self.assertEqual(
+            [frame.split()[1] for frame in ended["frames"]], ["1]", "2]"]
+        )  # the logger's own frame 0 left out
+        self.assertIn("___tmainCRTStartup", ended["returns"][0])
+        self.assertNotIn("Windows 10", text)
+
     def test_an_install_that_lost_its_data_is_not_launched_and_says_so(self) -> None:
         self.processes.pids.clear()
         game = self.folder / "Dragon Age Origins"

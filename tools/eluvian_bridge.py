@@ -721,6 +721,51 @@ class Bridge:
             }
         )
 
+    def exit_since(self, since: float) -> dict | None:
+        """The log DAOLib's loader writes when the game ends itself before its first frame
+        (exit-<time>.log, beside the crash logs; DAOLib #44, 2026-10-09), the newest written after
+        `since`: the call that ended it, the call stack past frame 0 (the logger's own hook), and
+        the first return addresses on the stack, which named ___tmainCRTStartup where the call
+        stack was short (lib-agent, 2026-10-09). The build and system lines say nothing of why."""
+        logs = [
+            log
+            for log in self.game.folder.glob("exit-*.log")
+            if log.stat().st_mtime >= since
+        ]
+        if not logs:
+            return None
+        log = max(logs, key=lambda log: log.stat().st_mtime)
+        try:
+            lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return {"file": str(log), "what": "an exit log that could not be read"}
+
+        def section(title: str) -> list[str]:
+            frames: list[str] = []
+            inside = False
+            for line in lines:
+                if line.startswith(title):
+                    inside = True
+                elif inside and line.strip().startswith("["):
+                    frames.append(line.strip())
+                elif inside:
+                    break
+            return frames
+
+        what = next(
+            (line.strip() for line in lines if line.startswith("The game called")),
+            "the game ended itself before its first frame",
+        )
+        frames = [
+            f for f in section("PROBABLE CALL STACK:") if not f.startswith("[ 0]")
+        ]
+        return {
+            "file": str(log),
+            "what": what,
+            "frames": frames[:8],
+            "returns": section("RETURN ADDRESSES ON THE STACK:")[:4],
+        }
+
     def crash_since(self, since: float) -> dict | None:
         """The crash log DAOLib's loader wrote for a game that died after `since`: its file,
         the exception's line and the first frames, and what is known to cause one like it."""
@@ -977,6 +1022,13 @@ class Bridge:
                     "error": "the game exited while starting; crash-*.log in "
                     f"{self.game.folder} may say why",
                 }
+                ended = self.exit_since(started)
+                if ended:
+                    answer["exit"] = ended
+                    answer["error"] = (
+                        f"the game ended itself while starting: {ended['what']} "
+                        f"({ended['file']})"
+                    )
                 crash = self.crash_since(started)
                 if crash:
                     answer["crash"] = crash
