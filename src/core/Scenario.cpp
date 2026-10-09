@@ -307,15 +307,17 @@ void AddScenarioTool(Bench &bench, std::function<Json()> whyNothing)
             {"description", "The time the whole run may take; ten minutes by default and at most"}}}}},
         {"required", {"steps"}}};
     bench.Tools().Add(
-        ToolSpec{"scenario",
-                 "Run a list of steps in one call and get a transcript: call tools, wait for events, pause, check "
-                 "answers. A test's whole checklist step at once: order an attack, wait for the turn to end, check "
-                 "the target's health. A wait starts from the cursor taken just before the latest tool step, so "
-                 "what the tool set off is not missed. Stops at the first failed step unless continueOnError. "
-                 "At most 100 steps, within `budgetMs` (ten minutes by default and at most): waits and sleeps are "
-                 "cut to the time left, and the run stops with `timedOut` when it is gone. A tool step already "
-                 "running in the game is waited for to its end, since what it does cannot be taken back.",
-                 schema, Thread::Listener},
+        Budgeted(
+            ToolSpec{"scenario",
+                     "Run a list of steps in one call and get a transcript: call tools, wait for events, pause, check "
+                     "answers. A test's whole checklist step at once: order an attack, wait for the turn to end, check "
+                     "the target's health. A wait starts from the cursor taken just before the latest tool step, so "
+                     "what the tool set off is not missed. Stops at the first failed step unless continueOnError. "
+                     "At most 100 steps, within `budgetMs` (ten minutes by default and at most): waits and sleeps are "
+                     "cut to the time left, and the run stops with `timedOut` when it is gone. A tool step already "
+                     "running in the game is waited for to its end, since what it does cannot be taken back.",
+                     schema, Thread::Listener},
+            "budgetMs", 600000),
         [&bench, whyNothing = std::move(whyNothing)](const Json &raw) -> ToolResult {
             const Args args(raw, "scenario");
             const Json steps = args.Raw().value("steps", Json());

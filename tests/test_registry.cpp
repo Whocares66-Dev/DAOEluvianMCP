@@ -167,3 +167,16 @@ TEST_CASE("a base tool may choose its kinds by another argument", "[registry]")
     CHECK_FALSE(tool["inputSchema"]["properties"].contains("kind"));
     CHECK_THAT(tool["description"].get<std::string>(), ContainsSubstring("`action`:\n- kill: Kill a creature."));
 }
+
+TEST_CASE("a tool's budget is listed in its _meta, and none where it declares none", "[registry]")
+{
+    ToolRegistry registry;
+    registry.Add(Budgeted(ToolSpec{"travel", "Walk.", {}, Thread::Listener}, "budgetMs", 60000), Answer(1));
+    registry.Add(ToolSpec{"health", "Alive?", {}, Thread::Listener, true}, Answer(1));
+    const Json tools = registry.Describe();
+    REQUIRE(tools.size() == 2);
+    const Json &health = tools[0].at("name") == "health" ? tools[0] : tools[1];
+    const Json &travel = tools[0].at("name") == "travel" ? tools[0] : tools[1];
+    CHECK(travel.at("_meta").at("eluvian/budget") == Json{{"argument", "budgetMs"}, {"defaultMs", 60000}});
+    CHECK_FALSE(health.contains("_meta"));
+}

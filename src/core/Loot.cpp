@@ -499,37 +499,42 @@ class Looting
 void AddLootTool(Bench &bench, milliseconds show)
 {
     bench.Tools().Add(
-        ToolSpec{
-            "loot",
-            "Take what a container holds (a chest, a body's remains, a pile of bones: an id from inspect "
-            "kind=placeables), in one call: the creature controlled, or `id`, another party member, "
-            "given control for the looting and control given back after (`controlled` says to whom), "
-            "walks to `target` (as travel does, "
-            "opening doors on the way), uses it, which opens the game's loot panel, and takes all as the "
-            "panel's Take All does, which closes it. With no `target`, takes from the loot panel up now. "
-            "Answers `looted`, `reason`, the `container`, what was `taken` and what is `left` (each item "
-            "in brief), whether the backpack was `full` (then the rest stays and the panel stays up), "
-            "whether the panel `closed`, and the `walk`. It stops and says why when the container does not "
-            "open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains "
-            "open no panel). With `radius` (metres) instead of `target`, every placeable within it whose use "
-            "is a loot or an unlock (inspect kind=placeables' `action`), nearest first: one report "
-            "each in `containers`, `count` looted, what else was there in `skipped`; it stops "
-            "(`stopped`) at a fight, a conversation, a question or a full pack, and passes a "
-            "locked or empty one. A container's treasure may be chosen "
-            "only as it opens, so one that read empty may not be. The events from `cursor` say what "
-            "followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for "
-            "the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so "
-            "whoever watches sees it; 0 for none.",
-            Json{{"type", "object"},
-                 {"properties",
-                  {{"target", {{"type", "string"}, {"description", "The container's id; none: the panel up now"}}},
-                   {"id",
-                    {{"type", "string"}, {"description", "The party member who loots (default: the one controlled)"}}},
-                   {"radius",
-                    {{"type", "number"}, {"minimum", 0}, {"description", "Every container within this many metres"}}},
-                   {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}},
-                   {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
-            Thread::Listener},
+        Budgeted(
+            ToolSpec{
+                "loot",
+                "Take what a container holds (a chest, a body's remains, a pile of bones: an id from inspect "
+                "kind=placeables), in one call: the creature controlled, or `id`, another party member, "
+                "given control for the looting and control given back after (`controlled` says to whom), "
+                "walks to `target` (as travel does, "
+                "opening doors on the way), uses it, which opens the game's loot panel, and takes all as the "
+                "panel's Take All does, which closes it. With no `target`, takes from the loot panel up now. "
+                "Answers `looted`, `reason`, the `container`, what was `taken` and what is `left` (each item "
+                "in brief), whether the backpack was `full` (then the rest stays and the panel stays up), "
+                "whether the panel `closed`, and the `walk`. It stops and says why when the container does not "
+                "open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains "
+                "open no panel). With `radius` (metres) instead of `target`, every placeable within it whose use "
+                "is a loot or an unlock (inspect kind=placeables' `action`), nearest first: one report "
+                "each in `containers`, `count` looted, what else was there in `skipped`; it stops "
+                "(`stopped`) at a fight, a conversation, a question or a full pack, and passes a "
+                "locked or empty one. A container's treasure may be chosen "
+                "only as it opens, so one that read empty may not be. The events from `cursor` say what "
+                "followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for "
+                "the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so "
+                "whoever watches sees it; 0 for none.",
+                Json{{"type", "object"},
+                     {"properties",
+                      {{"target", {{"type", "string"}, {"description", "The container's id; none: the panel up now"}}},
+                       {"id",
+                        {{"type", "string"},
+                         {"description", "The party member who loots (default: the one controlled)"}}},
+                       {"radius",
+                        {{"type", "number"},
+                         {"minimum", 0},
+                         {"description", "Every container within this many metres"}}},
+                       {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}},
+                       {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
+                Thread::Listener},
+            "budgetMs", 300000),
         [&bench, show](const Json &raw) -> ToolResult {
             const Args args(raw, "loot");
             return Looting(bench, args, show).Run();

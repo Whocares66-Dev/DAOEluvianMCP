@@ -101,29 +101,38 @@ class StillWaiting(Exception):
 
 # How long the bridge waits for a tool's answer. A scenario may run its ten minutes, and a
 # wait_for its own timeout; anything else answers within the frame queue's few seconds.
-SCENARIO_SECONDS = 10 * 60
+# How long a call of a tool that declares no budget is waited for.
+DEFAULT_WAIT_SECONDS = 60
 MARGIN_SECONDS = 30
 
 
-def call_budget(name: str, arguments: object) -> float:
+def budget_of_tool(tool: object) -> dict | None:
+    """A listed tool's declared budget: its _meta's eluvian/budget, the argument that bounds a
+    call and its default (#108); None for one that declares none."""
+    meta = tool.get("_meta") if isinstance(tool, dict) else None
+    budget = meta.get("eluvian/budget") if isinstance(meta, dict) else None
+    return budget if isinstance(budget, dict) else None
+
+
+def call_budget(arguments: object, budget: dict | None) -> float:
     """Seconds to wait for a tool's answer: longer than the tool itself may take, so the bridge
     never gives up on a call the game is still running (a review found a two-minute scenario
-    given 60 s, then reported as the game not running while its later steps went on)."""
-    if name == "scenario":
-        return SCENARIO_SECONDS + MARGIN_SECONDS
-    if name == "travel":
-        budget_ms = (
-            arguments.get("budgetMs", 60000) if isinstance(arguments, dict) else 60000
-        )
-        budget = (
-            budget_ms / 1000
-            if isinstance(budget_ms, (int, float)) and budget_ms > 0
-            else 60
-        )
-        return budget + MARGIN_SECONDS
-    wait_ms = arguments.get("timeoutMs", 0) if isinstance(arguments, dict) else 0
-    waited = wait_ms / 1000 if isinstance(wait_ms, (int, float)) and wait_ms > 0 else 0
-    return 60 + waited
+    given 60 s, then reported as the game not running while its later steps went on). How long
+    that is, the tool declares itself: the argument that bounds a call, or its default, plus a
+    margin. The bridge names no game tool; it did, and cut a sweep of loot off at 60 s (the
+    user, 2026-10-09: "there should be a single source of truth", #108)."""
+    if not isinstance(budget, dict):
+        return float(DEFAULT_WAIT_SECONDS)
+    default = budget.get("defaultMs")
+    default_ms = default if isinstance(default, (int, float)) and default > 0 else 60000
+    argument = budget.get("argument")
+    given = (
+        arguments.get(argument)
+        if isinstance(arguments, dict) and isinstance(argument, str)
+        else None
+    )
+    ms = given if isinstance(given, (int, float)) and given > 0 else default_ms
+    return ms / 1000 + MARGIN_SECONDS
 
 
 class Game:
@@ -549,6 +558,8 @@ class Bridge:
             characters if characters is not None else game.folder.parent / "Characters"
         )
         self.revision: int | None = None
+        # Each listed game tool's declared budget, None where it declares none (#108).
+        self.budgets: dict[str, dict | None] = {}
         self.lock = threading.Lock()
         self.launching = LaunchLock()
 
@@ -561,6 +572,7 @@ class Bridge:
             if status == 200 and isinstance(body, dict):
                 tools = body.get("tools", [])
                 self.note_revision(body.get("revision"))
+                self.note_budgets(tools)
                 try:
                     self.cache.write_text(json.dumps(tools), encoding="utf-8")
                 except OSError:
@@ -569,9 +581,26 @@ class Bridge:
         except (Unreachable, StillWaiting):
             pass
         try:
-            return json.loads(self.cache.read_text(encoding="utf-8"))
+            kept = json.loads(self.cache.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return []
+        self.note_budgets(kept)
+        return kept
+
+    def note_budgets(self, tools: object) -> None:
+        """Keeps each listed tool's declared budget, for the wait on its calls."""
+        if isinstance(tools, list):
+            self.budgets = {
+                tool["name"]: budget_of_tool(tool)
+                for tool in tools
+                if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+            }
+
+    def budget_of(self, name: str) -> dict | None:
+        """A game tool's declared budget, from the list last read; read again for one not in it."""
+        if name not in self.budgets:
+            self.game_tools()
+        return self.budgets.get(name)
 
     def note_revision(self, revision: object) -> None:
         """Tells the client to list again when the game's tools changed (a plugin registered)."""
@@ -582,7 +611,7 @@ class Bridge:
             self.send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
 
     def call_game(self, name: str, arguments: dict) -> dict:
-        timeout = call_budget(name, arguments)
+        timeout = call_budget(arguments, self.budget_of(name))
         try:
             status, body = self.game.request(
                 "POST", f"/api/tool/{name}", arguments, timeout=timeout

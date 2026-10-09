@@ -2578,6 +2578,13 @@ MUTANTS = [
         "specialization_.is_string() && lower(special.name) == lower(specialization_.get<std::string>());",
         "specialization_.is_string() && special.name == specialization_.get<std::string>();",
     ),
+    # a tool's budget in its listing (#108)
+    Mutant(
+        "a tool's budget is not listed",
+        REGISTRY,
+        "        if (entry.spec.budget)\n",
+        "        if (entry.spec.budget && entry.spec.listed && entry.spec.name.empty())\n",
+    ),
 ]
 
 

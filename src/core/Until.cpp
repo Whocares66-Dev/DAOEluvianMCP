@@ -100,13 +100,16 @@ void AddWaitUntilTool(Bench &bench)
            {{"type", "integer"}, {"minimum", 0}, {"maximum", kMostWaitMs}, {"description", "30000 by default"}}}}},
         {"required", {"tool"}}};
     bench.Tools().Add(
-        ToolSpec{"wait_until",
-                 "Wait until a condition on a tool's answer holds: the tool is called every `intervalMs` until the "
-                 "value at `pointer` in its answer meets the expectation (equals, notEquals, exists, atLeast, "
-                 "atMost), or `timeoutMs` runs out. For a state no event marks: a creature dead, the party's health "
-                 "back, a mode gone. Answers `held`, the last `value`, `tries` and `waitedMs`; a call that failed "
-                 "(the game loading) counts as not yet. For an event, wait_for.",
-                 schema, Thread::Listener, true},
+        Budgeted(
+            ToolSpec{
+                "wait_until",
+                "Wait until a condition on a tool's answer holds: the tool is called every `intervalMs` until the "
+                "value at `pointer` in its answer meets the expectation (equals, notEquals, exists, atLeast, "
+                "atMost), or `timeoutMs` runs out. For a state no event marks: a creature dead, the party's health "
+                "back, a mode gone. Answers `held`, the last `value`, `tries` and `waitedMs`; a call that failed "
+                "(the game loading) counts as not yet. For an event, wait_for.",
+                schema, Thread::Listener, true},
+            "timeoutMs", 30000),
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "wait_until");
             const auto budget = milliseconds(args.Integer("timeoutMs", 30000, 0, kMostWaitMs));

@@ -178,11 +178,13 @@ void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
                                              {"maximum", 300000},
                                              {"description", "How long to wait; 30000 by default."}};
     bench.Tools().Add(
-        ToolSpec{"wait_for",
-                 "Wait until an event matching `topic` and `match` happens, and return it; instead of sleeping and "
-                 "reading the log. `found` is false if the time ran out, with what is known of why nothing came "
-                 "(the game `paused`, say). Returns `next`, the cursor after it.",
-                 waitSchema, Thread::Listener, true},
+        Budgeted(
+            ToolSpec{"wait_for",
+                     "Wait until an event matching `topic` and `match` happens, and return it; instead of sleeping and "
+                     "reading the log. `found` is false if the time ran out, with what is known of why nothing came "
+                     "(the game `paused`, say). Returns `next`, the cursor after it.",
+                     waitSchema, Thread::Listener, true},
+            "timeoutMs", 30000),
         [&bench, whyNothing = std::move(whyNothing)](const Json &raw) -> ToolResult {
             const Args args(raw, "wait_for");
             const auto filter = EventFilter::FromArgs(args.Raw());

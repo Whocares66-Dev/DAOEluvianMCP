@@ -11,7 +11,9 @@
 #include <nlohmann/json.hpp>
 
 #include <concepts>
+#include <cstdint>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -62,6 +64,12 @@ struct ToolResult
 
 using ToolHandler = std::function<ToolResult(const Json &args)>;
 
+struct Budget
+{
+    std::string argument;   // the argument that bounds a call, in milliseconds
+    std::int64_t defaultMs; // its value where a call does not give it
+};
+
 struct ToolSpec
 {
     std::string name;
@@ -77,6 +85,23 @@ struct ToolSpec
     // and waits over (`dialogue.step` under `dialogue`, #17), so that the
     // agent meets one tool for the job, not two.
     bool listed = true;
+    // The argument that bounds how long a call may take, and its default:
+    // what a caller across the network waits for before it gives up. The
+    // bridge named the tools it waited longer for itself, and cut off a
+    // sweep of loot at 60 s (the user, 2026-10-09: "there should be a
+    // single source of truth", #108). In tools/list as the tool's
+    // _meta["eluvian/budget"]. `= {}` is not redundant: ToolSpec is built as an
+    // aggregate leaving it out, and clang's missing-field-initializers wants
+    // a field so left to have one.
+    std::optional<Budget> budget = {}; // NOLINT(readability-redundant-member-init): above
 };
+
+// A tool's spec with its budget declared: `argument` (budgetMs,
+// timeoutMs) bounds a call, `defaultMs` where it is not given.
+inline ToolSpec Budgeted(ToolSpec spec, std::string argument, std::int64_t defaultMs)
+{
+    spec.budget = Budget{std::move(argument), defaultMs};
+    return spec;
+}
 
 } // namespace eluvian

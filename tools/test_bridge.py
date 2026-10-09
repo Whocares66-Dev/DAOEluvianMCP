@@ -465,10 +465,9 @@ class BridgeTest(unittest.TestCase):
         )
 
     def test_a_journey_is_waited_for_as_long_as_it_may_take(self) -> None:
-        self.assertGreater(
-            bridge_module.call_budget("travel", {"budgetMs": 120000}), 120
-        )
-        self.assertGreater(bridge_module.call_budget("travel", {}), 60)
+        travel = {"argument": "budgetMs", "defaultMs": 60000}
+        self.assertGreater(bridge_module.call_budget({"budgetMs": 120000}, travel), 120)
+        self.assertGreater(bridge_module.call_budget({}, travel), 60)
 
     def test_a_claim_keeps_another_from_launching_until_it_is_released(self) -> None:
         self.processes.pids.clear()
@@ -704,14 +703,44 @@ class BridgeTest(unittest.TestCase):
         )
 
     def test_the_bridge_waits_as_long_as_the_tool_may_take(self) -> None:
+        scenario = {"argument": "budgetMs", "defaultMs": 600000}
         two_minutes = {"steps": [{"sleepMs": 60000}, {"sleepMs": 60000}]}
-        self.assertGreater(bridge_module.call_budget("scenario", two_minutes), 600)
+        self.assertGreater(bridge_module.call_budget(two_minutes, scenario), 600)
+        wait_for = {"argument": "timeoutMs", "defaultMs": 30000}
         self.assertEqual(
-            bridge_module.call_budget("wait_for", {"timeoutMs": 120000}), 180
+            bridge_module.call_budget({"timeoutMs": 120000}, wait_for),
+            120 + bridge_module.MARGIN_SECONDS,
         )
-        self.assertEqual(bridge_module.call_budget("inspect", {"kind": "game"}), 60)
+        self.assertEqual(bridge_module.call_budget({"kind": "game"}, None), 60)
         self.assertEqual(
-            bridge_module.call_budget("inspect", ["not", "an", "object"]), 60
+            bridge_module.call_budget(["not", "an", "object"], wait_for),
+            30 + bridge_module.MARGIN_SECONDS,
+        )
+
+    def test_a_tools_wait_comes_from_its_own_listing_not_the_bridge(self) -> None:
+        # A tool the bridge has never heard of, declaring a five-minute budget in its listing:
+        # its wait is the listing's, with no name of it in the bridge (#108).
+        self.bridge.game_tools = lambda: (
+            self.bridge.note_budgets(
+                [
+                    {
+                        "name": "sweep",
+                        "_meta": {
+                            "eluvian/budget": {
+                                "argument": "budgetMs",
+                                "defaultMs": 300000,
+                            }
+                        },
+                    },
+                    {"name": "inspect"},
+                ]
+            )
+            or []
+        )
+        self.assertEqual(self.bridge.budget_of("sweep")["defaultMs"], 300000)
+        self.assertIsNone(self.bridge.budget_of("inspect"))
+        self.assertGreater(
+            bridge_module.call_budget({}, self.bridge.budget_of("sweep")), 300
         )
 
     def test_a_call_still_running_is_not_reported_as_the_game_down(self) -> None:

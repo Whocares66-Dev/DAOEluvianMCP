@@ -78,21 +78,23 @@ Json Give(Bench &bench, const Json &raw, milliseconds poll)
 void AddGiftTool(Bench &bench, milliseconds poll)
 {
     bench.Tools().Add(
-        ToolSpec{"gift",
-                 "Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, "
-                 "so its scripts change the approval and move the item, and a special gift may start a "
-                 "conversation. `to`, a follower in the party; `item`, an item of base type Gift from inspect "
-                 "kind=inventory. Answers once the game has taken it (the item gone from the pack, or the "
-                 "approval moved; `budgetMs`, default 3000, at most): the approval before and after "
-                 "(`approvalBefore`, `approvalAfter`), whether the item left the pack (`given`), the game's "
-                 "`mode` after (dialog: a conversation began), and `cursor` for the events that followed.",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"to", {{"type", "string"}, {"description", "The follower's id"}}},
-                        {"item", {{"type", "string"}, {"description", "The gift's id"}}},
-                        {"budgetMs", {{"type", "integer"}, {"minimum", 100}, {"maximum", 30000}}}}},
-                      {"required", {"to", "item"}}},
-                 Thread::Listener},
+        Budgeted(
+            ToolSpec{"gift",
+                     "Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, "
+                     "so its scripts change the approval and move the item, and a special gift may start a "
+                     "conversation. `to`, a follower in the party; `item`, an item of base type Gift from inspect "
+                     "kind=inventory. Answers once the game has taken it (the item gone from the pack, or the "
+                     "approval moved; `budgetMs`, default 3000, at most): the approval before and after "
+                     "(`approvalBefore`, `approvalAfter`), whether the item left the pack (`given`), the game's "
+                     "`mode` after (dialog: a conversation began), and `cursor` for the events that followed.",
+                     Json{{"type", "object"},
+                          {"properties",
+                           {{"to", {{"type", "string"}, {"description", "The follower's id"}}},
+                            {"item", {{"type", "string"}, {"description", "The gift's id"}}},
+                            {"budgetMs", {{"type", "integer"}, {"minimum", 100}, {"maximum", 30000}}}}},
+                          {"required", {"to", "item"}}},
+                     Thread::Listener},
+            "budgetMs", 3000),
         [&bench, poll](const Json &raw) -> ToolResult { return Give(bench, raw, poll); });
 }
 

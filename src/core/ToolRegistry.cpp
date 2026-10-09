@@ -206,6 +206,12 @@ Json ToolRegistry::Describe() const
         {
             tool["annotations"] = {{"readOnlyHint", true}};
         }
+        if (entry.spec.budget)
+        {
+            tool["_meta"] = {
+                {"eluvian/budget",
+                 {{"argument", entry.spec.budget->argument}, {"defaultMs", entry.spec.budget->defaultMs}}}};
+        }
         tools.push_back(std::move(tool));
     }
     return tools;

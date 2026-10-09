@@ -108,13 +108,15 @@ void AddWaitReadyTool(Bench &bench)
           {"intervalMs",
            {{"type", "integer"}, {"minimum", 50}, {"maximum", 5000}, {"description", "250 by default"}}}}}};
     bench.Tools().Add(
-        ToolSpec{"wait_ready",
-                 "Wait until the game takes input again: after an exit, a load, a fight's or a conversation's end, "
-                 "a cutscene. Answers when the game is in explore or combat, the party is dead, the main menu is "
-                 "up, a conversation is at a choice, a message box is up, or a full-screen interface (a picker, a "
-                 "map, a store); `ready`, the `mode`, `what` takes the input, and `passed`, the modes, saves and "
-                 "loads gone through on the way. `ready` false when `timeoutMs` (60000 by default) ran out first.",
-                 schema, Thread::Listener, true},
+        Budgeted(
+            ToolSpec{"wait_ready",
+                     "Wait until the game takes input again: after an exit, a load, a fight's or a conversation's end, "
+                     "a cutscene. Answers when the game is in explore or combat, the party is dead, the main menu is "
+                     "up, a conversation is at a choice, a message box is up, or a full-screen interface (a picker, a "
+                     "map, a store); `ready`, the `mode`, `what` takes the input, and `passed`, the modes, saves and "
+                     "loads gone through on the way. `ready` false when `timeoutMs` (60000 by default) ran out first.",
+                     schema, Thread::Listener, true},
+            "timeoutMs", 60000),
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "wait_ready");
             const auto timeout = milliseconds(args.Integer("timeoutMs", 60000, 0, 600000));

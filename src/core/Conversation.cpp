@@ -314,35 +314,38 @@ class Talk
 void AddDialogueTool(Bench &bench)
 {
     bench.Tools().Add(
-        ToolSpec{"dialogue",
-                 "Answer the conversation on the screen, or skip a cutscene. `action`: choose, the reply at "
-                 "`place` among those inspect kind=dialogue lists, as a click on it; continue, as the skip key: "
-                 "the line being spoken is cut short and its replies offered, and a reply with no text is gone "
-                 "through; skip_cutscene, as Escape in a cutscene or a pre-rendered movie. With `until`: "
-                 "\"choice\", it goes on from there to the next real choice in one call: an answer the game "
-                 "ignored is asked again, a reply with no text gone through, and the lines play as they would "
-                 "for a player (`skipLines`: true cuts each short); it answers every line spoken on the way "
-                 "(`lines`: speaker as the file writes it, `by` and `to` the creatures, and text), the `replies` of "
-                 "the next choice, or that it `ended` and the "
-                 "`mode` after (explore, a cutscene, a fight, an area loading). Without `until` it answers that "
-                 "the game was asked, and `cursor`: wait_for eluvian.dialogue.chosen, .line or "
-                 "eluvian.mode.changed from it. `budgetMs` (default 60000) bounds an `until`.",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"choose", "continue", "skip_cutscene"}}}},
-                        {"place",
-                         {{"type", "integer"},
-                          {"minimum", 0},
-                          {"description", "action=choose: which reply, from 0, as inspect kind=dialogue lists"}}},
-                        {"until",
-                         {{"type", "string"},
-                          {"enum", {"step", "choice"}},
-                          {"description", "choice: go on to the next real choice or the conversation's end"}}},
-                        {"skipLines",
-                         {{"type", "boolean"}, {"description", "with until: cut each line short; default false"}}},
-                        {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 300000}}}}},
-                      {"required", {"action"}}},
-                 Thread::Listener},
+        Budgeted(
+            ToolSpec{
+                "dialogue",
+                "Answer the conversation on the screen, or skip a cutscene. `action`: choose, the reply at "
+                "`place` among those inspect kind=dialogue lists, as a click on it; continue, as the skip key: "
+                "the line being spoken is cut short and its replies offered, and a reply with no text is gone "
+                "through; skip_cutscene, as Escape in a cutscene or a pre-rendered movie. With `until`: "
+                "\"choice\", it goes on from there to the next real choice in one call: an answer the game "
+                "ignored is asked again, a reply with no text gone through, and the lines play as they would "
+                "for a player (`skipLines`: true cuts each short); it answers every line spoken on the way "
+                "(`lines`: speaker as the file writes it, `by` and `to` the creatures, and text), the `replies` of "
+                "the next choice, or that it `ended` and the "
+                "`mode` after (explore, a cutscene, a fight, an area loading). Without `until` it answers that "
+                "the game was asked, and `cursor`: wait_for eluvian.dialogue.chosen, .line or "
+                "eluvian.mode.changed from it. `budgetMs` (default 60000) bounds an `until`.",
+                Json{{"type", "object"},
+                     {"properties",
+                      {{"action", {{"type", "string"}, {"enum", {"choose", "continue", "skip_cutscene"}}}},
+                       {"place",
+                        {{"type", "integer"},
+                         {"minimum", 0},
+                         {"description", "action=choose: which reply, from 0, as inspect kind=dialogue lists"}}},
+                       {"until",
+                        {{"type", "string"},
+                         {"enum", {"step", "choice"}},
+                         {"description", "choice: go on to the next real choice or the conversation's end"}}},
+                       {"skipLines",
+                        {{"type", "boolean"}, {"description", "with until: cut each line short; default false"}}},
+                       {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 300000}}}}},
+                     {"required", {"action"}}},
+                Thread::Listener},
+            "budgetMs", 60000),
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "dialogue");
             return Talk(bench, args).Run();

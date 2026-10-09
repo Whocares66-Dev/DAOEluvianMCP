@@ -1632,56 +1632,59 @@ class Journey
 void AddTravelTool(Bench &bench)
 {
     bench.Tools().Add(
-        ToolSpec{"travel",
-                 "Walk a creature to a `target` (a creature or object id) or a `point`, opening what is shut on the "
-                 "way: it asks for the walk, uses the door in the way, waits, and goes on, up to `maxDoors` "
-                 "(default 4) and `budgetMs` (default 60000). `id` is who walks, default the creature controlled. "
-                 "`upTo` (metres) walks at most that far along the game's own path toward it, and answers where "
-                 "the walk was cut (`cutAt`); a walk no longer goes all the way. "
-                 "Answers `arrived` (within `within` metres, default 1.5, or as near as a creature can stand to a "
-                 "thing that fills its own place or hangs overhead: a door, a chest, a cocoon; then use it from "
-                 "there), `reason`, the `distance` left, what it "
-                 "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
-                 "its to make: a fight near (combat mode with a hostile within `fightNear`, default 20 m: a "
-                 "fight far off that keeps the mode is walked on; the stop names the hostile), a conversation or "
-                 "cutscene took the screen, the game is paused. "
-                 "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say "
-                 "what came of the journey. "
-                 "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
-                 "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
-                 "comes once the other `area` is in place; it stops and says so if the game asks first (a "
-                 "message box), opens the world map, or starts a fight or a conversation. Answering the box "
-                 "(game action=press) lets the game go on by that exit to where it leads, a random "
-                 "encounter's exit to its journey's first destination: travel again from where it arrives. "
-                 "The game may autosave on the way. "
-                 "Across the world map: `to`, a pin's name, tag or index (inspect kind=worldmap lists them), "
-                 "alone with the map up, or with the `exit` that opens it; the pin is clicked and the answer "
-                 "comes once its area is in place. A random encounter on the way is said (`encounter`, the "
-                 "`area` it is in) and is not arrival: fight or talk it out, then travel `to` again.",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"id", {{"description", "Who walks: a creature id; default the one controlled"}}},
-                        {"target", {{"description", "A creature or object id to walk to"}}},
-                        {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
-                        {"exit", {{"type", "string"}, {"description", "An exit's id, from inspect kind=exits"}}},
-                        {"area",
-                         {{"type", "string"},
-                          {"description", "An area's tag, to go to by the nearest exit that leads there"}}},
-                        {"to",
-                         {{"description", "A world map pin: its name (any case), tag or index; alone with the map "
-                                          "up, or with `exit`, the way to the map"}}},
-                        {"within", {{"type", "number"}, {"description", "Metres that count as there; default 1.5"}}},
-                        {"upTo",
-                         {{"type", "number"},
-                          {"description",
-                           "With target or point: walk at most this many metres of the game's own path toward it"}}},
-                        {"fightNear",
-                         {{"type", "number"},
-                          {"description", "In combat mode, walk on unless a hostile is this near (metres, default "
-                                          "20; 0 stops for any fight)"}}},
-                        {"maxDoors", {{"type", "integer"}, {"minimum", 0}, {"maximum", 20}}},
-                        {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}}}}},
-                 Thread::Listener},
+        Budgeted(
+            ToolSpec{
+                "travel",
+                "Walk a creature to a `target` (a creature or object id) or a `point`, opening what is shut on the "
+                "way: it asks for the walk, uses the door in the way, waits, and goes on, up to `maxDoors` "
+                "(default 4) and `budgetMs` (default 60000). `id` is who walks, default the creature controlled. "
+                "`upTo` (metres) walks at most that far along the game's own path toward it, and answers where "
+                "the walk was cut (`cutAt`); a walk no longer goes all the way. "
+                "Answers `arrived` (within `within` metres, default 1.5, or as near as a creature can stand to a "
+                "thing that fills its own place or hangs overhead: a door, a chest, a cocoon; then use it from "
+                "there), `reason`, the `distance` left, what it "
+                "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
+                "its to make: a fight near (combat mode with a hostile within `fightNear`, default 20 m: a "
+                "fight far off that keeps the mode is walked on; the stop names the hostile), a conversation or "
+                "cutscene took the screen, the game is paused. "
+                "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say "
+                "what came of the journey. "
+                "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
+                "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
+                "comes once the other `area` is in place; it stops and says so if the game asks first (a "
+                "message box), opens the world map, or starts a fight or a conversation. Answering the box "
+                "(game action=press) lets the game go on by that exit to where it leads, a random "
+                "encounter's exit to its journey's first destination: travel again from where it arrives. "
+                "The game may autosave on the way. "
+                "Across the world map: `to`, a pin's name, tag or index (inspect kind=worldmap lists them), "
+                "alone with the map up, or with the `exit` that opens it; the pin is clicked and the answer "
+                "comes once its area is in place. A random encounter on the way is said (`encounter`, the "
+                "`area` it is in) and is not arrival: fight or talk it out, then travel `to` again.",
+                Json{{"type", "object"},
+                     {"properties",
+                      {{"id", {{"description", "Who walks: a creature id; default the one controlled"}}},
+                       {"target", {{"description", "A creature or object id to walk to"}}},
+                       {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
+                       {"exit", {{"type", "string"}, {"description", "An exit's id, from inspect kind=exits"}}},
+                       {"area",
+                        {{"type", "string"},
+                         {"description", "An area's tag, to go to by the nearest exit that leads there"}}},
+                       {"to",
+                        {{"description", "A world map pin: its name (any case), tag or index; alone with the map "
+                                         "up, or with `exit`, the way to the map"}}},
+                       {"within", {{"type", "number"}, {"description", "Metres that count as there; default 1.5"}}},
+                       {"upTo",
+                        {{"type", "number"},
+                         {"description",
+                          "With target or point: walk at most this many metres of the game's own path toward it"}}},
+                       {"fightNear",
+                        {{"type", "number"},
+                         {"description", "In combat mode, walk on unless a hostile is this near (metres, default "
+                                         "20; 0 stops for any fight)"}}},
+                       {"maxDoors", {{"type", "integer"}, {"minimum", 0}, {"maximum", 20}}},
+                       {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}}}}},
+                Thread::Listener},
+            "budgetMs", 60000),
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "travel");
             return Journey(bench, args).Run();
