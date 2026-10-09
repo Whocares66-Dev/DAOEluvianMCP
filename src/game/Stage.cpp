@@ -351,6 +351,15 @@ ObjectId StageKill(const Args &args, Json &answer)
 // set it against a room's hostile creatures at once, the party not in it
 // (computer-use-agent with `script`, 2026-10-01): a fight out of the
 // party's sight, staged.
+void PutInGroup(ObjectId id, std::int32_t group, Json &answer)
+{
+    api::SetGroupId(id, group);
+    const ObjectId hero = api::GetHero();
+    answer["group"] = api::GetGroupId(id);
+    answer["hostileToParty"] = hero != kInvalidObject && api::GetGroupHostility(group, api::GetGroupId(hero)) != 0;
+    answer["hostileToGroup1"] = api::GetGroupHostility(group, 1) != 0;
+}
+
 ObjectId StageGroup(const Args &args, Json &answer)
 {
     const ObjectId id = CreatureArg(args);
@@ -366,11 +375,7 @@ ObjectId StageGroup(const Args &args, Json &answer)
         const auto toward = static_cast<std::int32_t>(args.Integer("toward", 0, 0, 255));
         api::SetGroupHostility(group, toward, args.Bool("hostile", true) ? 1 : 0);
     }
-    api::SetGroupId(id, group);
-    const ObjectId hero = api::GetHero();
-    answer["group"] = group;
-    answer["hostileToParty"] = hero != kInvalidObject && api::GetGroupHostility(group, api::GetGroupId(hero)) != 0;
-    answer["hostileToGroup1"] = api::GetGroupHostility(group, 1) != 0;
+    PutInGroup(id, group, answer);
     return id;
 }
 
@@ -442,6 +447,12 @@ ObjectId StageSpawn(const Args &args, Json &answer)
     const float moved = Distance(point, api::GetPosition(id));
     answer["asked"] = VectorJson(point);
     answer["moved"] = moved;
+    // Its group at once: a spawned ogre_a stood neutral until a second
+    // call moved it (turn-based-agent's survey, 2026-10-06, #92).
+    if (args.Has("group"))
+    {
+        PutInGroup(id, static_cast<std::int32_t>(args.Integer("group", 0, 0, 255)), answer);
+    }
     // Read in the frame it was made, a spawned creature is not set up yet:
     // health 1 of 1 in the answer, 85 of 85 three seconds on (2026-09-30).
     answer["note"] = moved > 1.0F
@@ -474,7 +485,8 @@ void AddStage(Bench &bench, const Watch &watch)
               {"creator", {{"description", "Whom the effect is from; default none"}}},
               {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}},
               {"value", {{"type", "number"}, {"description", "action=health: the current health"}}},
-              {"group", {{"type", "integer"}, {"description", "action=group: the group to move the creature to"}}},
+              {"group",
+               {{"type", "integer"}, {"description", "action=group or spawn: the group to put the creature in"}}},
               {"toward", {{"type", "integer"}, {"description", "action=group: another group, to set hostility with"}}},
               {"hostile", {{"type", "boolean"}, {"description", "action=group: with `toward`; default true"}}},
               {"resource", {{"type", "string"}, {"description", "action=cutscene: the cutscene's name"}}},
@@ -530,7 +542,9 @@ void AddStage(Bench &bench, const Watch &watch)
     add("spawn",
         "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "
         "`facing` degrees, in the controlled creature's area; `moved` says how far from the point the game "
-        "put it (a point inside a wall is not kept); it is set up over the next frames. Templates: inspect "
+        "put it (a point inside a wall is not kept); it is set up over the next frames. `group` puts it in "
+        "that group at once, as action=group does (`group`, `hostileToParty` say where it stands). Templates: "
+        "inspect "
         "kind=resources with type utc and a word (ogre_default, hurlock_emissary_off, hurlock_epic_archer)",
         StageSpawn);
     add("reset",
