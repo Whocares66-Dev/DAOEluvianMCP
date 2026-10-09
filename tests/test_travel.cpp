@@ -1,9 +1,11 @@
 #include "core/Travel.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -66,6 +68,7 @@ struct World
     std::string exitNoWalk;         // the search's word for a walk to the exit it cannot make, if it cannot
     mutable double searchReach = 0; // how far toward the goal one search gets, if not all the way (#82)
     mutable double searchGrows = 0; // and how much further each search gets than the last
+    Json pathPoints;                // the waypoints a found walk lists, if given (#90)
     double strip = -1;              // beyond this distance the search finds none, though straight steps cross
     bool farFails = false;          // whether a move of more than a metre from within the strip fails INVALID_PATH
     bool tooClose = false;          // whether the exit's use fails from closer than 2 m
@@ -167,6 +170,10 @@ struct World
         else if (!shut || at <= door || hidden)
         {
             walk = Json{{"found", true}, {"length", at - shortBy}};
+            if (!pathPoints.is_null())
+            {
+                walk["waypoints"] = pathPoints;
+            }
             if (shortBy > 0)
             {
                 walk["waypoints"] = Json::array({Json::array({shortBy, 0, 0})});
@@ -343,10 +350,12 @@ struct World
             return FakeExits();
         }
         const Json walk = FakeWalk(args);
+        // A point's goal is where along the line it lies (a cut walk's, #90).
+        const double goal = args.contains("point") ? args.at("point").at(0).get<double>() : 0;
         return Json{{"from", {{"id", args.value("id", "")}}},
                     {"position", {{"x", at}, {"y", 0}, {"z", 0}}},
-                    {"to", {0, 0, 0}},
-                    {"distance", at},
+                    {"to", {goal, 0, 0}},
+                    {"distance", std::abs(at - goal)},
                     {"walk", walk}};
     }
 
@@ -1492,4 +1501,43 @@ TEST_CASE("an exit used twice to no end is not used a third time", "[travel]")
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not leave"));
     CHECK(std::count_if(world.orders.begin(), world.orders.end(),
                         [](const Json &order) { return order["action"] == "use"; }) == 2);
+}
+
+TEST_CASE("upTo walks that far along the way to the target, and no further", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 30;
+    const auto answer = world.Travel(Json{{"upTo", 10}});
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["cutAt"] == Json::array({20.0, 0.0, 0.0}));
+    CHECK(world.at == Catch::Approx(20));
+}
+
+TEST_CASE("upTo cuts the game's own path where it turns, not the line to the goal", "[travel]")
+{
+    World world; // the path goes 5 m along, turns, 10 m aside, then on to the goal
+    world.shut = false;
+    world.at = 30;
+    world.pathPoints = Json::array({Json::array({25, 0, 0}), Json::array({25, 10, 0}), Json::array({0, 10, 0})});
+    const auto answer = world.Travel(Json{{"upTo", 10}});
+    CHECK(answer["cutAt"] == Json::array({25.0, 5.0, 0.0}));
+}
+
+TEST_CASE("upTo longer than the walk goes all the way", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 8;
+    const auto answer = world.Travel(Json{{"upTo", 10}});
+    CHECK(answer["arrived"] == true);
+    CHECK_FALSE(answer.contains("cutAt"));
+    CHECK(world.at < 1.5);
+}
+
+TEST_CASE("upTo is for a target or a point, and more than nothing", "[travel]")
+{
+    World world;
+    CHECK_THROWS_WITH(world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"upTo", 10}}), ContainsSubstring("upTo"));
+    CHECK_THROWS_WITH(world.Travel(Json{{"upTo", 0}}), ContainsSubstring("more than 0"));
 }

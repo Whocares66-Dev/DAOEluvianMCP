@@ -2418,6 +2418,37 @@ MUTANTS = [
         "        record({}, &result.data);",
         "        record({}, nullptr);",
     ),
+    # a walk cut to upTo metres along the game's path (#90)
+    Mutant(
+        "travel's upTo cuts the walk nowhere",
+        TRAVEL,
+        "            if (upTo_ && !cut_ && CutWalk(geometry, walk))",
+        "            if (upTo_ && cut_ && CutWalk(geometry, walk))",
+    ),
+    Mutant(
+        "travel's upTo cuts from the goal's end",
+        TRAVEL,
+        "                const double share = length / leg;",
+        "                const double share = 1.0 - (length / leg);",
+    ),
+    Mutant(
+        "travel's upTo takes no length off at a turn",
+        TRAVEL,
+        "            length -= leg;\n            from = *next;",
+        "            from = *next;",
+    ),
+    Mutant(
+        "travel's upTo measures each leg from the start",
+        TRAVEL,
+        "            length -= leg;\n            from = *next;",
+        "            length -= leg;",
+    ),
+    Mutant(
+        "travel's upTo takes 0 metres",
+        TRAVEL,
+        "            if (*upTo_ <= 0)",
+        "            if (*upTo_ < 0)",
+    ),
 ]
 
 

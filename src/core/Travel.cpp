@@ -108,6 +108,18 @@ class Journey
         {
             who_ = args.String("id");
         }
+        if (args.Has("upTo"))
+        {
+            if (!where_.contains("target") && !where_.contains("point"))
+            {
+                throw ToolError("travel: `upTo` cuts a walk to a `target` or a `point`");
+            }
+            upTo_ = args.Number("upTo");
+            if (*upTo_ <= 0)
+            {
+                throw ToolError("travel: `upTo` is a length in metres, more than 0");
+            }
+        }
     }
 
     Json Run()
@@ -622,6 +634,60 @@ class Journey
         return std::nullopt;
     }
 
+    // The point `length` metres along a walk from `from` through its
+    // waypoints, start to end; nothing if the walk is no longer (#90).
+    static std::optional<std::array<double, 3>> PointAlong(std::array<double, 3> from, const Json &waypoints,
+                                                           double length)
+    {
+        for (const Json &waypoint : waypoints)
+        {
+            const auto next = Point(waypoint);
+            if (!next)
+            {
+                continue;
+            }
+            const double leg = std::hypot((*next)[0] - from[0], (*next)[1] - from[1], (*next)[2] - from[2]);
+            if (leg > 0 && leg >= length)
+            {
+                const double share = length / leg;
+                return std::array<double, 3>{from[0] + (share * ((*next)[0] - from[0])),
+                                             from[1] + (share * ((*next)[1] - from[1])),
+                                             from[2] + (share * ((*next)[2] - from[2]))};
+            }
+            length -= leg;
+            from = *next;
+        }
+        return std::nullopt;
+    }
+
+    // A walk of at most `upTo` metres: the game's own path cut that far
+    // along, where the driver cut inspect geometry's waypoints itself to
+    // test movement by steps (turn-based-agent's survey, 2026-10-06,
+    // #90). The goal becomes that point; a walk no longer goes all the
+    // way. True if the goal moved.
+    bool CutWalk(const Json &geometry, const Json &walk)
+    {
+        cut_ = true;
+        const auto from = Point(geometry.value("position", Json()));
+        if (!from)
+        {
+            return false;
+        }
+        Json waypoints = walk.value("waypoints", Json::array());
+        if (!waypoints.is_array() || waypoints.empty())
+        {
+            waypoints = Json::array({geometry.value("to", Json())}); // no path read: the line to it
+        }
+        const auto point = PointAlong(*from, waypoints, *upTo_);
+        if (!point)
+        {
+            return false;
+        }
+        where_ = Json{{"point", *point}};
+        answer_["cutAt"] = *point;
+        return true;
+    }
+
     Json Walk()
     {
         for (int step = 0; step < 4 * (static_cast<int>(maxDoors_) + 2); ++step)
@@ -639,6 +705,10 @@ class Journey
             }
             const Json &geometry = *measured;
             const Json walk = geometry.value("walk", Json::object());
+            if (upTo_ && !cut_ && CutWalk(geometry, walk))
+            {
+                continue; // measured again to the point it was cut at
+            }
             const double distance = geometry.value("distance", 0.0);
             answer_["distance"] = distance;
             measured_ = true;
@@ -1355,6 +1425,8 @@ class Journey
     std::string who_;
     bool byClick_ = false;
     std::optional<double> legFrom_;                // the distance as the last leg to the search's end began (#82)
+    std::optional<double> upTo_;                   // `upTo`: the most of the walk to make (#90)
+    bool cut_ = false;                             // whether the walk was cut to `upTo` already
     std::optional<std::array<double, 3>> lastEnd_; // where that leg was sent
     bool wentToReached_ = false;
     std::string lastBlocker_;        // the door used last, to tell one that did not open
@@ -1377,6 +1449,8 @@ void AddTravelTool(Bench &bench)
                  "Walk a creature to a `target` (a creature or object id) or a `point`, opening what is shut on the "
                  "way: it asks for the walk, uses the door in the way, waits, and goes on, up to `maxDoors` "
                  "(default 4) and `budgetMs` (default 60000). `id` is who walks, default the creature controlled. "
+                 "`upTo` (metres) walks at most that far along the game's own path toward it, and answers where "
+                 "the walk was cut (`cutAt`); a walk no longer goes all the way. "
                  "Answers `arrived` (within `within` metres, default 1.5, or as near as a creature can stand to a "
                  "thing that fills its own place or hangs overhead: a door, a chest, a cocoon; then use it from "
                  "there), `reason`, the `distance` left, what it "
@@ -1410,6 +1484,10 @@ void AddTravelTool(Bench &bench)
                          {{"description", "A world map pin: its name (any case), tag or index; alone with the map "
                                           "up, or with `exit`, the way to the map"}}},
                         {"within", {{"type", "number"}, {"description", "Metres that count as there; default 1.5"}}},
+                        {"upTo",
+                         {{"type", "number"},
+                          {"description",
+                           "With target or point: walk at most this many metres of the game's own path toward it"}}},
                         {"fightNear",
                          {{"type", "number"},
                           {"description", "In combat mode, walk on unless a hostile is this near (metres, default "
