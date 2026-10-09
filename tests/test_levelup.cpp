@@ -751,3 +751,17 @@ TEST_CASE("a specialization taken before a refusal is given back with the rest",
     CHECK(rogue.specialPoints == 1);
     CHECK_FALSE(rogue.specials[2].selected);
 }
+
+TEST_CASE("attributes spent by name leave the specialization point, none taken and no Auto pressed", "[levelup]")
+{
+    Rogue rogue; // a level's points and a specialization point, as Lyna at level 13 (#105)
+    Specials(rogue);
+    rogue.levels = 1;
+    rogue.LevelUp(Json{{"attributes", {{"strength", 3}}}, {"showMs", 0}});
+    CHECK(rogue.strength == 13);
+    CHECK(rogue.specialPoints == 1);
+    CHECK(std::ranges::none_of(rogue.specials,
+                               [](const auto &special) { return special.selected && special.id != 4025; }));
+    CHECK(std::ranges::none_of(rogue.sent,
+                               [](const std::string &text) { return text.starts_with("GUILevelUp.AutoLevelUp"); }));
+}
