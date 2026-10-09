@@ -319,8 +319,8 @@ MUTANTS = [
     Mutant(
         "loot gives the walk the whole default budget",
         LOOT,
-        "std::max<long long>(1000, Left().count())",
-        "std::max<long long>(1000, 60000)",
+        '{"target", target_}, {"budgetMs", std::max<long long>(1000, Left().count())}',
+        '{"target", target_}, {"budgetMs", std::max<long long>(1000, 60000)}',
     ),
     Mutant(
         "loot looks for the use's events only after the order answered",
@@ -2330,6 +2330,73 @@ MUTANTS = [
         TRAVEL,
         '            answer_.value("distance", kUseReach + 1) <= kUseReach)',
         '            answer_.value("distance", kUseReach + 1) < 0)',
+    ),
+    # loot with a radius, by the placeable's action (#88)
+    Mutant(
+        "a placeable's loot action is named otherwise",
+        PLACEABLES,
+        '"dialog", "loot",',
+        '"dialog", "use",',
+    ),
+    Mutant(
+        "a placeable's action beyond the table is named",
+        PLACEABLES,
+        "    return static_cast<std::size_t>(action) < kActions.size()",
+        "    return static_cast<std::size_t>(action) <= kActions.size()",
+    ),
+    Mutant(
+        "a sweep loots what is not a container",
+        LOOT,
+        "                (action != kPlaceableActionLoot && action != kPlaceableActionUnlock))",
+        "                (action == 0))",
+    ),
+    Mutant(
+        "a sweep passes a locked container untried",
+        LOOT,
+        "                (action != kPlaceableActionLoot && action != kPlaceableActionUnlock))",
+        "                (action != kPlaceableActionLoot))",
+    ),
+    Mutant(
+        "a sweep loots what is not interactive",
+        LOOT,
+        '            if (!placeable.value("interactive", false) ||',
+        '            if (!placeable.value("interactive", true) && false ||',
+    ),
+    Mutant(
+        "a sweep goes on past a full backpack",
+        LOOT,
+        '                stopped = "the backpack is full";',
+        "                looted += 0;",
+    ),
+    Mutant(
+        "a sweep goes on past a fight",
+        LOOT,
+        "            if (stopped)\n            {\n                continue;\n            }",
+        "            if (stopped && stopped->empty())\n            {\n                continue;\n            }",
+    ),
+    Mutant(
+        "a sweep takes an herb's empty use for nothing there",
+        LOOT,
+        '                if (autoloot_ && result == "success")',
+        '                if (autoloot_ && result == "never")',
+    ),
+    Mutant(
+        "a sweep takes any container whose use opened nothing for picked",
+        LOOT,
+        '                if (autoloot_ && result == "success")',
+        '                if (result == "success")',
+    ),
+    Mutant(
+        "loot takes radius and target together",
+        LOOT,
+        "        if (radius_ && !target_.empty())",
+        "        if (radius_ && target_.empty() && false)",
+    ),
+    Mutant(
+        "a sweep lists around the one controlled, not the looter",
+        LOOT,
+        '            near["near"] = who_;',
+        '            near["at"] = who_;',
     ),
 ]
 

@@ -34,4 +34,15 @@ std::string_view PlaceableStateName(std::string_view controller, int state)
     return {};
 }
 
+std::string_view PlaceableActionName(int action)
+{
+    // placeable_interactions' rows; 9, 13, 14 and 17 name nothing used.
+    static constexpr std::array<std::string_view, 19> kActions = {
+        "",           "open", "close",  "unlock", "destroy",      "use", "examine", "disarm",
+        "flip cover", "",     "dialog", "loot",   "trigger trap", "",    "",        "area transition",
+        "turn left",  "",     "repair"};
+    return static_cast<std::size_t>(action) < kActions.size() ? kActions[static_cast<std::size_t>(action)]
+                                                              : std::string_view();
+}
+
 } // namespace eluvian

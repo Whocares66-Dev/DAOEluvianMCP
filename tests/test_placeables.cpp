@@ -31,3 +31,18 @@ TEST_CASE("another controller, or a number outside a controller's, has no word",
     CHECK(PlaceableStateName("StateCnt_Container_Static", 3).empty());
     CHECK(PlaceableStateName("", 1).empty());
 }
+
+TEST_CASE("a placeable's action is named as placeable_interactions names it", "[placeables]")
+{
+    CHECK(PlaceableActionName(kPlaceableActionLoot) == "loot");
+    CHECK(PlaceableActionName(kPlaceableActionUnlock) == "unlock");
+    CHECK(PlaceableActionName(1) == "open");
+    CHECK(PlaceableActionName(5) == "use");
+    CHECK(PlaceableActionName(6) == "examine");
+    CHECK(PlaceableActionName(15) == "area transition");
+    CHECK(PlaceableActionName(18) == "repair");
+    CHECK(PlaceableActionName(0).empty());
+    CHECK(PlaceableActionName(9).empty());
+    CHECK(PlaceableActionName(19).empty());
+    CHECK(PlaceableActionName(-1).empty());
+}

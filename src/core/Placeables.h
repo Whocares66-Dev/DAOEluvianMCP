@@ -16,4 +16,16 @@ namespace eluvian
 // another controller or a number it does not name.
 std::string_view PlaceableStateName(std::string_view controller, int state);
 
+// What a placeable's use does now, as the scripts' GetPlaceableAction
+// answers it: the action of its current state in its state controller's
+// table (placeable_interactions), so a locked chest's is unlock until it is
+// open (lib-agent, read from the game's 2da.erf, 2026-10-06, #88).
+inline constexpr int kPlaceableActionUnlock = 3;
+inline constexpr int kPlaceableActionLoot = 11;
+
+// The word for a placeable's action: open, close, unlock, destroy, use,
+// examine, disarm, flip cover, dialog, loot, trigger trap, area
+// transition, turn left, repair. Empty for a number not named.
+std::string_view PlaceableActionName(int action);
+
 } // namespace eluvian

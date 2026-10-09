@@ -1,6 +1,7 @@
 #include "core/Loot.h"
 
 #include "core/Args.h"
+#include "core/Placeables.h"
 
 #include <algorithm>
 #include <chrono>
@@ -37,15 +38,23 @@ constexpr milliseconds kNoUse{3000};
 // them (turn-based-agent, 2026-10-05, #80).
 constexpr double kUseReach = 5.0;
 
+// How long a sweep waits for the world between two containers: the panel
+// of the one before takes a moment to go (the driver's lootall waited
+// up to 4 s, 2026-10-06).
+constexpr milliseconds kSettle{4000};
+
 // One looting: its arguments, its clock, and the answer it builds.
 class Looting
 {
   public:
-    Looting(Bench &bench, const Args &args, milliseconds show)
-        : bench_(bench), deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 600000))),
+    Looting(Bench &bench, const Args &args, milliseconds show, bool autoloot = false)
+        : bench_(bench),
+          deadline_(Clock::now() +
+                    milliseconds(args.Integer("budgetMs", args.Has("radius") ? 300000 : 60000, 1000, 600000))),
           show_(milliseconds(args.Integer("showMs", show.count(), 0, 10000))),
           target_(args.Has("target") ? args.String("target") : std::string()),
-          who_(args.Has("id") ? args.String("id") : std::string())
+          who_(args.Has("id") ? args.String("id") : std::string()),
+          radius_(args.Has("radius") ? std::optional<double>(args.Number("radius")) : std::nullopt), autoloot_(autoloot)
     {
         answer_["cursor"] = bench_.Events().Next();
     }
@@ -56,9 +65,13 @@ class Looting
     // 2026-10-06, #86).
     Json Run()
     {
+        if (radius_ && !target_.empty())
+        {
+            throw ToolError("loot: `radius` loots everything around, `target` one container: give one");
+        }
         if (who_.empty())
         {
-            return Loot();
+            return Act();
         }
         const Json control = bench_.Invoke("order", Json{{"action", "control"}, {"id", who_}}).data;
         if (!control.value("taken", false))
@@ -69,7 +82,7 @@ class Looting
         Json answer;
         try
         {
-            answer = Loot();
+            answer = Act();
         }
         catch (...)
         {
@@ -97,6 +110,127 @@ class Looting
             return Json{{"backTo", before_}, {"refused", refused_}};
         }
         return back->value("controlled", Json());
+    }
+
+    Json Act()
+    {
+        return radius_ ? Sweep() : Loot();
+    }
+
+    // Every placeable within the radius whose use is a loot, nearest
+    // first, each looted as one loot does; one whose use is an unlock is
+    // tried too, the looter perhaps able to pick it, as the driver's
+    // lootall did. The engine's own action says which (GetPlaceableAction,
+    // lib-agent, 2026-10-06), where the driver chose by words in tags
+    // (#88). The sweep stops where the game turns from the world (a fight,
+    // a conversation, a question) or the pack is full; a locked or empty
+    // one is said and passed.
+    Json Sweep()
+    {
+        Json near = Json{{"kind", "placeables"}, {"radius", *radius_}};
+        if (!who_.empty())
+        {
+            near["near"] = who_;
+        }
+        const Json listed = bench_.Invoke("inspect", near).data;
+        Json containers = Json::array();
+        Json skipped = Json::array();
+        int looted = 0;
+        std::optional<std::string> stopped;
+        for (const Json &placeable : listed.value("placeables", Json::array()))
+        {
+            const int action = placeable.value("action", 0);
+            if (!placeable.value("interactive", false) ||
+                (action != kPlaceableActionLoot && action != kPlaceableActionUnlock))
+            {
+                skipped.push_back(Json{{"id", placeable.value("id", std::string())},
+                                       {"name", placeable.value("name", std::string())},
+                                       {"action", placeable.value("actionName", std::string())}});
+                continue;
+            }
+            if (!stopped)
+            {
+                stopped = Unsettled();
+            }
+            if (stopped)
+            {
+                continue;
+            }
+            Json report = LootOne(placeable);
+            looted += report.value("looted", false) ? 1 : 0;
+            if (report.value("full", false))
+            {
+                stopped = "the backpack is full";
+            }
+            containers.push_back(std::move(report));
+        }
+        const auto tried = containers.size();
+        answer_["radius"] = *radius_;
+        answer_["containers"] = std::move(containers);
+        answer_["skipped"] = std::move(skipped);
+        answer_["stopped"] = stopped ? Json(*stopped) : Json(nullptr);
+        answer_["count"] = looted;
+        return End(looted > 0, (stopped ? "stopped: " + *stopped + "; " : std::string()) + std::to_string(looted) +
+                                   " of " + std::to_string(tried) + " containers looted");
+    }
+
+    // One container of a sweep, looted as loot with its `target` does.
+    Json LootOne(const Json &placeable)
+    {
+        const std::string id = placeable.value("id", std::string());
+        // The scripts' Loot action moves all of a container whose tag has
+        // _autoloot (herbs, flowers) to the looter, with no panel
+        // (placeable_h.nss, PLACEABLE_ACTION_OPEN_INVENTORY; lib-agent).
+        const bool autoloot = placeable.value("tag", std::string()).find("_autoloot") != std::string::npos;
+        Json report;
+        try
+        {
+            const Args one(Json{{"target", id},
+                                {"budgetMs", std::max<long long>(1000, Left().count())},
+                                {"showMs", show_.count()}},
+                           "loot");
+            report = Looting(bench_, one, show_, autoloot).Run();
+        }
+        catch (const ToolError &e)
+        {
+            report = Json{{"looted", false}, {"reason", e.what()}};
+        }
+        report.erase("cursor");
+        report["target"] = Json{{"id", id}, {"name", placeable.value("name", std::string())}};
+        return report;
+    }
+
+    // Why the sweep cannot go on, if it cannot: the world not back within
+    // kSettle (a fight, a conversation, a question, a panel that stays),
+    // or the time gone.
+    std::optional<std::string> Unsettled()
+    {
+        const auto until = Clock::now() + kSettle;
+        std::string why = "the time ran out";
+        while (Left().count() > 0)
+        {
+            const auto read = Ask("inspect", Json{{"kind", "gui"}});
+            if (!read)
+            {
+                return "the game stopped answering: " + refused_;
+            }
+            if (auto instead = Instead(*read, std::string()))
+            {
+                return instead;
+            }
+            const std::string mode = read->value("mode", std::string());
+            if (mode == "explore")
+            {
+                return std::nullopt;
+            }
+            why = "the game is in mode " + mode + ", not the world";
+            if (Clock::now() > until)
+            {
+                return why;
+            }
+            std::this_thread::sleep_for(milliseconds(100));
+        }
+        return why;
     }
 
     Json Loot()
@@ -205,6 +339,12 @@ class Looting
             }
             if (endedAt && Clock::now() - *endedAt > kPanelGrace)
             {
+                if (autoloot_ && result == "success")
+                {
+                    answer_["picked"] = true;
+                    return End(true, "picked: the game gives what an _autoloot container holds to the "
+                                     "looter, with no panel");
+                }
                 return Untouched("the use ended " + result);
             }
         }
@@ -346,9 +486,11 @@ class Looting
     Clock::time_point deadline_;
     milliseconds show_;
     std::string target_;
-    std::string who_;     // the party member looting, if not the one controlled
-    std::string before_;  // whom control is given back to
-    std::string refused_; // why the last call Ask made was refused
+    std::string who_;              // the party member looting, if not the one controlled
+    std::string before_;           // whom control is given back to
+    std::optional<double> radius_; // `radius`: everything around, not one target
+    bool autoloot_;                // a container the game empties into the looter with no panel
+    std::string refused_;          // why the last call Ask made was refused
     Json answer_ = Json::object();
 };
 
@@ -369,7 +511,11 @@ void AddLootTool(Bench &bench, milliseconds show)
             "in brief), whether the backpack was `full` (then the rest stays and the panel stays up), "
             "whether the panel `closed`, and the `walk`. It stops and says why when the container does not "
             "open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains "
-            "open no panel). A container's treasure may be chosen "
+            "open no panel). With `radius` (metres) instead of `target`, every placeable within it whose use "
+            "is a loot or an unlock (inspect kind=placeables' `action`), nearest first: one report "
+            "each in `containers`, `count` looted, what else was there in `skipped`; it stops "
+            "(`stopped`) at a fight, a conversation, a question or a full pack, and passes a "
+            "locked or empty one. A container's treasure may be chosen "
             "only as it opens, so one that read empty may not be. The events from `cursor` say what "
             "followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for "
             "the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so "
@@ -379,6 +525,8 @@ void AddLootTool(Bench &bench, milliseconds show)
                   {{"target", {{"type", "string"}, {"description", "The container's id; none: the panel up now"}}},
                    {"id",
                     {{"type", "string"}, {"description", "The party member who loots (default: the one controlled)"}}},
+                   {"radius",
+                    {{"type", "number"}, {"minimum", 0}, {"description", "Every container within this many metres"}}},
                    {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}},
                    {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
             Thread::Listener},

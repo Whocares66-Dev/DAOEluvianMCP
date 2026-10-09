@@ -3,6 +3,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -41,6 +43,10 @@ struct Chest
     bool walkOpens = false;          // whether the walk opens the target itself on the way, stopped by its pause
     std::string controlled = "0x82"; // the creature controlled
     double shortBy = 0;              // a walk that ends this short with no way the last of it, if not 0
+    Json around = Json::array();     // the placeables inspect kind=placeables lists, nearest first
+    std::set<std::string> shutTight; // those whose use opens no panel (locked, or an _autoloot herb)
+    std::string fullAt;              // the one whose Take All finds the backpack full
+    std::string fightAt;             // the one whose use brings a fight
 
     Chest()
     {
@@ -125,6 +131,11 @@ struct Chest
     // The stand-in's inspect.
     ToolResult FakeInspect(const Json &args)
     {
+        if (args.value("kind", "") == "placeables")
+        {
+            calls.emplace_back("inspect placeables " + args.value("near", ""));
+            return Json{{"placeables", around}};
+        }
         if (args.value("kind", "") == "inventory")
         {
             return Json{{"count", items.size()}, {"items", items}};
@@ -171,11 +182,12 @@ struct Chest
             panel.clear();
             return Json{{"panel", nullptr}};
         }
+        const bool isFull = full || panel == fullAt;
         Json answer = {{"container", {{"id", panel}}},
-                       {"taken", full ? Json::array() : items},
-                       {"left", full ? items : Json::array()},
-                       {"full", full}};
-        if (!full && !staysUp)
+                       {"taken", isFull ? Json::array() : items},
+                       {"left", isFull ? items : Json::array()},
+                       {"full", isFull}};
+        if (!isFull && !staysUp)
         {
             panel.clear();
         }
@@ -192,15 +204,16 @@ struct Chest
             bench.Events().Emit("eluvian.command.ended",
                                 Json{{"id", "0x82"}, {"type", "UseObject"}, {"result", "success"}});
         }
-        if (opens && panelLate > 0)
+        const bool opening = opens && !shutTight.contains(used);
+        if (opening && panelLate > 0)
         {
             panelIn = panelLate;
         }
-        else if (opens)
+        else if (opening)
         {
             panel = Opened();
         }
-        mode = brings;
+        mode = !fightAt.empty() && used == fightAt ? "combat" : brings;
     }
 
     [[nodiscard]] std::string Opened() const
@@ -503,4 +516,117 @@ TEST_CASE("a walk that ends far short is said, and nothing is used", "[loot]")
     CHECK(answer["looted"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("INVALID_PATH"));
     CHECK(chest.calls == std::vector<std::string>{"travel"});
+}
+
+namespace
+{
+
+// A placeable as inspect kind=placeables lists it, with its action.
+Json Placeable(const std::string &id, int action, const std::string &actionName, const std::string &tag = "chest")
+{
+    return Json{
+        {"id", id}, {"name", id}, {"tag", tag}, {"interactive", true}, {"action", action}, {"actionName", actionName}};
+}
+
+} // namespace
+
+TEST_CASE("loot with a radius takes each placeable whose use is a loot, nearest first, and passes the rest", "[loot]")
+{
+    Chest chest;
+    chest.around = Json::array({Placeable("0x3e1", 11, "loot"), Placeable("0x3e2", 15, "area transition", "to_market"),
+                                Placeable("0x3e3", 5, "use", "lever"), Placeable("0x3e4", 11, "loot")});
+    const auto answer = chest.Loot(Json{{"radius", 30}, {"showMs", 0}});
+    CHECK(answer["looted"] == true);
+    CHECK(answer["count"] == 2);
+    CHECK(answer["stopped"].is_null());
+    CHECK(answer["reason"] == "2 of 2 containers looted");
+    REQUIRE(answer["containers"].size() == 2);
+    CHECK(answer["containers"][0]["target"]["id"] == "0x3e1");
+    CHECK(answer["containers"][1]["target"]["id"] == "0x3e4");
+    REQUIRE(answer["skipped"].size() == 2);
+    CHECK(answer["skipped"][0]["action"] == "area transition");
+    CHECK(answer["skipped"][1]["action"] == "use");
+    CHECK(chest.calls == std::vector<std::string>{"inspect placeables ", "travel", "order use", "game press Take All",
+                                                  "travel", "order use", "game press Take All"});
+}
+
+TEST_CASE("a sweep passes a locked one and an interactive-less one, and goes on", "[loot]")
+{
+    Chest chest;
+    Json quiet = Placeable("0x3e0", 11, "loot");
+    quiet["interactive"] = false;
+    chest.around = Json::array({quiet, Placeable("0x3e1", 3, "unlock"), Placeable("0x3e4", 11, "loot")});
+    chest.shutTight = {"0x3e1"};
+    const auto answer = chest.Loot(Json{{"radius", 30}, {"showMs", 0}});
+    CHECK(answer["count"] == 1);
+    CHECK(answer["stopped"].is_null());
+    REQUIRE(answer["containers"].size() == 2); // the locked one was tried: the looter may pick it
+    CHECK(answer["containers"][0]["looted"] == false);
+    CHECK(answer["containers"][1]["looted"] == true);
+    REQUIRE(answer["skipped"].size() == 1);
+    CHECK(answer["skipped"][0]["id"] == "0x3e0");
+}
+
+TEST_CASE("a sweep stops at a full backpack", "[loot]")
+{
+    Chest chest;
+    chest.around = Json::array({Placeable("0x3e1", 11, "loot"), Placeable("0x3e4", 11, "loot")});
+    chest.fullAt = "0x3e1";
+    const auto answer = chest.Loot(Json{{"radius", 30}, {"showMs", 0}});
+    CHECK(answer["stopped"] == "the backpack is full");
+    REQUIRE(answer["containers"].size() == 1); // the next not walked to
+    CHECK(answer["containers"][0]["full"] == true);
+    CHECK(std::count(chest.calls.begin(), chest.calls.end(), "travel") == 1);
+}
+
+TEST_CASE("a sweep stops at a fight a use brings, the next not walked to", "[loot]")
+{
+    Chest chest;
+    chest.around = Json::array({Placeable("0x3e1", 11, "loot"), Placeable("0x3e4", 11, "loot")});
+    chest.fightAt = "0x3e1";
+    const auto answer = chest.Loot(Json{{"radius", 30}, {"showMs", 0}});
+    CHECK(answer["stopped"] == "a fight began");
+    CHECK(answer["containers"].size() == 1);
+    CHECK(std::count(chest.calls.begin(), chest.calls.end(), "travel") == 1);
+}
+
+TEST_CASE("a sweep picks an _autoloot herb, whose use gives its items with no panel", "[loot]")
+{
+    Chest chest;
+    chest.around = Json::array({Placeable("0x3e5", 11, "loot", "plt_autoloot_elfroot")});
+    chest.shutTight = {"0x3e5"};
+    const auto answer = chest.Loot(Json{{"radius", 30}, {"showMs", 0}});
+    CHECK(answer["count"] == 1);
+    REQUIRE(answer["containers"].size() == 1);
+    CHECK(answer["containers"][0]["picked"] == true);
+    CHECK(answer["containers"][0]["looted"] == true);
+}
+
+TEST_CASE("a container whose use opens no panel, not an _autoloot one, is not taken for picked", "[loot]")
+{
+    Chest chest;
+    chest.around = Json::array({Placeable("0x3e5", 11, "loot")});
+    chest.shutTight = {"0x3e5"};
+    const auto answer = chest.Loot(Json{{"radius", 30}, {"showMs", 0}});
+    CHECK(answer["count"] == 0);
+    CHECK_FALSE(answer["containers"][0].contains("picked"));
+}
+
+TEST_CASE("a sweep for a party member lists around it and hands control over once", "[loot]")
+{
+    Chest chest;
+    chest.around = Json::array({Placeable("0x3e1", 11, "loot"), Placeable("0x3e4", 11, "loot")});
+    const auto answer = chest.Loot(Json{{"radius", 30}, {"showMs", 0}, {"id", "0x7d9"}});
+    CHECK(answer["count"] == 2);
+    CHECK(chest.calls.front() == "order control 0x7d9");
+    CHECK(chest.calls[1] == "inspect placeables 0x7d9");
+    CHECK(chest.calls.back() == "order control 0x82");
+    CHECK(std::count(chest.calls.begin(), chest.calls.end(), "order control 0x7d9") == 1);
+}
+
+TEST_CASE("radius and target together are refused", "[loot]")
+{
+    Chest chest;
+    CHECK_THROWS_WITH(chest.Loot(Json{{"radius", 30}, {"target", "0x3ec"}}), ContainsSubstring("give one"));
+    CHECK(chest.calls.empty());
 }

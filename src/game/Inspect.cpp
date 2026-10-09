@@ -515,6 +515,9 @@ ToolResult KindPlaceables(const Watch &watch, const Json &raw)
         placeable["distance"] = distance;
         placeable["state"] = api::GetPlaceableState(id);
         placeable["stateName"] = PlaceableStateWord(id);
+        const auto action = api::GetPlaceableAction(id);
+        placeable["action"] = action;
+        placeable["actionName"] = std::string(PlaceableActionName(action));
         placeable["active"] = active;
         placeable["interactive"] = api::GetObjectInteractive(id) != 0;
         placeable["popup"] = Narrow(api::GetPlaceablePopupText(id));
