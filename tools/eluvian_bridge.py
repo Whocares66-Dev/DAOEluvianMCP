@@ -78,7 +78,7 @@ def documents_folder() -> Path:
 
 
 # Who holds the game and its folder: one file beside the logs that every agent's scripts read
-# (README.md, "The claim").
+# (dev/DESIGN.md, "Outside the game").
 CLAIM_FILE = "game.claim.json"
 # Every event of the last run, a JSON object a line (core/EventLog.h).
 EVENTS_FILE = "eluvian.events.jsonl"
@@ -880,7 +880,7 @@ class Bridge:
     # run's logs (2026-10-01). The claim is a small file beside the logs, game.claim.json:
     # {"owner", "note", "since", "until"}, the times in Unix seconds. The user made it the one
     # every agent's deploy and launch scripts honour (2026-10-02), so it is named for the game,
-    # not for Eluvian; what it means is in README.md, "The claim".
+    # not for Eluvian; what it means is in dev/DESIGN.md, "Outside the game".
 
     def claim_path(self) -> Path:
         return self.game.folder / CLAIM_FILE

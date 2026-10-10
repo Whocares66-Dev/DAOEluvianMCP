@@ -113,6 +113,22 @@ So `via:"command"` tests the rules and `via:"click"` tests the click. What neith
 
 A game that is not running cannot serve anything, and a direct MCP connection dies with the process. `tools\eluvian_bridge.py` is a stdio MCP server the agent keeps: it proxies to the game's REST API while the game is up, keeps the last tool list while it is down, and adds what only an outside process can do: `launch` (start `DAOrigins.exe` once, refusing a second instance, since a second one truncated the running game's logs on 2026-09-30), `quit`, and `status`. With it an agent goes from a build to a fight with no screen at all.
 
+Several agents share one game and its folder, and a test may leave a loader and plugins of its own in place between two runs. So whoever needs the game or the folder for more than one launch claims it first, and every agent's deploy and launch scripts honour the claim (the user's decision, 2026-10-02). It is one file beside the logs, `Documents\BioWare\Dragon Age\daolib\game.claim.json`, which another project's scripts read too:
+
+```json
+{
+  "owner": "computer-use-agent",
+  "note": "play test 23: the attack walk preview",
+  "since": 1790000000.0,
+  "until": 1790001800.0
+}
+```
+
+- A claim stands while `until` (Unix seconds) is later than now. While another's stands: launch no game, deploy nothing, change nothing in the game folder; tell the owner, or wait.
+- To claim: write the file whole (a temporary file put in place), at most 240 minutes ahead; to renew, write it again. To release: delete it. Only the owner releases or renews; one past its time is nobody's.
+- A file that cannot be read is no claim. The player at the keyboard is not held by it: a game started by hand has no owner in `health`, and is the player's.
+- Through the bridge: `game_claim {"owner", "note", "minutes"}`, `game_release {"owner"}`, and `game_status` shows the claim; `game_launch` and `tools\deploy.ps1` refuse while another's stands. The playbook says when an agent claims.
+
 ## Events
 
 Every event carries a sequence number, the frame, real milliseconds and world milliseconds (so `ai_turn_speed` can be measured), a topic and a payload whose creatures are ids.
