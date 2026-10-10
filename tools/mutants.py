@@ -2554,6 +2554,19 @@ MUTANTS = [
         "distance - kCutShortGain",
         "distance + kCutShortGain",
     ),
+    # #72: what to do when the budget runs out.
+    Mutant(
+        "travel says nothing of its budget when its time runs out",
+        TRAVEL,
+        'starts_with("the time ran out"))',
+        'starts_with("the time ran out!"))',
+    ),
+    Mutant(
+        "travel tells of its budget on arrival too",
+        TRAVEL,
+        'if (!arrived && answer_["reason"].get<std::string>().starts_with("the time ran out"))',
+        'if (arrived || answer_["reason"].get<std::string>().starts_with("the time ran out"))',
+    ),
     # #56: a move that fails where it began is tried once more after a pause.
     Mutant(
         "travel ends at a first move that fails where it began",

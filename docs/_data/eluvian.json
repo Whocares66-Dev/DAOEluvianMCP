@@ -1517,7 +1517,7 @@
       "type": "integer",
       "minimum": 1000,
       "maximum": 600000,
-      "description": "The longest the call may take, in milliseconds. Default 60000."
+      "description": "The longest the call may take, in milliseconds. Default 60000. If it runs out on the way, `note` says so; call travel again to go on."
      }
     }
    },

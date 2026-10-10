@@ -75,7 +75,8 @@ class Journey
 {
   public:
     Journey(Bench &bench, const Args &args)
-        : bench_(bench), deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 600000))),
+        : bench_(bench), budgetMs_(args.Integer("budgetMs", 60000, 1000, 600000)),
+          deadline_(Clock::now() + milliseconds(budgetMs_)),
           maxDoors_(static_cast<std::size_t>(args.Integer("maxDoors", 4, 0, 20))), within_(args.Number("within", 1.5)),
           fightNear_(args.Number("fightNear", 20))
     {
@@ -1613,6 +1614,15 @@ class Journey
         {
             answer_["hint"] = "order use on the target walks up to it, as a click does";
         }
+        // A budget too short for the way looked like a walk that failed: four
+        // seconds for some 170 m answered only "the time ran out"
+        // (turn-based-agent, 2026-10-05, #72).
+        if (!arrived && answer_["reason"].get<std::string>().starts_with("the time ran out"))
+        {
+            answer_["note"] = std::format("The budget of {} ms ran out on the way. Call travel again to go on from "
+                                          "where the party stands, or pass a larger budgetMs (at most 600000).",
+                                          budgetMs_);
+        }
         answer_["who"] = who_;
         answer_["opened"] = doors_;
         answer_["steps"] = steps_;
@@ -1620,6 +1630,7 @@ class Journey
     }
 
     Bench &bench_;
+    std::int64_t budgetMs_; // the time given, said when it runs out (#72)
     Clock::time_point deadline_;
     std::size_t maxDoors_;
     double within_;
@@ -1710,7 +1721,9 @@ void AddTravelTool(Bench &bench)
                         {{"type", "integer"},
                          {"minimum", 1000},
                          {"maximum", 600000},
-                         {"description", "The longest the call may take, in milliseconds. Default 60000."}}}}}},
+                         {"description",
+                          "The longest the call may take, in milliseconds. Default 60000. If it runs out on the way, "
+                          "`note` says so; call travel again to go on."}}}}}},
                 Thread::Listener},
             "budgetMs", 60000),
         [&bench](const Json &raw) -> ToolResult {

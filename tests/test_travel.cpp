@@ -547,6 +547,7 @@ TEST_CASE("an open way is one move", "[travel]")
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == true);
     CHECK(answer["opened"].empty());
+    CHECK_FALSE(answer.contains("note")); // the budget's note is for a journey whose time ran out (#72)
     REQUIRE(world.orders.size() == 1);
     CHECK(world.orders[0]["action"] == "move");
     CHECK(world.orders[0]["id"] == "0x82"); // the creature controlled, none being named
@@ -1341,6 +1342,9 @@ TEST_CASE("a quiet move whose walker still has it is waited for, not cut short",
     const auto answer = world.bench.Invoke("travel", Json{{"target", "0x2ec"}, {"budgetMs", 3000}}).data;
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("time ran out"));
+    // What to do next, with the budget it had (#72).
+    CHECK_THAT(answer["note"].get<std::string>(), ContainsSubstring("budget of 3000 ms"));
+    CHECK_THAT(answer["note"].get<std::string>(), ContainsSubstring("travel again"));
 }
 
 TEST_CASE("in combat mode with no hostile near, the journey walks on", "[travel]")
