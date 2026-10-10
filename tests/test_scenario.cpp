@@ -136,8 +136,8 @@ TEST_CASE("mistakes in the steps are failed steps that say what is wrong", "[sce
     CHECK_THAT(errorOf(Json{{"tool", "nothing"}}), ContainsSubstring("no tool \"nothing\""));
     CHECK_THAT(errorOf(Json{{"tool", "scenario"}}), ContainsSubstring("not scenario"));
     CHECK_THAT(errorOf(Json{{"dance", true}}), ContainsSubstring("one of tool, waitFor, sleepMs, expect or until"));
-    CHECK_THAT(errorOf(Json{{"expect", {{"from", "nobody"}}}}), ContainsSubstring("no earlier step is labelled"));
-    CHECK_THAT(errorOf(Json{{"expect", {{"from", "x"}}}}), ContainsSubstring("labelled"));
+    CHECK_THAT(errorOf(Json{{"expect", {{"from", "nobody"}}}}), ContainsSubstring("no earlier step is labeled"));
+    CHECK_THAT(errorOf(Json{{"expect", {{"from", "x"}}}}), ContainsSubstring("labeled"));
     CHECK_THROWS_AS(f.Run(Json{{"steps", Json::array()}}), ToolError);
     CHECK_THROWS_AS(f.Run(Json::object()), ToolError);
 }
@@ -162,7 +162,7 @@ TEST_CASE("a step's label holds only an answer that came", "[scenario]")
                                     {{{"waitFor", {{"topic", "never"}}}, {"timeoutMs", 0}, {"as", "w"}},
                                      {{"expect", {{"from", "w"}, {"exists", true}}}}}},
                                    {"continueOnError", true}});
-    CHECK_THAT(answer["steps"][1]["error"].get<std::string>(), ContainsSubstring("no earlier step is labelled"));
+    CHECK_THAT(answer["steps"][1]["error"].get<std::string>(), ContainsSubstring("no earlier step is labeled"));
 }
 
 TEST_CASE("waits and sleeps are cut to the scenario's budget, and the run says it timed out", "[scenario]")

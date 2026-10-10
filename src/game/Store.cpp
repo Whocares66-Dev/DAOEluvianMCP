@@ -97,20 +97,28 @@ void AddStore(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"store",
-                 "Buy or sell at the store screen that is up (a merchant's wares, opened by talking to the "
-                 "merchant: gui says `fullScreen` Store and reads `store`: the stock with each "
-                 "item's `price`, the pack with what each `sellsFor`, and the `money`, all in copper). "
-                 "`action`: buy, an `item` of the stock, or sell, an `item` of the pack; `count` of a stack, "
-                 "default 1. The game is sent what the screen's own button sends, and does the rest (it "
-                 "refuses a buy the money cannot pay). Answers the `money` before and after and what moved; "
-                 "`taken` false when the money did not change. input {\"message\": \"GUI.HideFullScreenGUI\"} "
-                 "closes the store.",
+                 "Buys or sells an item at the store screen that is open. Open a store by talking to a merchant "
+                 "and asking to see the wares.\n\n"
+                 "While a store is open, `gui` reports `fullScreen` Store, and its `store` lists the `stock` with "
+                 "each item's `price`, your `pack` with what each item `sellsFor`, and your `money`, all in "
+                 "copper.\n\n"
+                 "`action` is one of:\n"
+                 "- buy: buys `item` from the stock.\n"
+                 "- sell: sells `item` from your pack.\n\n"
+                 "The tool sends what the screen's own button sends, and the game does the rest; it refuses a "
+                 "purchase you cannot afford. The answer includes the price of one (`each`), the `money` before "
+                 "and after, and `taken`, which is false when the money did not change. To close the store, "
+                 "call `input` with {\"message\": \"GUI.HideFullScreenGUI\"}.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"buy", "sell"}}}},
-                        {"item", {{"type", "string"}, {"description", "An item's id, from gui's store"}}},
+                       {{"action", {{"type", "string"}, {"enum", {"buy", "sell"}}, {"description", "Buy or sell."}}},
+                        {"item",
+                         {{"type", "string"},
+                          {"description", "The item, by its id from the `stock` or `pack` that `gui` lists."}}},
                         {"count",
-                         {{"type", "integer"}, {"minimum", 1}, {"description", "How many of a stack; default 1"}}}}},
+                         {{"type", "integer"},
+                          {"minimum", 1},
+                          {"description", "How many of a stack to buy or sell, up to 999. Default 1."}}}}},
                       {"required", {"action", "item"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult {

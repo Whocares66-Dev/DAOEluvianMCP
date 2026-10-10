@@ -122,15 +122,22 @@ void AddBoard(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"board",
-                 "The quest board while it is up (the Chanter's board; Awakening's Letters for the Commander), "
-                 "as its screen reads and answers it. `action`: look (default), its `entries`, each with "
-                 "`index`, `name`, `plot` (the plot's resource), whether `accepted`, and its `text`; accept "
-                 "`entry` (an index, a name in any case, or a plot), answering whether it was `accepted`, as the "
-                 "game marks it at once; close, as its Close button. A use of the board placeable opens it.",
+                 "Reads and answers the quest board while its screen is open (the Chanter's board, or "
+                 "Awakening's Letters for the Commander). To open it, use the board placeable.\n\n"
+                 "`action` is one of:\n"
+                 "- look (default): returns the board's `entries`, each with `index`, `name`, `plot` (the "
+                 "quest's resource name), whether it is `accepted`, and its `text`.\n"
+                 "- accept: accepts `entry`. Returns the entry and whether it is now `accepted`.\n"
+                 "- close: closes the board, as its Close button does.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"look", "accept", "close"}}}},
-                        {"entry", {{"description", "accept: the entry's index, name or plot"}}}}}},
+                       {{"action",
+                         {{"type", "string"},
+                          {"enum", {"look", "accept", "close"}},
+                          {"description", "What to do. Default: look."}}},
+                        {"entry",
+                         {{"description", "For accept: the entry to accept, by its index, its name (any case) or "
+                                          "its plot."}}}}}},
                  Thread::Frame},
         [&watch](const Json &raw) -> ToolResult { return ToolBoard(watch, raw); });
 }

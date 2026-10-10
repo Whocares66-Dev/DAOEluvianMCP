@@ -1,138 +1,148 @@
 # Playbook: driving a test through Eluvian
 
-For an agent testing the game or a mod in it. Every call below is an MCP tool (through the bridge, `tools\eluvian_bridge.py`) or the same over plain HTTP: `POST http://127.0.0.1:8930/api/tool/<name>` with the arguments as the JSON body. Eluvian knows the game, not any one mod: a mod that registers with it brings its own tools, inspect kinds and events, and documents them itself. The first mod to do so, the turn-based mod, played five rounds of a fight this way in 58 s of wall clock, where computer use had taken 34 minutes for eleven (2026-09-30).
+This guide is for an agent testing Dragon Age: Origins, or a mod in it. Every call below is an MCP tool, reached through the bridge (`tools\eluvian_bridge.py`). The same tools are served over plain HTTP too: `POST http://127.0.0.1:8930/api/tool/<name>` with the arguments as the JSON body.
 
-## The rules that keep a test honest
+Eluvian covers the game itself, not any one mod. A mod that registers with Eluvian brings its own tools and events and documents them itself (see [A mod's own tools and events](#a-mods-own-tools-and-events)).
 
-- **Ids, not names.** Every creature is an id string, `"0x7d9"`, as the logs write them; two "Howe Archer"s differ only by id. Take them from `creatures`, pass them to everything else.
-- **Wait for the event, from the cursor before you acted.** An answer that sets something off carries a `cursor` (`order` and `stage` do; `health` and `state` always do). `wait_for` with `since` set to it returns the event even if it came before the wait began. A wait with an old cursor returns an old event at once: in a play test that made a call land 3.9 s late, 160 ms with the right cursor. And a wait cannot find what happened before its cursor: for the state now, read it.
-- **A scenario does the cursor for you.** Its wait steps start from the cursor taken just before the latest tool step.
-- **Ask, do not infer.** Which effects hold a creature, what it is doing, whether a target is in sight, what a mod thinks: there is a read for each. Read the log for the story after, not for the state now.
-- **The game's speed belongs to one plugin.** Each plugin's copy of DAOLib scales the clock by its own, so two setting it multiply. Eluvian sets none; a mod that changes speed owns it.
+## Rules for an honest test
+
+- **Use ids, not names.** Every creature has an id string such as `"0x7d9"`, the same form the logs use. Two creatures called "Howe Archer" differ only by id. Get ids from `creatures` and pass them to every other tool.
+- **Wait for events from the cursor of the call that acted.** A call that sets something off returns a `cursor` (`order` and the staging tools do; `health` and `state` always do). Pass it as `since` to `wait_for`, and the event is found even if it happened before the wait began. A wait from an older cursor returns an old event at once, so always use the cursor from the call that acted. A wait cannot find anything that happened before its cursor: for the current state, read it instead.
+- **For states, not events, use the other waits.** `wait_until` calls a tool until its answer meets a condition (a creature dead, health back). `wait_ready` waits until the game takes input again after a load, an area change, a fight, a conversation or a cutscene.
+- **`scenario` handles the cursor for you.** Its wait steps start from the cursor taken just before the latest tool step.
+- **Ask the game; don't guess.** There is a tool for each question: which effects are on a creature, what it is doing, whether it can see a target, what a mod's state is. Read the log to learn what happened afterwards, not to learn the current state.
+- **Leave the game's speed to one plugin.** Each plugin scales the game clock on its own, so if two plugins set a speed, the speeds multiply. Eluvian never sets it; a mod that changes the speed owns it.
 
 ## Getting into the game
 
-```
-game_saves {"character": "Aedan"}             bridge: the saves on disk, newest first, before the game runs
-game_launch {"owner": "my-name", "load": {"character": "Aedan", "kind": "manual", "number": 2}}
-                                                 bridge: starts the game once, loads the save without the menus,
-                                                 and answers when the world is there
-health {}                                        state running, mode explore; the mods registered
-state                                            hero, party, area
-```
+| Call | What it does |
+|---|---|
+| `game_saves {"character": "Aedan"}` | Bridge tool. Lists the saves on disk, newest first. Works before the game runs. |
+| `game_launch {"owner": "my-name", "load": {"character": "Aedan", "kind": "manual", "number": 2}}` | Bridge tool. Starts the game (never a second copy), loads the save without going through the menus, and returns once the world is ready. |
+| `health {}` | Should report state `running` and mode `explore`. Also lists the mods that registered. |
+| `state` | The hero, the party and the area. |
 
-Several agents may share the one game. `game_launch` answers `launched` false when a game already runs, and says who started it (`health`'s `owner`; none means it was started by hand, the player's own): read that answer before acting, since every other call would go to that game. A game that is not yours is to read, not to drive or close.
+Several agents may share one game. If a game is already running, `game_launch` returns `launched: false` and says who started it (the same `owner` that `health` shows; no owner means the player started it by hand). Read that answer before doing anything else, because every other call goes to that game. A game that is not yours is for reading only: do not drive it or close it.
 
-No game running does not mean the game is free: a tester may have its own loader and plugins in the folder between two runs. So a test that needs the game or its folder for more than one run claims it, and lets it go:
+### Claiming the game
 
-```
-game_claim {"owner": "my-name", "note": "what for", "minutes": 30}
-                                                 bridge: until it ends or is released, another's game_launch and
-                                                 Eluvian's deploy are refused, with the note
-game_release {"owner": "my-name"}
-game_events {"topic": "eluvian.creature.*"}      bridge: the last run's events from its file, after the game closed
-                                                 or crashed too; `since`, `topic`, `limit` as events takes them
-game_status {}                                   bridge: is a game running, whose, the claim that stands, and `why`
-                                                 where a game runs and Eluvian does not serve in it
-```
+A closed game is not necessarily free: between two runs, a tester may have its own loader and plugins in the game folder. A test that needs the game or its folder for more than one run claims it first and releases it afterwards.
 
-A claim ends by itself at its time (240 minutes at most; claim again to renew). It holds those who go through the bridge or Eluvian's deploy; a game started by hand is the player's and is not held by it.
+| Call | What it does |
+|---|---|
+| `game_claim {"owner": "my-name", "note": "what for", "minutes": 30}` | Bridge tool. Until the claim ends or is released, everyone else's `game_launch` and Eluvian deploys are refused, with your note as the reason. |
+| `game_release {"owner": "my-name"}` | Bridge tool. Ends your claim. |
+| `game_status {}` | Bridge tool. Whether a game is running, whose it is, the claim in force, and `why` when a game runs but Eluvian is not serving in it. |
+| `game_events {"topic": "eluvian.creature.*"}` | Bridge tool. Reads the last run's events from its file, even after the game closed or crashed. Takes `since`, `topic` and `limit` like `events`. |
 
-If `game_launch` answers that the game runs and Eluvian is not serving, its `error` has the log's own line. The usual one is a loader of another plugin API than Eluvian was built for: the loader and every plugin in the game folder are deployed together when DAOLib's API changes.
+A claim ends by itself when its time runs out (240 minutes at most; claim again to renew). It only holds back agents that go through the bridge or Eluvian's deploy script. A game the player starts by hand is the player's, and a claim does not hold it.
 
-A save made with content the install no longer has stops at the game's "requires the following content" dialog. Where the user allows it, `game_launch` with `"load": {..., "forceLoad": true}` presses Force Load there (or `game {"action": "forceLoad"}` with the game running); a game loaded so lacks that content and is never saved: the `game` tool refuses a save until another load.
+If `game_launch` says the game is running but Eluvian is not serving, its `error` quotes the log line that explains why. The usual cause is a loader built for a different plugin API version than Eluvian. The loader and every plugin in the game folder must share one API version, so when DAOLib's API changes they are deployed together.
 
-With the game already running, `saves {"action": "list"}` lists the saves and `saves {"action": "load", ...}` loads one, from the main menu (mode pregame) or in the world; `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` says when it is there. A save made by a test is a new manual one by default (`game {"action": "save", "name": "..."}`), which writes over nothing.
+### Saves
 
-## Looking
+- **Loading with the game running.** `saves {"action": "list"}` lists the saves, and `saves {"action": "load", ...}` loads one, from the main menu (mode `pregame`) or in the world. `wait_for {"topic": "eluvian.game.loaded", "since": <cursor>}` tells you when the world is there.
+- **Saving.** Use `saves {"action": "save", "name": "..."}`. It makes a new manual save and overwrites nothing. Writing over a used slot or the player's quicksave is refused unless `overwrite` is true, and `input` refuses a message that saves unless `confirmSave` is true.
+- **The player's own playthrough.** A test there only loads, or writes a new save of its own by name. The game's own autosaves are allowed, and the game makes them at more than area changes: some doors and plot steps autosave too (`eluvian.game.saved` reports each one). A test that must leave the saves exactly as they were stops before such a step, or runs on a copy of the saves.
+- **Missing content.** A save made with content the install no longer has stops at the game's "requires the following content" message. Only where the user allows it, `game_launch` with `"load": {..., "forceLoad": true}` presses Force Load there, or `saves {"action": "force_load"}` does it with the game already running. A game loaded this way lacks that content and must never be saved: `saves` refuses to save until another save is loaded.
 
-```
-character {"id": "0x82"}                         the sheet: race, class, level, attributes, combat numbers, what is worn
-abilities {"id": "0x82"}                         every talent, spell and skill it knows, not only the quickbar's
-tactics {"action": "look", "id": "0x82"}         its tactics slots: target, condition, command and ability of each
-inventory {"id": "0x1fd"}                        what a chest, a body or a pile of bones holds, without opening it
-                                                 (a body's treasure may be chosen only as it opens)
-journal                                          the quests under way and the one marked: plot, name, objective, text
-exits                                            the ways out of the area: door or trigger, where each leads, distance
-resources {"type": "utc", "match": "ogre"}
-                                                 the game's templates by a word: creatures (utc) for stage_spawn,
-                                                 items (uti) for stage_equip, plots (plo), cutscenes (cut)
-stage_reset                                      the party back to full, raised, cooldowns cleared, the dead taken
-                                                 away: another fight in the same launch
-stage_equip {"id": "0x82", "template": "..."}
-                                                 an item made from its template and put on
-order {"action": "ability", "ability": 200010, "itemTag": "gen_im_qck_health_101", "target": "0x82"}
-                                                 an item's ability, the item found on the creature by its tag
-plot {"plot": "bed000pt_main"}
-                                                 a quest's or story's flags by name, which are set, and the journal's
-                                                 text for those; "flag": "NAME" asks for one. A plot is named by its
-                                                 resource (the game's plot files, or a mod's)
-equipment {"id": "0x82"}                         each slot's item in full: type, material, stats, properties
-equip {"item": "0x20c5"}                        put it on the selected character, in its first slot (`slot`
-                                                 to choose); {"action": "unequip", "item": ...} takes it off
-inventory                                        the party's backpack; item {"id": ...} is one item in full
-placeables {"radius": 30}                        doors, chests, levers: state, tooltip, lock
-surroundings                                     one look around, a line a thing: creatures, what can be used,
-                                                 exits, within 30 m; `brief: true` on creatures, placeables
-                                                 and exits does the same for one kind
-order {"action": "use", "target": "0x1fd"}       opens what a click opens (by click for the controlled creature)
-loot {"target": "0x1fd"}                        walk there, open it, take all; answers what was taken and what is
-                                                 left, or why it did not open (`empty`: empty remains open nothing)
-levelup {"id": "0x82", "auto": true}           spend its level-up points as the screen's Auto Level Up does;
-                                                 answers what was raised and gained
-store {"action": "buy", "item": "0x673", "count": 2}
-                                                 at a merchant's Store screen (talk, then the wares reply);
-                                                 gui's `store` has the stock, prices and money
-gui                                              what is up: the screens shown (Inventory, Map, Store...), the
-                                                 full-screen one, the message box, the loot panel and its items
-press {"button": "Take All"}                     the loot panel's buttons, Take All and Close, as a click sends them
-geometry {"id": "0x82", "target": "0x2ec", "walk": true}
-                                                 the walk there: its length, or the door in the way (`blocker`)
-pointer {"target": "0x2ec"}                      the game's cursor held over it, no click: hover previews show; then
-                                                 cursor and a screenshot. {"release": true} ends it
-travel {"target": "0x2ec"}                       walk there, opening the doors on the way; answers arrived, or why not
-travel {"area": "bed100ar_forest_clearing"}      to another area by the exit that leads there (exits):
-                                                 walks, uses it, answers once the new area is in place
-camera {"action": "face", "target": "0x305"}     turn the camera to it at once; then screenshot
-camera {"action": "follow", "target": "0x305"}   look at a creature elsewhere
-screenshot {}                                    the window as it is drawn; {"image": false} only writes the file
-```
+## Looking around and getting things done
+
+### Characters and quests
+
+| Call | What it does |
+|---|---|
+| `character {"id": "0x82"}` | The character sheet: race, class, level, attributes, combat numbers, and what it wears. |
+| `abilities {"id": "0x82"}` | Every talent, spell and skill it knows, not only those on the quickbar. |
+| `tactics {"action": "look", "id": "0x82"}` | Its tactics slots: the target, condition, command and ability of each. |
+| `equipment {"id": "0x82"}` | Each worn item in full: type, material, stats, properties. |
+| `inventory` | The party's backpack. |
+| `item {"id": "0x20c5"}` | One item in full. |
+| `journal` | The quests in progress and the one marked: plot, name, objective, text. |
+| `plot {"plot": "bed000pt_main"}` | A quest's or story's flags: which are set, and the journal text for those. Add `"flag": "NAME"` to read just one. A plot is named by its resource name (the game's plot files, or a mod's). |
+
+### The area
+
+| Call | What it does |
+|---|---|
+| `surroundings` | A quick look around, one line per thing: creatures, things that can be used, and exits within 30 m. `brief: true` on `creatures`, `placeables` or `exits` gives the same one-line form for one kind. |
+| `placeables {"radius": 30}` | Doors, chests, levers: their state, tooltip and lock. |
+| `exits` | The ways out of the area: door or trigger, where each leads, and how far it is. |
+| `inventory {"id": "0x1fd"}` | What a chest, body or pile of bones holds, without opening it. A body's treasure may only be chosen when it is opened, so an empty list does not prove it is empty. |
+| `geometry {"id": "0x82", "target": "0x2ec", "walk": true}` | The walk there: its length, or the door in the way (`blocker`). |
+| `gui` | What the interface shows: the open screens (Inventory, Map, Store...), the full-screen one, any message box, and the loot panel with its items. |
+
+### Moving, looting, buying, leveling
+
+| Call | What it does |
+|---|---|
+| `travel {"target": "0x2ec"}` | Walks there, opening doors on the way. Returns whether it arrived, or why not. |
+| `travel {"area": "bed100ar_forest_clearing"}` | Goes to another area by the exit that leads there (see `exits`): walks to it, uses it, and returns once the new area has loaded. |
+| `order {"action": "use", "target": "0x1fd"}` | Uses it the way a click would (and by an actual click when the creature you control does it). |
+| `loot {"target": "0x1fd"}` | Walks there, opens it and takes everything. Returns what was taken and what is left, or why it did not open (`empty`: emptied remains open nothing). |
+| `press {"button": "Take All"}` | Presses a button the way a click does: a message box's button, or the loot panel's Take All or Close. |
+| `order {"action": "ability", "ability": 200010, "itemTag": "gen_im_qck_health_101", "target": "0x82"}` | Uses an item's ability (here a lesser health poultice). The item is found in the creature's inventory by its tag. |
+| `equip {"item": "0x20c5"}` | Puts the item on the selected party member, in the first slot it fits (`slot` to choose). `{"action": "unequip", "item": ...}` takes it off. |
+| `levelup {"id": "0x82", "auto": true}` | Spends its level-up points as the screen's Auto Level Up does. Returns what was raised and gained. |
+| `store {"action": "buy", "item": "0x673", "count": 2}` | Buys at a merchant's store screen (talk to the merchant, then pick the reply that shows the wares). `gui`'s `store` lists the stock, the prices and your money. |
+
+### Setting up a test
+
+| Call | What it does |
+|---|---|
+| `resources {"type": "utc", "match": "ogre"}` | Finds the game's templates by a word: creatures (`utc`) for `stage_spawn`, items (`uti`) for `stage_equip`, plots (`plo`), cutscenes (`cut`). |
+| `stage_equip {"id": "0x82", "template": "..."}` | Creates an item from its template and equips it. |
+| `stage_reset` | Restores the party to full health, revives the dead, clears cooldowns and removes the creatures that died, so another fight can run in the same session. |
+
+### Seeing it
+
+| Call | What it does |
+|---|---|
+| `camera {"action": "face", "target": "0x305"}` | Turns the camera to face it at once. Take the screenshot after this call. |
+| `camera {"action": "follow", "target": "0x305"}` | Moves the camera to a creature elsewhere and follows it. |
+| `pointer {"target": "0x2ec"}` | Holds the game's cursor over it without clicking, so hover previews show. Then read `cursor` and take a screenshot. `{"release": true}` ends it. |
+| `screenshot {}` | A picture of the game window as it is drawn. `{"image": false}` only saves the file. |
 
 ## Conversations and cutscenes
 
-A conversation or a cutscene holds the world until it is answered; `health`'s mode says which (dialog, cutscene).
+A conversation or cutscene holds up the world until it is answered. `health`'s mode says which one is on (`dialog` or `cutscene`).
 
-```
-dialogue {"action": "look"}                      the line spoken last, the replies offered (place, text, icon), cutscene
-dialogue {"action": "continue"}                  as the skip key: cuts the line short; goes through a reply with no text
-dialogue {"action": "choose", "place": 0}        the reply at that place
-dialogue {"action": "choose", "place": 0, "until": "choice"}
-                                                 the reply, then on to the next real choice in one call: the lines
-                                                 spoken (`lines`), the next `replies`, or that it `ended`, and how
-dialogue {"action": "skip_cutscene"}             as Escape in a cutscene or a pre-rendered movie
-stage_cutscene {"resource": "bed110cs_tainted_mirror.cut"}
-                                                 play a cutscene, as the scripts do (for a test of one, or of skipping)
-script {"action": "call", "command": "PlayMovie", "args": ["game_introduction.bik"]}
-                                                 play a movie
-wait_for {"topic": "eluvian.dialogue.*", "since": <cursor>}     .line, .replies, .chosen as they come
-```
+| Call | What it does |
+|---|---|
+| `dialogue {"action": "look"}` | The last line spoken, the replies offered (place, text, icon), and whether a cutscene is playing. |
+| `dialogue {"action": "continue"}` | Like the skip key: cuts the current line short. Also goes through a reply that has no text. |
+| `dialogue {"action": "choose", "place": 0}` | Picks the reply at that place. |
+| `dialogue {"action": "choose", "place": 0, "until": "choice"}` | Picks the reply, then carries on to the next real choice in one call. Returns the lines spoken (`lines`), then either the next `replies`, or that the conversation `ended` and what came after. |
+| `dialogue {"action": "skip_cutscene"}` | Like pressing Escape in a cutscene or a pre-rendered movie. |
+| `stage_cutscene {"resource": "bed110cs_tainted_mirror.cut"}` | Plays a cutscene the way the game's scripts do (to test the cutscene, or skipping it). |
+| `script {"action": "call", "command": "PlayMovie", "args": ["game_introduction.bik"]}` | Plays a movie. |
+| `wait_for {"topic": "eluvian.dialogue.*", "since": <cursor>}` | Returns the next `eluvian.dialogue.line`, `.replies` or `.chosen` event as it comes. |
 
-The loop: read; with no replies, or a first reply with no text, continue; otherwise choose; wait for what follows from the answer's `cursor`. The game ignores an answer in the moment after replies appear, so if nothing follows in a second, ask again. Which reply to choose is the test's to decide: the texts are the game's own, and some replies end the conversation or start a fight.
+Step by step:
 
-## Reading and acting
+1. Read the conversation with `look`.
+2. If there are no replies, or the first reply has no text, `continue`.
+3. Otherwise `choose` a reply.
+4. Wait for what follows, from the `cursor` in the answer.
 
-```
-creatures {"side": "hostile", "radius": 30}                        who is around, with ids, health, what each is doing
-creature {"id": "0x7d9"}                                           one in full: effects with time left, abilities and cooldowns, its command
-geometry {"id": "0x82", "target": "0x7d9"}                         distance, line of sight, the path being walked
-order {"action": "attack", "target": "0x7d9"}                      answers given and cursor
-wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}, "since": <cursor>}
-stage_effect {"action": "apply", "id": "0x82", "effect": "knockdown", "seconds": 6} a case a fight rarely brings
-stage_cooldown {"id": "0x6a8", "ability": 617, "seconds": 0}                     an ability made ready, or held
-script {"command": "GetRemainingCooldown", "args": {"oCreature": "0x82", "nAbilityId": 617}}   anything else
-```
+The game ignores a choice made in the moment right after the replies appear, so if nothing follows within a second, choose again (`until: "choice"` does this for you). The test decides which reply to pick: the texts are the game's own, and some replies end the conversation or start a fight.
 
-Or as one call:
+## Reading and acting in a fight
+
+| Call | What it does |
+|---|---|
+| `creatures {"side": "hostile", "radius": 30}` | Who is around: ids, health, and what each is doing. |
+| `creature {"id": "0x7d9"}` | One creature in full: its effects with time left, its abilities and cooldowns, and its current command. |
+| `geometry {"id": "0x82", "target": "0x7d9"}` | Distance, line of sight, and the path it is walking. |
+| `order {"action": "attack", "target": "0x7d9"}` | Gives the order. Returns `given` and a `cursor`. |
+| `wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}, "since": <cursor>}` | Waits until that attack ends, and says how it ended. |
+| `stage_effect {"action": "apply", "id": "0x82", "effect": "knockdown", "seconds": 6}` | Puts a condition on a creature, for a case a fight rarely produces. |
+| `stage_cooldown {"id": "0x6a8", "ability": 617, "seconds": 0}` | Makes an ability ready (with more seconds, holds it on cooldown). |
+| `script {"command": "GetRemainingCooldown", "args": {"oCreature": "0x82", "nAbilityId": 617}}` | Calls any of the game's script commands, for anything no other tool covers. |
+
+When you wait for an order to end, match the command's `type` as well as the creature (`{"id": "0x82", "type": "UseObject"}`). Otherwise an earlier command of the same creature, canceled by the new one, may end first and match.
+
+The same test as one `scenario` call:
 
 ```json
 {"steps": [
@@ -145,33 +155,57 @@ Or as one call:
 ]}
 ```
 
+The game pauses itself about half a second into every real-time fight if the player's auto-pause option is on, and a paused game plays nothing: no deaths, no commands ending. After anything that starts a fight (a hostile creature spawned near the party, a door opened on enemies), call `pause {"paused": false}`. A `wait_for` that times out says `paused` when that is why.
+
 ## A screen's own controls
 
-A screen's tabs, lists and sliders are its movie's own script, which no message reaches. `movie` with `screen` (a shown screen's name, as `gui` lists it) calls a function in that movie, sets a variable, or reads a number or a bool back. The Options screen on its Controls tab, at the bottom of the key bindings (seen in play, 2026-10-03):
+Some parts of a screen, such as tabs, lists and sliders, are run by the screen's own Flash (ActionScript) code, which `input` messages cannot reach. `movie` with `screen` (a shown screen's name, as `gui` lists it) calls a function in that code, sets a variable, or reads a number or true/false value back. For example, to show the Options screen's Controls tab scrolled to the bottom of the key bindings:
 
-```
-input {"message": "GUI.ToggleFullScreenGUI Options"}                                   the screen, on its Game tab; the same again closes it
-movie {"screen": "Options", "call": "SceneManager.PlayScene", "args": ["Controls"]}     the Controls page
-movie {"screen": "Options", "call": "_root.KeyBindings_mc.SetScrollPercentage", "args": [100]}   the key bindings' list at its bottom
-movie {"screen": "Options", "get": "OptionsMenu.ms_nCurrentTab"}                       a number read back, the path as a string (not yet seen in play)
-```
+| Call | What it does |
+|---|---|
+| `input {"message": "GUI.ToggleFullScreenGUI Options"}` | Opens the Options screen on its Game tab. Sending it again closes the screen. |
+| `movie {"screen": "Options", "call": "SceneManager.PlayScene", "args": ["Controls"]}` | Shows the Controls page. |
+| `movie {"screen": "Options", "call": "_root.KeyBindings_mc.SetScrollPercentage", "args": [100]}` | Scrolls the key bindings list to the bottom. |
+| `movie {"screen": "Options", "get": "OptionsMenu.ms_nCurrentTab"}` | Reads a number back; the path is a string. Not yet tried in the game. |
 
-`PlayScene` shows the page but is not the tab button's whole handler: that also sets `OptionsMenu.ms_nCurrentTab` (2 for Controls) and its observers, so Restore Defaults after it would restore the Game page's settings, and the tab strip still lights Game. Fine for a picture; for more, set the tab number as well. `OptionsMenu.OptionTabAction` returns the button's handler and does nothing called.
+`SceneManager.PlayScene` shows the page but does less than clicking the tab button. The button also sets `OptionsMenu.ms_nCurrentTab` (2 for Controls) and updates whatever depends on it. So after `PlayScene` alone, Restore Defaults would restore the Game page's settings, and the tab strip still highlights Game. That is fine for a screenshot; to do more, set the tab number as well (`movie` with `set`). Calling `OptionsMenu.OptionTabAction` does nothing: it returns the button's handler rather than running it.
 
-## A mod's own
+To just read the key bindings, `controls` lists them without opening any screen.
 
-A mod that registers with Eluvian (`src/api/EluvianAPI.h`) shows up in `health`'s `plugins`; its tools are in the tool list (named with its prefix: `mymod_state` its read, `mymod_reset` a set-up), a concept each like Eluvian's own, and its events come on the same bus under its prefix (`mymod.*`). `events {"describe": true}` lists every topic there is, Eluvian's and the mods', with what it means and what its payload holds; a mod's own docs say the rest. The turn-based mod's are in DAOTurnBased (`turnbased_state`, `turnbased_*` tools, `turnbased.*` events: its `dev/TESTING.md`).
+## A mod's own tools and events
 
-## The engine's events
+A mod that registers with Eluvian (through `src/api/EluvianAPI.h`) appears in `health`'s `plugins`. Its tools are in the tool list under its prefix, for example `mymod_state` to read its state and `mymod_reset` to set something up. Its events arrive on the same event stream under its prefix (`mymod.*`). `events {"describe": true}` lists every topic, Eluvian's and the mods', with what each means and what it carries; the mod's own docs cover the rest. The turn-based mod's are documented in DAOTurnBased (`turnbased_state`, the `turnbased_*` tools and `turnbased.*` events: see its `dev/TESTING.md`).
 
-`eluvian.command.started` and `eluvian.command.ended` {id, type (Attack, UseAbility, MoveToObject, ...), playerIssued, result (success, a COMMAND_FAILED_*, or cleared), success}: every creature's commands, so `wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}}` says the attack happened and how it ended. `eluvian.mode.changed` {from, to}, `eluvian.paused` {paused}, `eluvian.game.loaded` {character, kind, number}, `eluvian.game.saved`, `eluvian.creature.died` {id, name, killer}, the moment it dies (watched: a creature hurt or staged is looked at each frame), and `eluvian.script.death` 1.5 to 2.5 s later, once the death has played out, and `eluvian.script.<event>` {receiver, creator, objects, integers, floats} for damaged, death, attack_impact, combat_initiated, ability_cast_start, ability_cast_impact, apply_effect, remove_effect, gamemode_change, area_loaded, partymember_added, order_received. `receiver` is who the event was delivered to, not always who it is about: an attack's impact goes to the attacker. `objects`, `integers` and `floats` are the event's own parameters, as a script reads them (GetEventObject and the rest), the first four of each. Named for two: `attack_impact` adds `attacker`, `target`, `hit` (COMBAT_RESULT_*) and `effectId`; `damaged` adds `damager`, `amount`, `damageType` (DAMAGE_TYPE_*) and `ability`.
+## Events from the game
+
+| Topic | When it comes, and what it carries |
+|---|---|
+| `eluvian.command.started`, `eluvian.command.ended` | Every creature's commands as they start and end: `id`, `type` (Attack, UseAbility, MoveToObject, ...), `playerIssued`, `result` (success, a `COMMAND_FAILED_*` name, or cleared) and `success`. So `wait_for {"topic": "eluvian.command.ended", "match": {"id": "0x82", "type": "Attack"}}` tells you the attack happened and how it ended. |
+| `eluvian.mode.changed` | The game mode changed: `from`, `to`. |
+| `eluvian.paused` | The game was paused or unpaused: `paused`. |
+| `eluvian.game.loaded` | A save loaded and the world is in place: `character`, `kind`, `number`. |
+| `eluvian.game.saved` | The game wrote a save, including its own autosaves. |
+| `eluvian.creature.died` | A creature died, the moment it did: `id`, `name`, `killer`. Eluvian sees this by checking every frame the creatures that were hurt or staged. |
+| `eluvian.script.death` | The game's own death event, 1.5 to 2.5 s after `eluvian.creature.died`, once the death has played out. |
+| `eluvian.script.<event>` | One of the game's script events, as the scripts receive it: `receiver`, `creator`, `objects`, `integers`, `floats`. `<event>` is one of damaged, death, attack_impact, combat_initiated, ability_cast_start, ability_cast_impact, apply_effect, remove_effect, gamemode_change, area_loaded, partymember_added, order_received, popup_result. |
+
+For the `eluvian.script.*` events:
+
+- `receiver` is who the event was delivered to, which is not always who it is about: an attack's impact goes to the attacker.
+- `objects`, `integers` and `floats` are the event's own parameters, as a script reads them (with GetEventObject and the like): the first four of each.
+- Two events also name their parameters. `attack_impact` adds `attacker`, `target`, `hit` (a `COMBAT_RESULT_*` name) and `effectId`. `damaged` adds `damager`, `amount`, `damageType` (a `DAMAGE_TYPE_*` name) and `ability`.
+
+`events {"describe": true}` lists every topic, including those not shown here.
 
 ## Clicks, and what still needs eyes
 
-`order` by default gives the order through the engine's own click functions, from the command queue down. `via: "click"` sends explore mode's click message instead, so the click's own handling runs too, and whatever a mod hooks there: an ability with its target selected (none: the game, or a mod, asks for one, as for the quickbar), or the primary action on a target, which the engine gives to the party members selected (the answer's `selected` is the party bar's, which the engine's own list may not match), so whether anyone obeyed shows only in `eluvian.command.started`. `state` shows the selection too. A move cannot be clicked yet. What is drawn (a mod's interface, floating text, portraits, the camera's view) is a `screenshot` away: the game's window drawn by Windows from inside, no window over it in the way. The mouse itself (hover, the cursor) stays with eyes.
+By default `order` sends orders through the engine's own order functions (`via: "command"`). The order counts as the player's, and any creature can obey. Two cases go by click instead unless you say otherwise: a `use` without `objectAction` by the creature you control, and an item's ability used out of combat.
 
-When waiting for an order's end, match on the command's `type` as well as the creature (`{"id": "0x82", "type": "UseObject"}`): an earlier command of the same creature may end first, cleared by the new one.
+`via: "click"` sends what a player's click sends in explore mode, so the game's own click handling runs too, along with anything a mod hooks there. Only the creature you control can click, and only in explore or combat mode. A click can:
 
-The game saves by itself at more than area transitions: some doors and plot steps write an autosave (`eluvian.game.saved` says so when it happens). A test on a player's own playthrough that must leave the saves as they were stops before such a step, or runs on a copy of the saves.
+- use an ability with its target already chosen. With no target, the game (or a mod) asks for one, as the quickbar does.
+- do the main action on a target (attack, use). The engine gives this order to every party member selected. The answer's `selected` is the party bar's selection, which may not match the engine's own list, so only `eluvian.command.started` shows who actually obeyed. `state` also shows the selection.
 
-The game pauses itself about half a second into every real-time fight when the player's auto-pause option is on, and a paused game plays nothing: no death, no command's end. After anything that starts a fight (a hostile creature spawned near the party, a door opened on enemies), `game {"action": "unpause"}`; a `wait_for` that times out says `paused` when that is why.
+A move cannot be sent as a click.
+
+What is drawn on screen (a mod's interface, floating text, portraits, the camera's view) is checked with `screenshot`, which captures the game's window even when other windows cover it. `pointer` shows what appears when the cursor rests somewhere. The drawn mouse cursor itself, and menus that follow it, track the real mouse, so checking those still needs eyes.

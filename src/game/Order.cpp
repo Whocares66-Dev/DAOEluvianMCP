@@ -337,74 +337,77 @@ void AddOrder(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"order",
-                 "Give an order as the player does, by id. `action`: attack `target`; move to `point` (a move is "
-                 "the player's move click, which moves whom the player controls: another party member is given "
-                 "control first, and keeps it, said in `controlled`; a creature outside the party is not moved); "
-                 "ability "
-                 "`ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable: a "
-                 "door, a chest, a lever). Out of combat a use or an item's ability is a click, and for "
-                 "another party member `id` control is given to it first, as for a move, and stays with it "
-                 "while it acts (`controlled`, `before`); in a fight they go by command. "
-                 "`via`: \"command\" (the default, but for use by the controlled creature) gives it through "
-                 "the engine's own click functions, so the "
-                 "command is player-issued and anything watching the command queue sees one; any creature "
-                 "`id` may obey. \"click\" sends explore mode's click message instead (the primary action on the "
-                 "target as if the cursor were over it; an ability as the quickbar uses it, with `target` "
-                 "selected), so the click's own handling runs too, and whatever hooks it (a mod watching clicks, "
-                 "asking for an ability's target); "
-                 "it is the controlled creature's, and cannot move. (Seen 2026-09-30: an ability by click works, the "
-                 "mod asking for its target when none is given. An attack or use by click is the primary action "
-                 "of every party member selected in the interface, and its answer cannot say whether anyone "
-                 "obeyed: the events from `cursor` do.) A use goes by click when the controlled creature is to "
-                 "do it, since a click chooses what the object takes (a chest and a door wanted open, and did "
-                 "nothing for use, their command ending COMMAND_FAILED); by command it does `objectAction`, "
-                 "default use. So does an item's ability (`item` or `itemTag`) by the controlled creature out "
-                 "of combat, which by command takes nothing there; in combat it goes by command. "
-                 "An area ability with a range (Fireball; abilities says each one's "
-                 "`aoe` and `range`) given a creature `target` is aimed at its position, as a ground cursor on "
-                 "it (`aimedAt`; `atCreature`: true keeps the creature). Answers whether the order was taken, and "
-                 "`cursor`: wait_for from it for what came of it (eluvian.command.started and ended, and a mod's "
-                 "own events).",
+                 "Gives an order to a creature by id, as the player would. `action`:\n\n"
+                 "- `attack`: attack `target`.\n"
+                 "- `move`: walk to `point`. Only the creature you control can be moved this way, so another "
+                 "party member `id` is given control first and keeps it (the answer says `controlled` and "
+                 "`before`). Creatures outside the party cannot be moved.\n"
+                 "- `ability`: use `ability` (an id from `abilities`) on `target` or at `point`. For an item's "
+                 "ability, such as a potion's, also pass `item` or `itemTag`. An area ability with a range (such "
+                 "as Fireball; `abilities` gives each one's `aoe` and `range`) aimed at a creature is aimed at the "
+                 "ground under it (`aimedAt`), unless `atCreature` is true.\n"
+                 "- `use`: use the object `target`, such as a door, chest or lever. Using a door toggles it; "
+                 "`doorWas` says whether it was open.\n\n"
+                 "How the order is sent (`via`):\n"
+                 "- `command`: through the engine's own order functions. The order counts as the player's, and "
+                 "anything watching the command queue sees it. Any creature can obey. A use by command does "
+                 "`objectAction`.\n"
+                 "- `click`: as if the player clicked, so anything hooked to clicks also runs (for example a mod "
+                 "that asks for an ability's target when none is given). Only the creature you control can click, "
+                 "only in explore or combat mode, and a move cannot be clicked. An attack or use by click is "
+                 "carried out by every party member selected in the party bar (`selected`), and the answer cannot "
+                 "say who obeyed: check the events from `cursor`.\n\n"
+                 "`via` defaults to `command`, except: a use without `objectAction` by the creature you control "
+                 "goes by click, since a click picks the object's own action (a plain use by command can leave a "
+                 "chest or door shut). Out of combat, an item's ability by the creature you control also goes by "
+                 "click, since by command it does nothing there. Out of combat, when `id` is another party member, "
+                 "control is handed to it first for these, as for a move, and stays with it.\n\n"
+                 "The answer says the order was `given` and includes a `cursor`; `wait_for` from it shows what "
+                 "happened (eluvian.command.started and eluvian.command.ended, and a mod's own events).",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"attack", "move", "ability", "use"}}}},
-                        {"id", {{"description", "Who obeys: a creature id; default the one controlled"}}},
+                       {{"action",
+                         {{"type", "string"},
+                          {"enum", {"attack", "move", "ability", "use"}},
+                          {"description", "What to do."}}},
+                        {"id", {{"description", "Who obeys, by creature id. Default: the creature you control."}}},
                         {"atCreature",
                          {{"type", "boolean"},
-                          {"description", "action=ability: keep a creature as an area ability's target, not its "
-                                          "position"}}},
-                        {"target", {{"description", "A creature or object id"}}},
-                        {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
-                        {"ability", {{"type", "integer"}}},
-                        {"item", {{"description", "For an ability from an item: the item's id"}}},
+                          {"description", "With `ability`: aim an area ability at the creature itself, not the "
+                                          "ground under it. Default false."}}},
+                        {"target", {{"description", "The creature or object to act on, by id."}}},
+                        {"point", {{"description", "With `move` or `ability`: the point, {x, y, z} or [x, y, z]."}}},
+                        {"ability", {{"type", "integer"}, {"description", "The ability's id, from `abilities`."}}},
+                        {"item", {{"description", "For an item's ability: the item's id."}}},
                         {"itemTag",
                          {{"type", "string"},
-                          {"description", "For an ability from an item: the item's tag, found on the creature "
-                                          "(gen_im_qck_health_101, a lesser health poultice)"}}},
+                          {"description", "For an item's ability: the item's tag, looked up in the creature's "
+                                          "inventory (for example gen_im_qck_health_101, a lesser health "
+                                          "poultice)."}}},
                         {"via",
                          {{"type", "string"},
                           {"enum", {"command", "click"}},
-                          {"description", "command (default): the engine's click functions. click: explore "
-                                          "mode's click message (the default for use by the controlled "
-                                          "creature)"}}},
+                          {"description", "How the order is sent. Default command, but click for a use without "
+                                          "`objectAction`, or an item's ability out of combat, by the creature "
+                                          "you control."}}},
                         {"objectAction",
                          {{"type", "string"},
-                          {"description", "action=use by command: what to do with the object: open, close, "
-                                          "unlock, use (default), examine, disarm, dialog, open_inventory, "
-                                          "trigger_trap, topple, area_transition, and the rest of "
-                                          "PLACEABLE_ACTION_*. It must be the one the object takes as it "
-                                          "is, or the command ends COMMAND_FAILED: a locked chest (state "
-                                          "1) took unlock, then open_inventory; a door open"}}}}},
+                          {"description", "With `use` by command: what to do with the object, a PLACEABLE_ACTION_* "
+                                          "name such as open, close, unlock, use, examine, disarm, dialog, "
+                                          "open_inventory, trigger_trap, topple or area_transition. Default use. "
+                                          "It must be an action the object accepts in its current state, or the "
+                                          "command ends with COMMAND_FAILED: a locked chest takes unlock, then "
+                                          "open_inventory."}}}}},
                       {"required", {"action"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolOrder(bench, watch, raw); });
     bench.Tools().Add(
         Spec("control",
-             "Make party member `id` the creature the player controls, as a click on its portrait does, through "
-             "the scripts' own hand-over. Answers whom it was `before`, who is `controlled` now, whether it was "
-             "`taken`, and `cursor`. order hands control over by itself for a move or a use by another party "
-             "member.",
-             Json{{"id", {{"type", "string"}, {"description", "A party member's id; state lists the party"}}}}, {"id"}),
+             "Gives control to a party member, like clicking its portrait. Returns who was controlled `before`, "
+             "who is `controlled` now, whether the change worked (`taken`), and a `cursor`. `order` hands control "
+             "over by itself when another party member has to move or use something.",
+             Json{{"id", {{"type", "string"}, {"description", "The party member, by id; `state` lists the party."}}}},
+             {"id"}),
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolControl(bench, watch, raw); });
 }
 

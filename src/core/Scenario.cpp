@@ -244,7 +244,7 @@ class Run
         const auto from = named_.find(expect["from"].get<std::string>());
         if (from == named_.end())
         {
-            throw ToolError(std::format("no earlier step is labelled \"{}\"", expect["from"].get<std::string>()));
+            throw ToolError(std::format("no earlier step is labeled \"{}\"", expect["from"].get<std::string>()));
         }
         const std::string pointer = expect.value("pointer", "");
         const auto actual = expect::At(from->second, pointer);
@@ -294,28 +294,38 @@ void AddScenarioTool(Bench &bench, std::function<Json()> whyNothing)
          {{"steps",
            {{"type", "array"},
             {"description",
-             "Each one of: {\"tool\": name, \"args\": {...}, \"as\": label}; {\"waitFor\": {\"topic\": ..., "
-             "\"match\": {...}}, \"timeoutMs\": n, \"since\": cursor, \"as\": label}; {\"sleepMs\": n}; "
-             "{\"expect\": {\"from\": label, \"pointer\": \"/given\", \"equals\" | \"notEquals\" | \"exists\" | "
-             "\"atLeast\" | \"atMost\": value}}; {\"until\": {\"tool\", \"args\", \"pointer\", an expectation, "
-             "\"intervalMs\"}, \"timeoutMs\": n, \"as\": label}, as wait_until"}}},
-          {"continueOnError", {{"type", "boolean"}, {"description", "Run on past a failed step; default false"}}},
+             "The steps, 1 to 100, each one of:\n"
+             "- {\"tool\": name, \"args\": {...}, \"as\": label}: call a tool.\n"
+             "- {\"waitFor\": {\"topic\": ..., \"match\": {...}}, \"timeoutMs\": n, \"since\": cursor, \"as\": "
+             "label}: wait for an event, like `wait_for`.\n"
+             "- {\"sleepMs\": n}: pause, at most 60000 ms.\n"
+             "- {\"expect\": {\"from\": label, \"pointer\": \"/given\", \"equals\" | \"notEquals\" | \"exists\" | "
+             "\"atLeast\" | \"atMost\": value}}: check the answer of an earlier step labeled with `as`.\n"
+             "- {\"until\": {\"tool\", \"args\", \"pointer\", an expectation, \"intervalMs\"}, \"timeoutMs\": n, "
+             "\"as\": label}: call a tool until a condition holds, like `wait_until`.\n"
+             "A step's `timeoutMs` defaults to 30000."}}},
+          {"continueOnError",
+           {{"type", "boolean"}, {"description", "If true, keep going past a failed step. Default false."}}},
           {"budgetMs",
            {{"type", "integer"},
             {"minimum", 1},
             {"maximum", 600000},
-            {"description", "The time the whole run may take; ten minutes by default and at most"}}}}},
+            {"description", "The longest the whole run may take, in milliseconds. Default and maximum 600000 (ten "
+                            "minutes)."}}}}},
         {"required", {"steps"}}};
     bench.Tools().Add(
         Budgeted(
             ToolSpec{"scenario",
-                     "Run a list of steps in one call and get a transcript: call tools, wait for events, pause, check "
-                     "answers. A test's whole checklist step at once: order an attack, wait for the turn to end, check "
-                     "the target's health. A wait starts from the cursor taken just before the latest tool step, so "
-                     "what the tool set off is not missed. Stops at the first failed step unless continueOnError. "
-                     "At most 100 steps, within `budgetMs` (ten minutes by default and at most): waits and sleeps are "
-                     "cut to the time left, and the run stops with `timedOut` when it is gone. A tool step already "
-                     "running in the game is waited for to its end, since what it does cannot be taken back.",
+                     "Runs a list of steps in one call and returns a transcript. Steps can call tools, wait for "
+                     "events, pause, and check answers, so a whole test step fits in one call: order an attack, wait "
+                     "for the turn to end, check the target's health.\n\n"
+                     "A wait starts from the cursor taken just before the latest tool step, so it does not miss what "
+                     "that tool set off. The run stops at the first failed step unless `continueOnError` is true. It "
+                     "takes at most 100 steps and runs within `budgetMs`: waits and sleeps are cut to the time left, "
+                     "and the run stops with `timedOut` when it is gone. A tool step already running in the game is "
+                     "always waited for to its end, because what it does cannot be undone.\n\n"
+                     "The answer includes `ok`, `timedOut`, `stepsRun`, `elapsedMs`, and `steps`, one entry per step "
+                     "run.",
                      schema, Thread::Listener},
             "budgetMs", 600000),
         [&bench, whyNothing = std::move(whyNothing)](const Json &raw) -> ToolResult {

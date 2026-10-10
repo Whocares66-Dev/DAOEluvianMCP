@@ -220,23 +220,27 @@ void AddWorldMap(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         Read("worldmap",
-             "The world map: whether it is `up`, where the party is (`at`, an area's tag), and its `pins`, "
-             "each with its `index`, `name`, `tag`, the `area` it leads to and its `state` (active pins can "
-             "be travelled to; not active, greyed, unlockable, completed, destroyed). travel with `to` (a "
-             "pin's name, tag or index) crosses to one, with the map up (a travel to the area's world-map "
-             "exit opens it). The pins are read as the map screen reads them; with the map never opened "
-             "this game, there may be none. In a city the map up may be the city's: `shown` names the map "
-             "shown and `other` the one its toggle swaps to (input {\"message\": "
-             "\"WorldMap.WorldMapSwapMaps\"}, as the button does; travel `to` swaps by itself for a pin on "
-             "the other). The map is closed as its Close button closes it: input "
-             "{\"message\": \"GUI.HideFullScreenGUI\"} (WorldMap.WorldMapClosed is the screen's report "
-             "that it closed, not the close). `all: true` answers instead every map's pins, the cities' too, as "
-             "the game's designer maps hold them (`maps`: each map's `tag`, file and `pins` with `name`, "
-             "`tag` and `area`): which map a pin is on, from anywhere; those are the pins' first states.",
+             "Returns the world map: whether it is open (`up`), where the party is (`at`, an area tag), and "
+             "its `pins`. Each pin has an `index`, `name`, `tag`, the `area` it leads to, and a `state`: "
+             "`active`, `not active`, `greyed`, `unlockable`, `completed` or `destroyed`. Only active pins can be "
+             "traveled to.\n\n"
+             "To go to a pin, call `travel` with `to` (the pin's name, tag or index), either with the map "
+             "open or together with the area's world map exit, which opens it. If the map has never been "
+             "opened this game, there may be no pins yet.\n\n"
+             "In a city, the open map may be the city's own: `shown` names the map on screen and `other` "
+             "the one its toggle button switches to. To switch, call `input` with "
+             "{\"message\": \"WorldMap.WorldMapSwapMaps\"}; `travel` with `to` switches by itself when the "
+             "pin is on the other map. To close the map, call `input` with "
+             "{\"message\": \"GUI.HideFullScreenGUI\"}, as its Close button does. (WorldMap.WorldMapClosed "
+             "only reports that the map closed; it does not close it.)\n\n"
+             "With `all: true`, it returns every map's pins instead, cities included, from the game's map "
+             "files (`maps`: each map's `tag`, `file` and `pins` with `name`, `tag` and `area`). This works "
+             "from anywhere and tells you which map a pin is on, but shows each pin's starting state, not "
+             "its current one.",
              Json{{"all",
                    {{"type", "boolean"},
-                    {"description", "Every map's pins, the cities' too, from the game's designer maps (their first "
-                                    "states), in place of the map up"}}}},
+                    {"description", "Return every map's pins, cities included, from the game's files (starting "
+                                    "states) instead of the open map. Default false."}}}},
              {}),
         [&watch](const Json &args) -> ToolResult {
             return Args(args, "worldmap").Bool("all", false) ? KindMaps(watch) : KindWorldmap(watch, args);

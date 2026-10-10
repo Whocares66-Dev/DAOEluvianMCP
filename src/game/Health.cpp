@@ -74,11 +74,15 @@ void AddHealthTool(Bench &bench, const Watch &watch, std::function<Json()> extra
 {
     bench.Tools().Add(
         ToolSpec{"health",
-                 "Is the game alive, and in what state: answered without waiting for the game's frame, so it works "
-                 "while an area loads or the game hangs. `state` is running (frames coming), stalled (none for a "
-                 "second: loading, a modal dialog, a hang) or starting (none yet). Also the game mode, the pause, "
-                 "calls waiting for a frame, the event cursor (for wait_for's `since`), and which plugins have "
-                 "registered tools. Call it first.",
+                 "Says whether the game is alive and what state it is in. Call it first. It answers without "
+                 "waiting for a game frame, so it works while an area loads or the game hangs.\n\n"
+                 "`state` is one of:\n"
+                 "- running: frames are coming.\n"
+                 "- stalled: no frame for over a second (an area loading, a modal dialog, or a hang).\n"
+                 "- starting: no frame yet.\n\n"
+                 "The answer also includes the game `mode`, whether it is `paused`, the calls waiting for a "
+                 "frame (`callsWaiting`), the event `cursor` to pass as `since` to `wait_for`, and which plugins "
+                 "have registered tools.",
                  Json{{"type", "object"}}, Thread::Listener, true},
         [&bench, &watch, extra = std::move(extra)](const Json &) -> ToolResult {
             const auto nowMs =

@@ -234,7 +234,7 @@ Picture CaptureGameWindow(float quality)
     }
     if (IsIconic(window) != FALSE)
     {
-        throw ToolError("screenshot: the game's window is minimised; restore it to take a picture");
+        throw ToolError("screenshot: the game's window is minimized; restore it to take a picture");
     }
     RECT client{};
     GetClientRect(window, &client);

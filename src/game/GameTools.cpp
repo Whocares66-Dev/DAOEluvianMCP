@@ -165,104 +165,114 @@ void DescribeTopics(EventCatalog &topics)
         topics.Describe(TopicSpec{std::move(topic), std::move(description), std::move(fields), "eluvian"});
     };
     describe("eluvian.mode.changed",
-             "The game mode changed: explore, combat, dialog, cutscene, loading, pregame "
-             "(the main menu), gui (a menu over the game), and the rest.",
-             Json{{"from", "the mode before"}, {"to", "the mode now"}});
-    describe("eluvian.paused", "The game was paused or unpaused.", Json{{"paused", "true or false"}});
+             "The game's mode changed. Modes include explore, combat, dialog, cutscene, loading, "
+             "pregame (the main menu) and gui (a menu open over the game).",
+             Json{{"from", "the mode before the change"}, {"to", "the mode now"}});
+    describe("eluvian.paused", "The game was paused or unpaused.",
+             Json{{"paused", "true when the game is now paused"}});
     describe("eluvian.party.control_changed",
-             "The creature the player controls changed, by any cause: the party bar, a key, a script, order "
-             "move handing a follower control. A load reads as a change from nobody.",
-             Json{{"before", "who was controlled {id, name, tag}, null for nobody"},
-                  {"now", "who is controlled now {id, name, tag}"}});
+             "The player now controls a different creature. It fires whatever caused the switch: the party "
+             "bar, a key, a script, or an `order` move that hands control to a follower. After a load, it "
+             "fires as a switch from nobody.",
+             Json{{"before", "the creature controlled before, as {id, name, tag}, or null for nobody"},
+                  {"now", "the creature controlled now, as {id, name, tag}"}});
     describe("eluvian.gui.message",
-             "A screen sent the engine one of its messages, as its buttons and its own script send them: what "
-             "the interface asked of the game, the same text input's `message` sends.",
-             Json{{"screen", R"(the movie that sent it, as the game names it ("levelup", "inventory"))"},
-                  {"text", "the message: \"Receiver.Message arguments\""}});
+             "A game screen sent a message to the engine, as its buttons and scripts do. It shows what the "
+             "menu asked the game to do, in the same form `input` sends with `message`.",
+             Json{{"screen", "the screen that sent it, by the game's name for it, such as \"levelup\" or "
+                             "\"inventory\""},
+                  {"text", "the message, as \"Receiver.Message arguments\""}});
     describe("eluvian.equipment.equipped",
-             "An item went on a creature, by any path: the inventory screen, equip, a script. A refusal is not "
-             "told, nor the ammunition the engine puts on each creature as an area loads.",
-             Json{{"creature", "{id, name, tag}"},
-                  {"item", "{id, name, tag}"},
-                  {"slot", "the slot's number (INVENTORY_SLOT_*)"},
-                  {"slotName", "the slot by name, as inventory names it"}});
+             "An item was put on a creature, by any means: the inventory screen, `equip`, or a script. It "
+             "does not fire when equipping is refused, nor for the ammunition the engine gives each "
+             "creature when an area loads.",
+             Json{{"creature", "the creature, as {id, name, tag}"},
+                  {"item", "the item, as {id, name, tag}"},
+                  {"slot", "the slot's number (an INVENTORY_SLOT_* value)"},
+                  {"slotName", "the slot's name, as `inventory` names it"}});
     describe("eluvian.equipment.unequipped",
-             "An item came off a creature, by any path; what an equip displaces (a shield for a two-handed "
-             "weapon) comes off before the equip.",
-             Json{{"creature", "{id, name, tag}"},
-                  {"item", "{id, name, tag}"},
-                  {"slot", "the slot it was in (INVENTORY_SLOT_*)"},
-                  {"slotName", "the slot by name"},
-                  {"displaced", "true for an item an equip pushed out of its slot"}});
-    describe("eluvian.game.loaded", "A save loaded, or a new game began, and the world is in place.",
+             "An item was taken off a creature, by any means. When equipping one item pushes another out "
+             "(a shield, for a two-handed weapon), the pushed-out item's event comes first.",
+             Json{{"creature", "the creature, as {id, name, tag}"},
+                  {"item", "the item, as {id, name, tag}"},
+                  {"slot", "the slot it was in (an INVENTORY_SLOT_* value)"},
+                  {"slotName", "the slot's name"},
+                  {"displaced", "true when equipping another item pushed it out"}});
+    describe("eluvian.game.loaded", "A save finished loading, or a new game started, and the world is ready.",
              Json{{"newGame", "true for a new game"},
                   {"character", "the save's character folder"},
-                  {"kind", "manual, auto or quick"},
-                  {"number", "the slot's number"}});
+                  {"kind", "the save's kind: manual, auto or quick"},
+                  {"number", "the save slot's number"}});
     describe("eluvian.game.saved", "The game wrote a save.",
              Json{{"character", "the save's character folder"},
-                  {"kind", "manual, auto or quick"},
-                  {"number", "the slot's number"}});
+                  {"kind", "the save's kind: manual, auto or quick"},
+                  {"number", "the save slot's number"}});
     describe("eluvian.dialogue.line",
-             "A line was spoken to the player in a conversation, or by creatures in passing (ambient lines "
-             "are conversations too). Some have no text: a line that only routes to the next.",
-             Json{{"index", "the line's place in the conversation's file"},
-                  {"speaker", "who, as the file writes it: a tag, OWNER or PLAYER"},
-                  {"by", "the creature who speaks it {id, name, tag}, as the game resolves the file's speaker: "
-                         "OWNER the conversation's owner, PLAYER the hero, a tag the creature that has it"},
-                  {"to", "whom it is spoken to: `listener` as the file writes it (often empty) and the "
-                         "`creature` the game resolves"},
+             "Someone spoke a line: to the player in a conversation, or between creatures in passing "
+             "(background chatter is a conversation too). Some lines have no text; they only lead on to the "
+             "next line.",
+             Json{{"index", "the line's position in the conversation file"},
+                  {"speaker", "who speaks it, as the file names them: a creature's tag, OWNER or PLAYER"},
+                  {"by", "the creature who speaks it, as {id, name, tag}. OWNER means the conversation's "
+                         "owner, PLAYER the hero, and a tag the creature with that tag"},
+                  {"to", "who it is spoken to: `listener` as the file names it (often empty), and `creature`, "
+                         "the creature the game picks"},
                   {"text", "the line, in the player's language"}});
-    describe("eluvian.dialogue.replies", "The replies now offered to the player, in their order on the screen.",
-             Json{{"replies", "each with its place, index, text and icon"}});
-    describe("eluvian.dialogue.chosen", "The player chose a reply, and the conversation goes on from it.",
-             Json{{"index", "the reply's place in the file"}, {"text", "the reply"}});
-    describe("eluvian.creature.died",
-             "A creature died, or a party member fell, the moment it did: seen by watching creatures that were "
-             "hurt or staged. The engine's own eluvian.script.death comes 1.5 to 2.5 s later, once the death has "
-             "played out.",
-             Json{{"id", "the creature"}, {"name", "its name"}, {"killer", "the last who hurt it, if known"}});
+    describe("eluvian.dialogue.replies", "The player is offered replies, listed in the order shown on screen.",
+             Json{{"replies", "each reply with its position, index, text and icon"}});
+    describe("eluvian.dialogue.chosen", "The player chose a reply, and the conversation continues from it.",
+             Json{{"index", "the reply's position in the conversation file"}, {"text", "the reply's text"}});
+    describe(
+        "eluvian.creature.died",
+        "A creature died, or a party member fell, at the moment it happened. It is noticed only for "
+        "creatures that were hurt, or killed with `stage_kill`. The engine's own eluvian.script.death fires "
+        "1.5 to 2.5 seconds later, once the death has played out.",
+        Json{{"id", "the creature's id"}, {"name", "its name"}, {"killer", "the last creature to hurt it, if known"}});
     describe("eluvian.command.started",
-             "A creature started a command from its queue: an attack, a move, an "
-             "ability, a wait, an animation.",
-             Json{{"id", "the creature"},
-                  {"type", "the command (Attack, MoveToObject, UseAbility, ...)"},
-                  {"playerIssued", "whether the player gave it"},
-                  {"target", "the object it acts on (an attack's, a use's, a move to an object's), if any"},
-                  {"point", "[x, y, z] it goes to or aims at (a move's, an ability's), if any"},
-                  {"ability", "a UseAbility's ability id"}});
-    describe("eluvian.command.ended", "A creature's command ended, and how.",
-             Json{{"id", "the creature"},
-                  {"type", "the command"},
-                  {"playerIssued", "whether the player gave it"},
-                  {"target", "as at its start"},
-                  {"point", "as at its start"},
-                  {"ability", "as at its start"},
-                  {"result", "success, a COMMAND_FAILED_*, or cleared"},
+             "A creature started a command from its queue: an attack, a move, an ability, a wait, an "
+             "animation, and so on.",
+             Json{{"id", "the creature's id"},
+                  {"type", "the kind of command (Attack, MoveToObject, UseAbility, ...)"},
+                  {"playerIssued", "whether the player gave the command"},
+                  {"target", "the object it acts on, for an attack, a use or a move to an object, if any"},
+                  {"point", "the [x, y, z] point it moves to or aims at, for a move or an ability, if any"},
+                  {"ability", "the ability's id, for a UseAbility"}});
+    describe("eluvian.command.ended", "A creature's command ended. `result` says how.",
+             Json{{"id", "the creature's id"},
+                  {"type", "the kind of command"},
+                  {"playerIssued", "whether the player gave the command"},
+                  {"target", "the same as when it started"},
+                  {"point", "the same as when it started"},
+                  {"ability", "the same as when it started"},
+                  {"result", "how it ended: success, a COMMAND_FAILED_* code saying why it failed, or cleared "
+                             "(dropped from the queue before it finished)"},
                   {"success", "true when it succeeded"}});
-    const Json scriptFields = {{"receiver", "the object the event was delivered to (not always the one it is about)"},
-                               {"creator", "the event's creator"},
-                               {"objects", "its object parameters, as GetEventObject reads them"},
-                               {"integers", "its integer parameters"},
-                               {"floats", "its float parameters"}};
+    const Json scriptFields = {{"receiver", "the object the event was sent to, which is not always the one "
+                                            "it is about"},
+                               {"creator", "the object that created the event"},
+                               {"objects", "the event's object parameters, as scripts read them with "
+                                           "GetEventObject"},
+                               {"integers", "the event's whole-number parameters"},
+                               {"floats", "the event's decimal-number parameters"}};
     for (const auto &[type, name] : kScriptEvents)
     {
         Json fields = scriptFields;
         std::string description =
-            std::format("The script event {} (EVENT_TYPE_*), as the scripts receive it.", dao::script::Name(type));
+            std::format("The game's script event {} (an EVENT_TYPE_* value), as the game's scripts receive it.",
+                        dao::script::Name(type));
         if (type == dao::script::EventType::AttackImpact)
         {
-            fields["attacker"] = "who attacked (delivered to them)";
-            fields["target"] = "who was attacked";
-            fields["hit"] = "COMBAT_RESULT_*";
-            fields["effectId"] = "the effect it made";
+            fields["attacker"] = "the attacker (the event is sent to them)";
+            fields["target"] = "the creature attacked";
+            fields["hit"] = "how the attack landed (a COMBAT_RESULT_* value)";
+            fields["effectId"] = "the id of the effect the hit made";
         }
         else if (type == dao::script::EventType::Damaged)
         {
-            fields["damager"] = "who dealt it";
-            fields["amount"] = "how much";
-            fields["damageType"] = "DAMAGE_TYPE_*";
-            fields["ability"] = "the ability it came from";
+            fields["damager"] = "the creature that dealt the damage";
+            fields["amount"] = "how much damage";
+            fields["damageType"] = "the kind of damage (a DAMAGE_TYPE_* value)";
+            fields["ability"] = "the ability that dealt it";
         }
         describe(std::format("eluvian.script.{}", name), std::move(description), std::move(fields));
     }

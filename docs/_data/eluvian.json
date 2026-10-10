@@ -3,13 +3,13 @@
  "tools": [
   {
    "name": "abilities",
-   "description": "Everything a creature knows (`id`, default the one controlled), not only what is on its quickbar: its `talents`, `spells`, `skills` and `items`' abilities, each by id and name, with whether it is `ready` (the engine's own check, the one the quickbar greys a button by: the cost against its mana or stamina, the cooldown, what holds it; `why` says why not, as \"Insufficient stamina\"), its `cost` in mana or stamina with its fatigue, and its cooldown. A sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank it has. An item's ability lists the `items` that give it (id, tag, name, stack) and how many are `held`, for order action=ability with `item` or `itemTag`, and its `cooldown` (seconds `remaining` of `total`) while one runs, as a talent's: a poultice drunk, until it comes back. `count` is the game's own count of them.",
+   "description": "Lists every ability a creature has, not only those on its quickbar: its `talents`, `spells`, `skills`, and the abilities of its `items`. A skill with ranks has one entry per rank. `count` is the game's own total.\n\nEach entry has the ability's id and name, and:\n- `ready`: whether it can be used now. This is the same check the quickbar uses to gray out a button (mana or stamina, cooldown, anything stopping it). When false, `why` gives the reason, such as \"Insufficient stamina\". For a sustained ability that is switched on, the check includes its ongoing cost.\n- `cost`: its mana or stamina cost, including fatigue.\n- `cooldown`: while one runs, the seconds `remaining` of the `total`. This includes an item's ability, such as a poultice already drunk.\n- for an item's ability: the `items` that give it (id, tag, name, stack) and how many are `held`. Use one with `order` action=ability and `item` or `itemTag`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature; default the one controlled"
+      "description": "Who to read, by creature id. Default: the creature you control."
      }
     }
    },
@@ -19,7 +19,7 @@
   },
   {
    "name": "board",
-   "description": "The quest board while it is up (the Chanter's board; Awakening's Letters for the Commander), as its screen reads and answers it. `action`: look (default), its `entries`, each with `index`, `name`, `plot` (the plot's resource), whether `accepted`, and its `text`; accept `entry` (an index, a name in any case, or a plot), answering whether it was `accepted`, as the game marks it at once; close, as its Close button. A use of the board placeable opens it.",
+   "description": "Reads and answers the quest board while its screen is open (the Chanter's board, or Awakening's Letters for the Commander). To open it, use the board placeable.\n\n`action` is one of:\n- look (default): returns the board's `entries`, each with `index`, `name`, `plot` (the quest's resource name), whether it is `accepted`, and its `text`.\n- accept: accepts `entry`. Returns the entry and whether it is now `accepted`.\n- close: closes the board, as its Close button does.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -29,17 +29,18 @@
        "look",
        "accept",
        "close"
-      ]
+      ],
+      "description": "What to do. Default: look."
      },
      "entry": {
-      "description": "accept: the entry's index, name or plot"
+      "description": "For accept: the entry to accept, by its index, its name (any case) or its plot."
      }
     }
    }
   },
   {
    "name": "camera",
-   "description": "The camera in explore or combat mode. `action`: read (the default), what it follows, its focus, position, yaw and pitch in degrees, zoom (1 close in, -1 the tactical view); face, turn it at once so that `target` (a creature or object) or `point` lies ahead of the focus, for a screenshot that shows it; follow, have it follow `target` and put it there at once, as selecting a party member does (nothing is selected), to look at a creature elsewhere; turn, to `yawDegrees`. The view is as asked from the next frame: take the screenshot after. A mod easing the camera takes a turn from here for the player's and lets go.",
+   "description": "Reads or moves the camera, in explore or combat mode. `action`:\n\n- `read` (the default): returns what it is `following`, its `focus`, `position`, `yawDegrees` and `pitchDegrees`, whether it is `tactical`, and `zoom` (1 close in, -1 the tactical view).\n- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, for a screenshot that shows it.\n- `follow`: makes it follow `target` and jump there at once, as selecting a party member does (nothing gets selected). Use it to look at a creature elsewhere.\n- `turn`: turns it to `yawDegrees`.\n\nEvery action returns the camera as `read` does. The new view shows from the next frame, so take the screenshot after this call. A mod that smooths camera moves treats a turn from here as the player's and stops its own move.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -50,30 +51,31 @@
        "face",
        "follow",
        "turn"
-      ]
+      ],
+      "description": "What to do. Default read."
      },
      "target": {
-      "description": "A creature or object id"
+      "description": "With `face` or `follow`: the creature or object, by id."
      },
      "point": {
-      "description": "action=face: {x, y, z} or [x, y, z]"
+      "description": "With `face`: a world point, {x, y, z} or [x, y, z]."
      },
      "yawDegrees": {
       "type": "number",
-      "description": "action=turn: the direction from the focus to the camera, from +x toward +y"
+      "description": "With `turn`: the direction from the focus to the camera, in degrees, measured from +x toward +y."
      }
     }
    }
   },
   {
    "name": "character",
-   "description": "A creature's sheet (`id`, default the one controlled): race, gender, class, level, experience and whether it can level up with the points left to spend, rank, the six attributes (total and base), its combat numbers (attack, defense, armor, armor penetration, spellpower, weapon damage, fatigue and the rest), health and mana or stamina, weapon style and set, whether it is plot or immortal, for a member of the party `follower` (its state, approval, whether it is locked in and whether its own AI is on), `properties` (every property it has that is not nothing, by the game's own names: resistances, regeneration, damage), and what it wears, slot by slot in brief. equipment gives the items in full, inventory the backpack, creature its effects and abilities.",
+   "description": "Reads a creature's character sheet. It returns:\n- race, gender, class, level, experience, rank, and `canLevelUp` with the `pointsToSpend`.\n- the six `attributes`, each with total and base.\n- `combat` numbers: attack, defense, armor, armor penetration, spellpower, weapon damage, fatigue and more.\n- `health` and `manaStamina`, weapon style, and whether it is `plot` or `immortal`.\n- for a party member, `follower`: its state, approval, whether it is locked in the party, and whether its own AI is on.\n- `properties`: every property that is not zero, by the game's own names (resistances, regeneration, damage bonuses and so on).\n- `equipment`: what it wears, slot by slot, in brief.\n\nFor more, call `equipment` (worn items in full), `inventory` (the backpack) or `creature` (effects and abilities).",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature; default the one controlled"
+      "description": "Who to read, by creature id. Default: the creature you control."
      }
     }
    },
@@ -83,13 +85,13 @@
   },
   {
    "name": "control",
-   "description": "Make party member `id` the creature the player controls, as a click on its portrait does, through the scripts' own hand-over. Answers whom it was `before`, who is `controlled` now, whether it was `taken`, and `cursor`. order hands control over by itself for a move or a use by another party member.",
+   "description": "Gives control to a party member, like clicking its portrait. Returns who was controlled `before`, who is `controlled` now, whether the change worked (`taken`), and a `cursor`. `order` hands control over by itself when another party member has to move or use something.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "A party member's id; state lists the party"
+      "description": "The party member, by id; `state` lists the party."
      }
     },
     "required": [
@@ -99,13 +101,13 @@
   },
   {
    "name": "controls",
-   "description": "The key bindings, as the Options screen's Controls list shows them: each action's `name`, its `description`, and its `primary` and `secondary` keys as shown (\"Ctrl + T\", \"\" for none). `match` keeps those whose name or description holds it, in any case. A plugin's own actions are among them. Reading only; answers in any mode once the game runs.",
+   "description": "Lists the key bindings shown in the Options screen's Controls list: each action's `name`, `description`, and `primary` and `secondary` keys as displayed (\"Ctrl + T\", or \"\" for none). Actions added by plugins are included. Read only; works in any mode once the game has started.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "match": {
       "type": "string",
-      "description": "Only the actions whose name or description holds this"
+      "description": "Only actions whose name or description contains this text, in any case. Default: all."
      }
     }
    },
@@ -115,7 +117,7 @@
   },
   {
    "name": "craft",
-   "description": "Make poisons, potions and traps as the game's crafting screen makes them, so its rules hold. `kind`: poison, herbalism or traps. Without `recipe` it lists what the screen offers the maker (`id`, a party member, default the one controlled): each recipe's `id`, `name`, `product`, whether it `canMake` now, the `skill` rank it needs and whether the maker has it (`skillHeld`), and its `ingredients` with how many it needs and the pack has; nothing is made. With `recipe` (an id or a name, from that list) and `count` (default 1) it makes it as the screen's Create button does, one at a time, while the screen allows. Answers `made`, the recipe's `ingredients` after, `done` and `reason`: what was short, or which skill rank was missing, if it stopped. The screen opens for the character controlled, so another maker is given control first and the one before given it back (`controlBack`). Refused for a maker without the skill; recipes are bought from merchants. `showMs` (default 1000) is how long it lingers on the screen, so whoever watches sees it; 0 for none.",
+   "description": "Makes poisons, potions and traps through the game's crafting screen, so the game's own rules apply. `kind` picks the skill: poison, herbalism or traps. The maker is `id`, a party member (default: the creature you control).\n\n- Without `recipe`, lists the recipes the screen offers the maker and makes nothing. Each has its `id`, `name`, `product`, whether it `canMake` now, the `skill` rank it needs and whether the maker has it (`skillHeld`), and its `ingredients` with how many it needs and how many the pack has.\n- With `recipe` (an id or a name from that list), makes it `count` times, one at a time, like the screen's Create button, for as long as the screen allows.\n\nThe answer includes `made`, the recipe's `ingredients` afterwards, `done`, and `reason`: what ran short or which skill rank was missing, if it stopped. The screen opens for the creature you control, so another maker is given control first and control is handed back afterwards (`controlBack`). It refuses a maker without the skill. Recipes are bought from merchants.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -126,24 +128,26 @@
        "herbalism",
        "traps"
       ],
-      "description": "The crafting skill whose recipes to use"
+      "description": "The crafting skill whose recipes to use."
      },
      "id": {
       "type": "string",
-      "description": "The maker, a party member; default the one controlled"
+      "description": "The maker, a party member's creature id. Default: the creature you control."
      },
      "recipe": {
-      "description": "A recipe's id (a number) or name, as the list without one gives"
+      "description": "The recipe to make: its id (a number) or name, as the list shows. Omit it to list the recipes."
      },
      "count": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 99
+      "maximum": 99,
+      "description": "How many to make. Default 1."
      },
      "showMs": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 10000
+      "maximum": 10000,
+      "description": "How long to linger on the screen, in milliseconds, so whoever watches sees it. Default 1000; 0 for none."
      }
     },
     "required": [
@@ -153,13 +157,13 @@
   },
   {
    "name": "creature",
-   "description": "One creature in full: its summary (with the command it is carrying out), facing, appearance, the abilities on its quickbar and in its tactics with each one's cooldown (seconds left, and of how many), its movement's path (`beingWalked` says whether it is walking it now), and every effect on it: its type (EFFECT_TYPE_*), creator, ability (id and name) and time left (seconds; null for effects that do not run out).",
+   "description": "Returns one creature in full: the summary `creatures` gives (including the `command` it is carrying out), plus:\n\n- `facing` and `appearance`.\n- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, out of how many).\n- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n- `effects`: every effect on it, with its type (an EFFECT_TYPE_* name), creator, ability (id and name) and time left in seconds (null for effects that do not expire).",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature; default the one controlled"
+      "description": "The creature, by id. Default: the creature you control."
      }
     }
    },
@@ -169,17 +173,17 @@
   },
   {
    "name": "creatures",
-   "description": "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side (party, hostile, neutral: from the creature controlled, the hero where none is), its `group` (the game's own: 0 the player's, 1 hostile, 2 friendly), position, distance, dead, health and mana or stamina, combat state, whom it attacks, its `room` (number; `seen` by the party: never, which the game draws black with what stands in it, in view, or before; `shown`; and how much the game wants the room and whether it is in memory), and the command it is carrying out. `brief: true` answers a line each (`lines`: id, name, tag, side, health, dead, distance) instead.",
+   "description": "Lists every creature in the area, nearest first. Each has its `id`, `name`, `tag`, `template`, `position`, `distance`, whether it is `dead`, its `health` and `manaStamina`, `combatState`, `attackTarget`, the `command` it is carrying out, and:\n\n- `side`: party, hostile or neutral, as seen by the creature you control (or the hero if none).\n- `group`: the game's own faction number: 0 the player's, 1 hostile, 2 friendly.\n- `room`: the room it stands in (`number`), whether the party has `seen` it (never, in view or before; a room never seen is drawn black, along with everything in it), whether it is `shown`, how much the game wants it (`wanted`: dropped, kept, now) and whether it is in memory (`load`). Null where the area has no rooms.\n\n`creature` gives one creature in full detail.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "near": {
       "type": "string",
-      "description": "Measure from this creature; default the one controlled"
+      "description": "Measure distances from this creature, by id. Default: the creature you control."
      },
      "radius": {
       "type": "number",
-      "description": "Only those within this many metres of `near`"
+      "description": "Only those within this many meters of `near`. Default: the whole area."
      },
      "side": {
       "type": "string",
@@ -188,19 +192,19 @@
        "hostile",
        "neutral"
       ],
-      "description": "Only this side"
+      "description": "Only creatures on this side. Default: all sides."
      },
      "includeDead": {
       "type": "boolean",
-      "description": "Default true"
+      "description": "Include dead creatures. Default true."
      },
      "includeInactive": {
       "type": "boolean",
-      "description": "Those the area keeps hidden too; default false"
+      "description": "Also list creatures the area keeps hidden. Default false."
      },
      "brief": {
       "type": "boolean",
-      "description": "A thing a line (`lines`) instead of in full"
+      "description": "Return one line per creature (`lines`: id, name, tag, side, health, dead, distance) instead of full detail. Default false."
      }
     }
    },
@@ -210,7 +214,7 @@
   },
   {
    "name": "cursor",
-   "description": "What the game says is under the real mouse cursor now, in explore and combat mode: `object`, the one a click would act on (null over none), the `ground` point under it and whether it is `walkable`, and `hits`, everything the cursor's ray meets, nearest first. After moving the real mouse, ask before clicking: a click beside a creature is a move order. The game picks again 15 times a second. No `hits` at all, not even ground, means the game cast no ray: the cursor is over a piece of the interface (a creature's name label among them) or outside the picture.",
+   "description": "Returns what is under the real mouse cursor right now, in explore and combat mode: `object`, what a click would act on (null if nothing), the `ground` point under it and whether it is `walkable`, and `hits`, everything the cursor's ray meets, nearest first (up to 8).\n\nAfter moving the real mouse, check here before clicking: a click just beside a creature is a move order. The game updates this 15 times a second. Empty `hits`, not even ground, means the cursor is over the interface (including a creature's name label) or outside the game's picture.",
    "inputSchema": {
     "type": "object",
     "properties": {}
@@ -221,21 +225,21 @@
   },
   {
    "name": "data",
-   "description": "The game's data tree, which its interface is bound to: the value at a dotted `path` (\"GUI.SelectedChar\", \"Map.ShowAllLabels\", \"GUIPopupLayer.DialogBoxText\"), as `text` and as `number`, and its `type`; or several at once with `paths`. `found` is false for a path the tree has not. What the interface shows of the game is read here without a picture. `members: true` reads the list at `path` (a container's Container.Inventory, the level-up screen's chains): `count` and each member's path, to read the same way. Reading only. Answers in any mode.",
+   "description": "Reads the game's data tree, the values its interface displays. Use it to read what a screen shows without a screenshot.\n\nPass a dotted `path` (\"GUI.SelectedChar\", \"Map.ShowAllLabels\", \"GUIPopupLayer.DialogBoxText\") to get its value as `text` and as `number`, and its `type`; or pass `paths` to read several at once (`values`). `found` is false for a path that does not exist.\n\nWith `members: true`, it lists the members of the list at `path` (e.g. Container.Inventory, or the level-up screen's chains): their `count` and each member's path, which you can read the same way. Read only; works in any mode once the game has started.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "path": {
       "type": "string",
-      "description": "A dotted path in the data tree"
+      "description": "A dotted path in the data tree."
      },
      "paths": {
       "type": "array",
-      "description": "Several paths, answered together"
+      "description": "Up to 64 paths to read together."
      },
      "members": {
       "type": "boolean",
-      "description": "The list at `path`: its members' paths and how many"
+      "description": "List the members of the list at `path` instead of reading its value. Default false."
      }
     }
    },
@@ -245,7 +249,7 @@
   },
   {
    "name": "dialogue",
-   "description": "Read or answer the conversation on the screen, or skip a cutscene. `action`: look, the conversation (health's mode is dialog while one is): the `line` spoken last, its speaker, `by` and `to`, the conversation's `owner`, and the `replies` the player may choose from now, each with its `place`; `cutscene` and `movie` say whether one is playing; choose, the reply at `place` among those look lists, as a click on it; continue, as the skip key: the line being spoken is cut short and its replies offered, and a reply with no text is gone through; skip_cutscene, as Escape in a cutscene or a pre-rendered movie. With `until`: \"choice\", it goes on from there to the next real choice in one call: an answer the game ignored is asked again, a reply with no text gone through, and the lines play as they would for a player (`skipLines`: true cuts each short); it answers every line spoken on the way (`lines`: speaker as the file writes it, `by` and `to` the creatures, and text), the `replies` of the next choice, or that it `ended` and the `mode` after (explore, a cutscene, a fight, an area loading). Without `until` it answers that the game was asked, and `cursor`: wait_for eluvian.dialogue.chosen, .line or eluvian.mode.changed from it. `budgetMs` (default 60000) bounds an `until`.",
+   "description": "Reads or answers the conversation on screen, or skips a cutscene. While a conversation is open, `health` reports mode `dialog`.\n\n`action`:\n- `look`: returns the conversation: the `line` spoken last, its speaker, `by` and `to`, the conversation's `owner`, and the `replies` you can choose from now, each with its `place`. `cutscene` and `movie` say whether one is playing.\n- `choose`: picks the reply at `place` (as `look` lists them), like clicking it.\n- `continue`: like the skip key. It cuts the current line short and shows its replies, and goes through a reply with no text.\n- `skip_cutscene`: like Escape in a cutscene or a pre-rendered movie.\n\nWith `until: \"choice\"`, the call carries on to the next real choice. A choice the game ignored is made again, replies with no text are gone through, and lines play at normal speed (`skipLines: true` cuts each short). The answer lists every line spoken on the way (`lines`: the speaker as the file names it, `by` and `to` as creatures, and the text), then either the `replies` of the next choice, or `ended` and the `mode` after (explore, a cutscene, a fight, an area loading).\n\nWithout `until`, the answer says the game was asked and gives a `cursor`: call `wait_for` from it on eluvian.dialogue.chosen, eluvian.dialogue.line or eluvian.mode.changed.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -256,12 +260,13 @@
        "choose",
        "continue",
        "skip_cutscene"
-      ]
+      ],
+      "description": "What to do; each action is described above."
      },
      "place": {
       "type": "integer",
       "minimum": 0,
-      "description": "action=choose: which reply, from 0, as dialogue action=look lists"
+      "description": "With `choose`: which reply, counting from 0, as `look` lists them."
      },
      "until": {
       "type": "string",
@@ -269,16 +274,17 @@
        "step",
        "choice"
       ],
-      "description": "choice: go on to the next real choice or the conversation's end"
+      "description": "\"choice\" carries on to the next real choice or the end of the conversation. Default \"step\": one step only."
      },
      "skipLines": {
       "type": "boolean",
-      "description": "with until: cut each line short; default false"
+      "description": "With `until`: cut each line short. Default false."
      },
      "budgetMs": {
       "type": "integer",
       "minimum": 1000,
-      "maximum": 300000
+      "maximum": 300000,
+      "description": "The longest an `until` call may take, in milliseconds. Default 60000."
      }
     },
     "required": [
@@ -294,7 +300,7 @@
   },
   {
    "name": "equip",
-   "description": "Put on an item of the pack, or take one off, as the inventory screen's paperdoll does, so the game's rules hold (requirements, what a slot takes). `action`: equip (default) or unequip; `item`, an id from inventory or equipment; `slot` for equip, by name (main, offhand, ring1, ring2, ...) or number, default the item's first. It acts on the character the interface has selected; `id`, another party member, is made the one selected for the equip and control given back after (`selectedFirst`). Answers what the slot held `before` and holds `after`, and whether it took (`equipped`); the item a slot held goes back to the pack.",
+   "description": "Puts an item from the pack on a party member, or takes one off, the way the inventory screen does, so the game's rules apply (requirements, which items fit which slot).\n\n`action` is one of:\n- equip (default): puts `item` in `slot`. Whatever the slot held goes back to the pack. Returns what the slot held `before` and holds `after`, and whether it worked (`equipped`). If it did not, the answer says whether the game thinks the creature can use the item (`canUse`), with its `requirements` and `restrictions` where known.\n- unequip: takes `item` off and puts it in the pack. Returns whether it came off (`unequipped`).\n\nIt acts on the party member selected in the interface. If `id` names another, that one is selected for the call and control is handed back afterwards (`selectedFirst`).",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -303,18 +309,19 @@
       "enum": [
        "equip",
        "unequip"
-      ]
+      ],
+      "description": "What to do. Default: equip."
      },
      "item": {
       "type": "string",
-      "description": "The item's id"
+      "description": "The item, by its id from `inventory` or `equipment`."
      },
      "slot": {
-      "description": "equip: the slot's name or number; default the item's first"
+      "description": "For equip: the slot, by name (main, offhand, ring1, ring2, ...) or number. Default: the first slot the item fits."
      },
      "id": {
       "type": "string",
-      "description": "The party member (default: the one selected)"
+      "description": "The party member, by creature id. Default: the one selected in the interface."
      }
     },
     "required": [
@@ -324,13 +331,13 @@
   },
   {
    "name": "equipment",
-   "description": "What a creature wears (`id`, default the one controlled), each slot's item in full: name, tag, template, base type and material (by the game's own labels), value, its stats (armor, damage, defense, attack, crit chance, armor penetration, fatigue, optimum range and the rest, by the game's own names), its properties with their power, and what using it does. `slots` are the active weapon set's main, offhand and ammo, then chest, head, boots, gloves, cloak, the rings, neck and belt; `otherWeapons` is the set not in hand.",
+   "description": "Lists what a creature wears, with each item in full, as `item` returns it: name, tag, template, base type, material, value, stats (armor, damage, defense, attack, crit chance, armor penetration, fatigue, optimum range and more, by the game's own names), properties with their power, and what using it does.\n\n`slots` holds main, offhand and ammo for the weapon set in hand, then chest, head, boots, gloves, cloak, ring1, ring2, neck and belt. `weaponSet` is the set in hand, and `otherWeapons` is the other set.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature; default the one controlled"
+      "description": "Who to read, by creature id. Default: the creature you control."
      }
     }
    },
@@ -340,16 +347,16 @@
   },
   {
    "name": "events",
-   "description": "The bench's events since a cursor: what happened in the game (eluvian.*) and what mods emit (their own prefix), in order, each with its sequence number, frame and time. Returns `next`, the cursor to read from next time (pass it as `since`; other tools' answers call theirs `cursor`), and `missed`, how many were too old to keep. Filter with `topic`: one, a prefix or an array of them. With no `since` it reads from the oldest held, not from now: take `since: \"end\"` before acting, then read from its `next` after.",
+   "description": "Returns the events since a cursor, in order: what happened in the game (topics `eluvian.*`) and what mods emit (under their own prefix). Each event has its sequence number, frame and time.\n\nThe answer includes `next`, the cursor to pass as `since` next time (other tools' answers call theirs `cursor`), and `missed`, how many events were too old to keep.\n\nWithout `since` it reads from the oldest event held, not from now. To see what an action causes, call with `since: \"end\"` first, act, then read from the `next` it returned. Filter with `topic` and `match`; `describe` lists the topics instead.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "topic": {
-      "description": "A topic (\"eluvian.command.ended\"), a prefix (\"mymod.*\"), \"*\", or an array of them. None: every topic."
+      "description": "A topic (\"eluvian.command.ended\"), a prefix (\"mymod.*\"), \"*\", or an array of these. Default: every topic."
      },
      "match": {
       "type": "object",
-      "description": "Payload fields the event must have, equal; objects match as subsets. Creatures are ids like \"0x7d9\": {\"id\": \"0x7d9\"}."
+      "description": "Payload fields the event must have, with equal values; nested objects match as subsets. Creatures are ids like \"0x7d9\": {\"id\": \"0x7d9\"}."
      },
      "since": {
       "oneOf": [
@@ -361,17 +368,17 @@
         "const": "end"
        }
       ],
-      "description": "The cursor to read from: `next` from the last read, or `cursor` from an answer. 0, the default: the oldest event still held. \"end\": no events, and `next` the cursor now, a mark to read from after acting."
+      "description": "Where to start reading: `next` from the last read, or `cursor` from another tool's answer. \"end\" returns no events and `next` set to now, to read from after acting. Default 0: the oldest event still held."
      },
      "limit": {
       "type": "integer",
       "minimum": 1,
       "maximum": 1000,
-      "description": "At most this many; 100 by default."
+      "description": "The most events to return. Default 100."
      },
      "describe": {
       "type": "boolean",
-      "description": "List the topics there are (those passing `topic`) with what each means and what its payload holds, instead of reading events."
+      "description": "If true, lists the topics (those matching `topic`), what each means and what its payload holds, instead of reading events. Default false."
      }
     }
    },
@@ -381,21 +388,21 @@
   },
   {
    "name": "exits",
-   "description": "The ways out of the area: every door or other placeable and every trigger that takes the party to another area, nearest first, with `leadsTo` (the area's tag and the waypoint's there), its kind, position, distance and whether it is active. A placeable is used with order action=use; a trigger is walked into (travel to its position). Some doors choose where they lead only when used, so their `leadsTo` may be empty or the last use's. Going through one loads the other area, and the game may autosave. `radius` keeps those within it; `brief: true` answers a line each (`lines`).",
+   "description": "Lists the ways out of the area: every door, other placeable or trigger that takes the party to another area, nearest first. Each has `leadsTo` (the destination area's tag and waypoint), its `kind` (placeable or trigger), `position`, `distance` and whether it is `active`.\n\nThe easiest way to leave is `travel` with `exit` (an id from here) or `area`. By hand, use a placeable with `order` action=use, and walk into a trigger by moving to its position. Some doors only decide where they lead when used, so their `leadsTo` may be empty or show the last destination. Leaving loads the other area, and the game may autosave.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "near": {
       "type": "string",
-      "description": "Measure from this creature; default the one controlled"
+      "description": "Measure distances from this creature, by id. Default: the creature you control."
      },
      "radius": {
       "type": "number",
-      "description": "Only those within this many metres of `near`"
+      "description": "Only those within this many meters of `near`. Default: the whole area."
      },
      "brief": {
       "type": "boolean",
-      "description": "A thing a line (`lines`) instead of in full"
+      "description": "Return one line per exit (`lines`) instead of full detail. Default false."
      }
     }
    },
@@ -405,32 +412,32 @@
   },
   {
    "name": "geometry",
-   "description": "Between a creature (`id`, default the one controlled) and a creature (`target`) or a point (`point`): the straight distance, the line of sight as the engine judges it (eye height to eye height; where it is cut, if it is; only walls and placeables block, not creatures), and the creature's movement path with its length and what is left of it; `beingWalked` says whether it is walking it now (`waypoints: true` lists its points). `walk: true` also searches the path it would walk there, as the game's pathfinder finds it now: `found` with its `length`, or why not, and for a shut door or the like in the way, `blocker`: use that first, then move. The creature is left as it is.",
+   "description": "Measures from a creature (`id`) to another creature or object (`target`) or a `point`. Returns the straight-line distance, the line of sight as the engine judges it (eye height to eye height, and where it is blocked, if it is; only walls and placeables block it, not creatures), and the creature's current movement path with its length and how much is left. `beingWalked` says whether it is walking that path now.\n\nWith `walk: true`, it also asks the game's pathfinder for the path the creature would walk there now: `found` and its `length`, or why not. If a shut door or similar is in the way, `blocker` names it: use it first, then move. The creature is not moved.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature; default the one controlled"
+      "description": "The creature to measure from, by id. Default: the creature you control."
      },
      "target": {
       "type": "string",
-      "description": "The creature or object to measure to"
+      "description": "The creature or object to measure to, by id."
      },
      "point": {
-      "description": "The point to measure to, {x, y, z} or [x, y, z]"
+      "description": "The point to measure to: {x, y, z} or [x, y, z]."
      },
      "walk": {
       "type": "boolean",
-      "description": "Also search the path the creature would walk there: its length, or what is in the way"
+      "description": "Also find the path the creature would walk there: its length, or what is in the way. Default false."
      },
      "trace": {
       "type": "boolean",
-      "description": "With walk: the search's own record, a line a slice"
+      "description": "With `walk`: include the path search's internal log, for diagnosing a search that failed. Default false."
      },
      "waypoints": {
       "type": "boolean",
-      "description": "List the paths' points"
+      "description": "List the points along the paths. Default false."
      }
     }
    },
@@ -440,22 +447,23 @@
   },
   {
    "name": "gift",
-   "description": "Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, so its scripts change the approval and move the item, and a special gift may start a conversation. `to`, a follower in the party; `item`, an item of base type Gift from inventory. Answers once the game has taken it (the item gone from the pack, or the approval moved; `budgetMs`, default 3000, at most): the approval before and after (`approvalBefore`, `approvalAfter`), whether the item left the pack (`given`), the game's `mode` after (dialog: a conversation began), and `cursor` for the events that followed.",
+   "description": "Gives a follower a gift from the pack, like the inventory's Give button. It raises the game's own gift event, so the game's scripts change the approval and move the item, and a special gift may start a conversation.\n\nPass `to`, a follower in the party, and `item`, an item of base type Gift from `inventory`. The call returns once the game has taken the gift (the item left the pack or the approval changed), or after `budgetMs`. The answer includes the approval before and after (`approvalBefore`, `approvalAfter`), whether the item left the pack (`given`), the game's `mode` afterwards (`dialog` means a conversation began: answer it with `dialogue`), and a `cursor` for the events that followed.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "to": {
       "type": "string",
-      "description": "The follower's id"
+      "description": "The follower, by creature id."
      },
      "item": {
       "type": "string",
-      "description": "The gift's id"
+      "description": "The gift, by item id."
      },
      "budgetMs": {
       "type": "integer",
       "minimum": 100,
-      "maximum": 30000
+      "maximum": 30000,
+      "description": "The longest to wait for the game to take the gift, in milliseconds. Default 3000."
      }
     },
     "required": [
@@ -472,7 +480,7 @@
   },
   {
    "name": "gui",
-   "description": "What the interface has up, for when health's mode is gui or the game waits on something: `screens`, the game's screens on the screen now, the top first, each by `name` (Inventory, Store, WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options, Main the HUD), its `movie` and `layer`; `fullScreen`, the name of the full-screen one up (the inventory, the map, the journal...), null with none; `fullScreenHidden`, a full-screen one left on the game's stack of them but not on the screen (a screen closed by its report alone, WorldMap.WorldMapClosed): input {\"message\": \"GUI.HideFullScreenGUI\"} clears it, as a screen's Close button does; `popup`, the game's message box with its text and each button's label and what pressing it sends (a box holds the game until it is answered, and nothing else says it is there: ask when a load or an order was taken and nothing followed); and `loot`, the loot panel a container opens (a chest, a body's remains, a pile of bones), which is the Inventory screen: its `container`, the `items` in it, the `backpack`'s items and most, and its `buttons`, Take All and Close, with what each sends. press presses a button of the message box or the loot panel; the loot tool walks to a container, opens it and takes all in one call. `store`, with a merchant's Store screen up: the `stock` with each item's `price`, the `pack` with what each `sellsFor`, the `money` (copper), the markups; the store tool buys and sells. Answers in any mode.",
+   "description": "Returns what the game's interface is showing. Call it when `health` reports mode gui, or when the game seems to be waiting on something. Works in any mode. The answer includes:\n\n- `screens`: the screens shown now, top first, each with its `name` (Inventory, Store, WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options; Main is the HUD), `movie` and `layer`.\n- `fullScreen`: the name of the full-screen screen that is open (inventory, map, journal...), or null.\n- `fullScreenHidden`: present when a full-screen screen is still open in the game but not drawn, e.g. after WorldMap.WorldMapClosed alone. Clear it with `input` {\"message\": \"GUI.HideFullScreenGUI\"}, as a Close button does.\n- `popup`: the game's message box, with its text and each button's label and what pressing it sends. A message box blocks the game until answered, and nothing else reports it, so check here when a load or an order was accepted but nothing happened.\n- `loot`: the loot panel a container opens (a chest, remains, a pile of bones), part of the Inventory screen: its `container`, the `items` in it, the `backpack`'s item count and limit, and its `buttons`, Take All and Close, with what each sends.\n- `store`: with a merchant's Store screen open, the `stock` with each item's `price`, your `pack` with what each item `sellsFor`, the `money` (in copper) and the markups.\n\nTo act on these: `press` presses a message box or loot panel button; `loot` walks to a container, opens it and takes everything in one call; `store` buys and sells.",
    "inputSchema": {
     "type": "object",
     "properties": {}
@@ -483,7 +491,7 @@
   },
   {
    "name": "health",
-   "description": "Is the game alive, and in what state: answered without waiting for the game's frame, so it works while an area loads or the game hangs. `state` is running (frames coming), stalled (none for a second: loading, a modal dialog, a hang) or starting (none yet). Also the game mode, the pause, calls waiting for a frame, the event cursor (for wait_for's `since`), and which plugins have registered tools. Call it first.",
+   "description": "Says whether the game is alive and what state it is in. Call it first. It answers without waiting for a game frame, so it works while an area loads or the game hangs.\n\n`state` is one of:\n- running: frames are coming.\n- stalled: no frame for over a second (an area loading, a modal dialog, or a hang).\n- starting: no frame yet.\n\nThe answer also includes the game `mode`, whether it is `paused`, the calls waiting for a frame (`callsWaiting`), the event `cursor` to pass as `since` to `wait_for`, and which plugins have registered tools.",
    "inputSchema": {
     "type": "object"
    },
@@ -493,38 +501,38 @@
   },
   {
    "name": "input",
-   "description": "Send the game one of its own messages by its text. `message`: \"Receiver.Message arguments\", what the interface's buttons send (\"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; gui shows what each button of a box sends). `binding`: \"Message arguments\", what a key's binding names, sent as pressing the key sends it (\"UserTogglePauseMessage\", \"SelectPartyMemberIndexMessage 0 1\"). The general way in when no tool fits, as `script` is for script commands; the game does whatever the message means, so know what it is. One that names a save (the quicksave key's \"SaveGameMessage -1 2\" writes over the player's quicksave) is refused unless `confirmSave` is true. Answers `sent`: false means the engine knows no such receiver or message. movie reaches what no message does.",
+   "description": "Sends the game one of its own internal messages, written as text. Use it when no other tool fits, as `script` is for script commands. The game does whatever the message means, so know what it does before sending it. Pass exactly one of:\n\n- `message`: what an interface button sends, as \"Receiver.Message arguments\" (for example \"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; `gui` shows what each button of a message box sends).\n- `binding`: what a key's binding names, as \"Message arguments\", sent the way a key press sends it (for example \"UserTogglePauseMessage\" or \"SelectPartyMemberIndexMessage 0 1\").\n\nA text that saves the game is refused unless `confirmSave` is true: the quicksave key's \"SaveGameMessage -1 2\" overwrites the player's quicksave. The answer's `sent` is false if the engine knows no such receiver or message; it also includes a `cursor`. `movie` reaches what no message does.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "message": {
       "type": "string",
-      "description": "Receiver.Message arguments"
+      "description": "A button's message: \"Receiver.Message arguments\"."
      },
      "binding": {
       "type": "string",
-      "description": "Message arguments, as a key's binding has it"
+      "description": "A key binding's message: \"Message arguments\"."
      },
      "confirmSave": {
       "type": "boolean",
-      "description": "Send a text that names a save all the same"
+      "description": "Send a text that saves the game anyway. Default false."
      }
     }
    }
   },
   {
    "name": "inventory",
-   "description": "The backpack of a creature (`id`, default the hero, whose backpack is the party's), or what a container holds without opening it (a chest, a body, a pile of bones: an `id` from placeables): each item in brief (name, tag, template, base type, stack, value, plot), with `count`; for a creature also the most it `holds` and `money`, the party's purse. `full: true` gives each item as item does. Not what is worn: that is equipment. A container's treasure may be chosen only as it is opened (a body's remains read empty, then held a gem once open), so an empty list before is not the last word: the loot tool opens and empties one.",
+   "description": "Lists the items in a creature's backpack, or in a container without opening it (a chest, a body, a pile of bones). The hero's backpack is the party's. Worn items are not included; `equipment` lists those.\n\nThe answer has `count` and `items`, each in brief (name, tag, template, base type, stack, value, plot). For a creature it also has `holds` (the most the backpack can hold) and `money` (the party's).\n\nA container's contents may only be decided when it is opened, so an empty list does not mean it is empty. The `loot` tool opens a container and takes what is inside.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature or container; default the hero"
+      "description": "The creature or container, by id (containers come from `placeables`). Default: the hero."
      },
      "full": {
       "type": "boolean",
-      "description": "Each item in full"
+      "description": "Return each item in full, as `item` does. Default false."
      }
     }
    },
@@ -534,13 +542,13 @@
   },
   {
    "name": "item",
-   "description": "One item in full, by its `id` (as inventory and equipment give them): name, tag, template, base type, material, stack and the most a stack holds, value, where it is worn, its stats, its properties with their power, what using it does, and whether it is plot, droppable or indestructible.",
+   "description": "Reads one item in full: name, tag, template, base type, material, `stack` and `maxStack`, value, the slot it is worn in (`equippedIn`), its stats, its properties with their power, what using it does (`ability`), and whether it is plot, droppable or indestructible.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The item: an id from inventory or equipment"
+      "description": "The item, by its id from `inventory` or `equipment`."
      }
     },
     "required": [
@@ -553,13 +561,13 @@
   },
   {
    "name": "journal",
-   "description": "The quests in the journal: `active`, the one marked, and `quests`, those under way, each with `plot` (its resource: plot with it gives the flags), `name`, `description` and its `objective` as the journal shows them, its group, area, and whether it was `updated` or is `completed`, and `parent` for a quest within another (one done may stay listed here, with `completed` true). `completed: true` lists the quests done too; otherwise only their count. Reading only.",
+   "description": "Lists the quests in the journal: `active`, the quest currently marked, and `quests`, those in progress. Each quest has its `plot` name (pass it to `plot` for its flags), its `name`, `description` and `objective` as the journal shows them, its `group` and `area`, whether it was `updated` or is `completed`, and `parent` if it is part of another quest. A finished quest may stay in `quests` with `completed` true.\n\nFinished quests are only counted (`completedCount`) unless you pass `completed: true`. Read only.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "completed": {
       "type": "boolean",
-      "description": "List the quests done too"
+      "description": "Also list the finished quests. Default false."
      }
     }
    },
@@ -569,63 +577,64 @@
   },
   {
    "name": "levelup",
-   "description": "Spend a creature's level-up points as the game's level-up screen does, so its rules hold, for `id` (default the creature controlled). One of: `offers`: true, what the screen offers, nothing spent (`points`, `attributes`, and the class's `talents`, `spells` and `skills`, each a list of abilities with `id`, `name` and `state`: `has`, `learnable` now, or `not yet`; and the `specializations`, each `id`, `name` and `state`: `has`, `learnable`, `locked` or `no point to spend`); `specialization` (one `offers` lists, by name or id, taken first, as a click on its icon, so its chain can be spent on in the same call; refused saying why: taken, locked, no point), `abilities` (ids `offers` lists as learnable, the first of a chain before the next) and `attributes` ({\"strength\": 2, ...}), spent as the screen's buttons spend them, an ability not learnable refusing the lot with nothing spent; or `auto`: true, the screen's Auto Level Up, which spends every point as the game chooses for the class (all a follower needs), again while points are left. It opens the screen for the creature, spends, ends it complete and closes it. Answers `levelled`, `reason`, `before` and `after` (level, points to spend), the `attributes` raised and by how much, the talents, spells and skills `gained`, and `cursor`. Refused for a creature with no points to spend (character says `canLevelUp`). A level-up is the character's for good once the game is saved. `showMs` (default 1000) is how long it lingers on the screen before Auto Level Up and on the result after, so whoever watches sees it; 0 for none.",
+   "description": "Spends a creature's level-up points through the game's level-up screen, so the game's own rules apply. `id` picks the creature (default: the creature you control). The tool opens the screen, spends the points, completes the level-up and closes the screen. Pass exactly one of:\n\n- `offers: true`: returns what the screen offers and spends nothing: `points`, `attributes`, and the class's `talents`, `spells` and `skills`, each a list of abilities with `id`, `name` and `state` (`has`, `learnable` now, or `not yet`); and the `specializations`, each with `id`, `name` and `state` (`has`, `learnable`, `locked` or `no point to spend`).\n- The points to spend: `specialization`, `abilities` and `attributes`, in any combination, spent as the screen's buttons spend them. A specialization is taken first, like a click on its icon, so its abilities can be taken in the same call; it is refused, saying why, if already taken, locked, or there is no point for it. List `abilities` with the first of a chain before the next. If any ability is not learnable, nothing is spent.\n- `auto: true`: the screen's Auto Level Up, which spends every point as the game chooses for the class (all a follower needs), repeating while points are left.\n\nThe answer includes `levelled`, `reason`, `before` and `after` (level and points to spend), the `attributes` raised and by how much, the talents, spells and skills `gained`, and a `cursor`. It refuses a creature with no points to spend (`character` shows `canLevelUp`). A level-up is permanent once the game is saved.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "Who levels up: a creature id; default the one controlled"
+      "description": "Who levels up, by creature id. Default: the creature you control."
      },
      "auto": {
       "type": "boolean",
-      "description": "Spend every point as the screen's Auto Level Up does"
+      "description": "If true, spend every point as the screen's Auto Level Up does."
      },
      "offers": {
       "type": "boolean",
-      "description": "What the screen offers; nothing spent"
+      "description": "If true, return what the screen offers and spend nothing."
      },
      "abilities": {
       "type": "array",
-      "description": "Ability ids to take, learnable in `offers`, in order"
+      "description": "Ability ids to take, in order, from those `offers` lists as learnable."
      },
      "attributes": {
       "type": "object",
-      "description": "Points per attribute: {\"strength\": 2, \"cunning\": 1}"
+      "description": "Points to put in each attribute, e.g. {\"strength\": 2, \"cunning\": 1}."
      },
      "specialization": {
-      "description": "A specialization to take, by name or ability id, from `offers`"
+      "description": "A specialization to take, by name or ability id, as `offers` lists it."
      },
      "showMs": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 10000
+      "maximum": 10000,
+      "description": "How long to linger on the screen before Auto Level Up and on the result, in milliseconds, so whoever watches sees it. Default 1000; 0 for none."
      }
     }
    }
   },
   {
    "name": "log",
-   "description": "Read a DAOLib log (Documents\\BioWare\\Dragon Age\\daolib\\) from a cursor: the lines written since `since`, and `next` to read from next time. `restarted` says the file began again (the game restarted).",
+   "description": "Reads a DAOLib log (in Documents\\BioWare\\Dragon Age\\daolib\\) from a cursor. Returns the lines written since `since`, and `next`, the cursor to read from next time. `restarted` is true when the file began again because the game restarted. Without `file`, lists the logs.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "file": {
       "type": "string",
-      "description": "The log, by name: \"loader\", \"eluvian\", a mod's, any in the folder. Omit to list them."
+      "description": "The log's name: \"loader\", \"eluvian\", a mod's, or any other in the folder. Omit to list the logs."
      },
      "since": {
-      "description": "The byte cursor to read from: `next` from the last read. \"end\" reads nothing and returns the end as `next`, a mark to read from after acting. Default: the start."
+      "description": "The byte cursor to read from: `next` from the last read. \"end\" reads nothing and returns the end as `next`, to read from after acting. Default: the start of the file."
      },
      "grep": {
       "type": "string",
-      "description": "Keep only lines this regular expression finds a match in."
+      "description": "Keep only the lines this regular expression matches."
      },
      "limit": {
       "type": "integer",
       "minimum": 1,
       "maximum": 5000,
-      "description": "At most this many lines; 300 by default."
+      "description": "The most lines to return. Default 300."
      }
     }
    },
@@ -635,32 +644,34 @@
   },
   {
    "name": "loot",
-   "description": "Take what a container holds (a chest, a body's remains, a pile of bones: an id from placeables), in one call: the creature controlled, or `id`, another party member, given control for the looting and control given back after (`controlled` says to whom), walks to `target` (as travel does, opening doors on the way), uses it, which opens the game's loot panel, and takes all as the panel's Take All does, which closes it. With no `target`, takes from the loot panel up now. Answers `looted`, `reason`, the `container`, what was `taken` and what is `left` (each item in brief), whether the backpack was `full` (then the rest stays and the panel stays up), whether the panel `closed`, and the `walk`. It stops and says why when the container does not open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains open no panel). With `radius` (metres) instead of `target`, every placeable within it whose use is a loot or an unlock (placeables' `action`), nearest first: one report each in `containers`, `count` looted, what else was there in `skipped`; it stops (`stopped`) at a fight, a conversation, a question or a full pack, and passes a locked or empty one. A container's treasure may be chosen only as it opens, so one that read empty may not be. The events from `cursor` say what followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so whoever watches sees it; 0 for none.",
+   "description": "Takes everything a container holds (a chest, a body's remains, a pile of bones: an id from `placeables`) in one call. The looter walks to `target` (like `travel`, opening doors on the way), uses it to open the game's loot panel, and takes everything like the panel's Take All button, which closes the panel. Without `target`, it takes from the loot panel open now.\n\nThe looter is the creature you control, or `id`, another party member, who is given control for the looting and gives it back afterwards (`controlled` says who has it).\n\nThe answer includes `looted`, `reason`, the `container`, what was `taken` and what is `left` (each item in brief), whether the backpack was `full` (the rest then stays, and so does the panel), whether the panel `closed`, and the `walk`. It stops and says why when the container does not open: it is locked, a fight or conversation starts, a message box appears, or there is nothing to take (`empty`: an emptied body's remains open no loot panel at all).\n\nWith `radius` instead of `target`, it loots every placeable within that many meters whose use is a loot or an unlock (`action` in `placeables`), nearest first. The answer has one report each in `containers`, the `count` looted, and what else was there in `skipped`. It passes locked or empty containers, and stops (`stopped`) at a fight, a conversation, a question or a full pack.\n\nSome containers choose their treasure only when opened, so one that read as empty may not be. Read the events from `cursor` (`events` or `wait_for`) to see what followed: opening a container may start a fight or a plot step.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "target": {
       "type": "string",
-      "description": "The container's id; none: the panel up now"
+      "description": "The container, by id. Default: the loot panel open now."
      },
      "id": {
       "type": "string",
-      "description": "The party member who loots (default: the one controlled)"
+      "description": "The party member who loots, by creature id. Default: the creature you control."
      },
      "radius": {
       "type": "number",
       "minimum": 0,
-      "description": "Every container within this many metres"
+      "description": "Loot every container within this many meters, instead of one `target`."
      },
      "budgetMs": {
       "type": "integer",
       "minimum": 1000,
-      "maximum": 600000
+      "maximum": 600000,
+      "description": "The longest the whole call may take, in milliseconds. Default 60000, or 300000 with `radius`."
      },
      "showMs": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 10000
+      "maximum": 10000,
+      "description": "How long to linger on the panel before Take All, in milliseconds, so whoever watches sees it. Default 1000; 0 for none."
      }
     }
    },
@@ -673,40 +684,40 @@
   },
   {
    "name": "movie",
-   "description": "Drive a shown screen's own script, what no message reaches. `screen`, a screen shown, by its name in gui (\"Options\"); then one of: `call` an ActionScript function by its path with `args` (\"SceneManager.PlayScene\", [\"Controls\"] shows the Options' Controls page), `set` a variable to `value`, `get` a path's value, or list a clip's `children` (each's `depth` and `path`, to `get` or `call` under; `placed`: true for those placed in the movie's authoring as well as those made at run time). A call answers whether it `ran` and what it returned, a get or a call the `type` and `value` (an object or a clip as its string, a clip's being its full path), a set whether it was `done`.",
+   "description": "Drives the ActionScript of a screen that is shown, to reach what no message does (such as a tab or a scroll). Pass `screen` (its name from `gui`, such as \"Options\") and exactly one of:\n\n- `call`: call a function by its path, with `args`. For example \"SceneManager.PlayScene\" with [\"Controls\"] shows the Options screen's Controls page. Returns whether it `ran` and what it returned (`type` and `value`).\n- `get`: read a path. Returns its `type` and `value`.\n- `set`: set a variable to `value`. Returns whether it was `done` and whether the path `existed`; setting a path that did not exist creates a new variable that nothing reads.\n- `children`: list a clip's children, each with its `depth` and `path` (to `get` or `call` under).\n\nAn object or clip comes back as a string; a clip's string is its full path.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "screen": {
       "type": "string",
-      "description": "A shown screen's name, as gui gives it"
+      "description": "The shown screen's name, from `gui`."
      },
      "call": {
       "type": "string",
-      "description": "An ActionScript function's path in its movie"
+      "description": "The path of an ActionScript function to call."
      },
      "args": {
       "type": "array",
-      "description": "The call's arguments: strings, numbers, bools"
+      "description": "With `call`: the arguments, as strings, numbers or booleans. Default none."
      },
      "set": {
       "type": "string",
-      "description": "A variable's path in its movie"
+      "description": "The path of a variable to set."
      },
      "value": {
-      "description": "What `set` puts there: a string, number or bool"
+      "description": "With `set`: the new value, a string, number or boolean."
      },
      "get": {
       "type": "string",
-      "description": "A path in its movie: answers its `type` and `value` (a number, a bool, a string; an object or a clip as its string, a clip's being its full path)"
+      "description": "The path to read."
      },
      "children": {
       "type": "string",
-      "description": "A clip's path: its children, by depth"
+      "description": "The path of a clip whose children to list."
      },
      "placed": {
       "type": "boolean",
-      "description": "With `children`: the clips placed in authoring too (depths below 0)"
+      "description": "With `children`: also list clips built into the screen's design, not only those made while it runs. Default false."
      }
     },
     "required": [
@@ -716,7 +727,7 @@
   },
   {
    "name": "order",
-   "description": "Give an order as the player does, by id. `action`: attack `target`; move to `point` (a move is the player's move click, which moves whom the player controls: another party member is given control first, and keeps it, said in `controlled`; a creature outside the party is not moved); ability `ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable: a door, a chest, a lever). Out of combat a use or an item's ability is a click, and for another party member `id` control is given to it first, as for a move, and stays with it while it acts (`controlled`, `before`); in a fight they go by command. `via`: \"command\" (the default, but for use by the controlled creature) gives it through the engine's own click functions, so the command is player-issued and anything watching the command queue sees one; any creature `id` may obey. \"click\" sends explore mode's click message instead (the primary action on the target as if the cursor were over it; an ability as the quickbar uses it, with `target` selected), so the click's own handling runs too, and whatever hooks it (a mod watching clicks, asking for an ability's target); it is the controlled creature's, and cannot move. (Seen 2026-09-30: an ability by click works, the mod asking for its target when none is given. An attack or use by click is the primary action of every party member selected in the interface, and its answer cannot say whether anyone obeyed: the events from `cursor` do.) A use goes by click when the controlled creature is to do it, since a click chooses what the object takes (a chest and a door wanted open, and did nothing for use, their command ending COMMAND_FAILED); by command it does `objectAction`, default use. So does an item's ability (`item` or `itemTag`) by the controlled creature out of combat, which by command takes nothing there; in combat it goes by command. An area ability with a range (Fireball; abilities says each one's `aoe` and `range`) given a creature `target` is aimed at its position, as a ground cursor on it (`aimedAt`; `atCreature`: true keeps the creature). Answers whether the order was taken, and `cursor`: wait_for from it for what came of it (eluvian.command.started and ended, and a mod's own events).",
+   "description": "Gives an order to a creature by id, as the player would. `action`:\n\n- `attack`: attack `target`.\n- `move`: walk to `point`. Only the creature you control can be moved this way, so another party member `id` is given control first and keeps it (the answer says `controlled` and `before`). Creatures outside the party cannot be moved.\n- `ability`: use `ability` (an id from `abilities`) on `target` or at `point`. For an item's ability, such as a potion's, also pass `item` or `itemTag`. An area ability with a range (such as Fireball; `abilities` gives each one's `aoe` and `range`) aimed at a creature is aimed at the ground under it (`aimedAt`), unless `atCreature` is true.\n- `use`: use the object `target`, such as a door, chest or lever. Using a door toggles it; `doorWas` says whether it was open.\n\nHow the order is sent (`via`):\n- `command`: through the engine's own order functions. The order counts as the player's, and anything watching the command queue sees it. Any creature can obey. A use by command does `objectAction`.\n- `click`: as if the player clicked, so anything hooked to clicks also runs (for example a mod that asks for an ability's target when none is given). Only the creature you control can click, only in explore or combat mode, and a move cannot be clicked. An attack or use by click is carried out by every party member selected in the party bar (`selected`), and the answer cannot say who obeyed: check the events from `cursor`.\n\n`via` defaults to `command`, except: a use without `objectAction` by the creature you control goes by click, since a click picks the object's own action (a plain use by command can leave a chest or door shut). Out of combat, an item's ability by the creature you control also goes by click, since by command it does nothing there. Out of combat, when `id` is another party member, control is handed to it first for these, as for a move, and stays with it.\n\nThe answer says the order was `given` and includes a `cursor`; `wait_for` from it shows what happened (eluvian.command.started and eluvian.command.ended, and a mod's own events).",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -727,30 +738,32 @@
        "move",
        "ability",
        "use"
-      ]
+      ],
+      "description": "What to do."
      },
      "id": {
-      "description": "Who obeys: a creature id; default the one controlled"
+      "description": "Who obeys, by creature id. Default: the creature you control."
      },
      "atCreature": {
       "type": "boolean",
-      "description": "action=ability: keep a creature as an area ability's target, not its position"
+      "description": "With `ability`: aim an area ability at the creature itself, not the ground under it. Default false."
      },
      "target": {
-      "description": "A creature or object id"
+      "description": "The creature or object to act on, by id."
      },
      "point": {
-      "description": "{x, y, z} or [x, y, z]"
+      "description": "With `move` or `ability`: the point, {x, y, z} or [x, y, z]."
      },
      "ability": {
-      "type": "integer"
+      "type": "integer",
+      "description": "The ability's id, from `abilities`."
      },
      "item": {
-      "description": "For an ability from an item: the item's id"
+      "description": "For an item's ability: the item's id."
      },
      "itemTag": {
       "type": "string",
-      "description": "For an ability from an item: the item's tag, found on the creature (gen_im_qck_health_101, a lesser health poultice)"
+      "description": "For an item's ability: the item's tag, looked up in the creature's inventory (for example gen_im_qck_health_101, a lesser health poultice)."
      },
      "via": {
       "type": "string",
@@ -758,11 +771,11 @@
        "command",
        "click"
       ],
-      "description": "command (default): the engine's click functions. click: explore mode's click message (the default for use by the controlled creature)"
+      "description": "How the order is sent. Default command, but click for a use without `objectAction`, or an item's ability out of combat, by the creature you control."
      },
      "objectAction": {
       "type": "string",
-      "description": "action=use by command: what to do with the object: open, close, unlock, use (default), examine, disarm, dialog, open_inventory, trigger_trap, topple, area_transition, and the rest of PLACEABLE_ACTION_*. It must be the one the object takes as it is, or the command ends COMMAND_FAILED: a locked chest (state 1) took unlock, then open_inventory; a door open"
+      "description": "With `use` by command: what to do with the object, a PLACEABLE_ACTION_* name such as open, close, unlock, use, examine, disarm, dialog, open_inventory, trigger_trap, topple or area_transition. Default use. It must be an action the object accepts in its current state, or the command ends with COMMAND_FAILED: a locked chest takes unlock, then open_inventory."
      }
     },
     "required": [
@@ -772,7 +785,7 @@
   },
   {
    "name": "party",
-   "description": "The party picker, the screen the game shows after a follower joins and at camp, as a player works it. `action`: look, who is `chosen` (each slot's name and tag); choose `name`, a follower standing in the picker's scene, found by holding the cursor across the view until the name under it is theirs (some seconds), then clicked as a player clicks them; unchoose `name`, a chosen one, as a click on their portrait; clear, all but those the story keeps; accept, the party as chosen, answering the `party` once the picker has closed. Four may be chosen: unchoose one before choosing a fifth. Refused when the picker is not up (health says mode partypicker when it is), and choose, unchoose and clear when it is up with a `status` other than use (the scripts' GetPartyPickerGUIStatus: one opened by ShowPartyPickerGUI alone may be noUse; SetPartyPickerGUIStatus 2 before it opens it to change the party).",
+   "description": "Works the party picker, the screen the game shows after a follower joins and at camp, the way a player does. It refuses when the picker is not open (`health` reports mode `partypicker` when it is).\n\n`action`:\n- `look`: returns who is `chosen` (each slot's name and tag).\n- `choose`: picks the follower `name`, who must be standing in the picker's scene. The tool sweeps the cursor across the view until the name under it matches (a few seconds), then clicks them.\n- `unchoose`: removes the chosen follower `name`, like clicking their portrait.\n- `clear`: removes everyone except those the story keeps.\n- `accept`: confirms the party as chosen, and returns the `party` once the picker has closed.\n\nUp to four can be chosen: unchoose one before choosing a fifth. `choose`, `unchoose` and `clear` refuse when the picker's `status` is not `use`, meaning the picker is only for viewing. A picker you open yourself with the script command ShowPartyPickerGUI may be view-only: call SetPartyPickerGUIStatus with 2 through `script` before opening it, so it can change the party.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -784,11 +797,12 @@
        "unchoose",
        "accept",
        "clear"
-      ]
+      ],
+      "description": "What to do; each action is described above."
      },
      "name": {
       "type": "string",
-      "description": "choose, unchoose: a follower's name as the picker shows it, or a tag"
+      "description": "With `choose` or `unchoose`: a follower's name as the picker shows it, or their tag."
      }
     },
     "required": [
@@ -798,13 +812,13 @@
   },
   {
    "name": "pause",
-   "description": "Pause the game or let it run, as the space bar does: `paused` true pauses, false unpauses. Answers whether it is `paused` after. Tools on the frame thread run paused or not.",
+   "description": "Pauses or unpauses the game, like the space bar. Returns whether it is `paused` afterwards. Other tools keep working while the game is paused.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "paused": {
       "type": "boolean",
-      "description": "true pauses, false lets it run"
+      "description": "true to pause, false to unpause."
      }
     },
     "required": [
@@ -814,29 +828,29 @@
   },
   {
    "name": "placeables",
-   "description": "The doors, chests, levers and other placeables in the area (or within `radius` of `near`), nearest first: id, name, tag, template, position, distance, `state` (the placeable's own number: a door's or a chest's changes when it opens) and `stateName` (shut, locked, open, destroyed), what a use of it does now (`action`, `actionName`: loot, unlock, open, use, ...), whether it is active and can be interacted with, what its tooltip says, and its `lock`: whether it needs a key, the key's tag and whether the party holds it (`keyHeld`), and the level to pick it; for a way out of the area, `leadsTo` (the area's tag and the waypoint's there). order action=use uses one. `interactive: true` keeps only those that can be used; `brief: true` answers a line each (`lines`) instead.",
+   "description": "Lists the doors, chests, levers and other placeables in the area, nearest first. Each has its `id`, `name`, `tag`, `template`, `position` and `distance`, and:\n\n- `state`, the placeable's own state number (it changes when a door or chest opens), and `stateName`: shut, locked, open or destroyed.\n- `action` and `actionName`: what using it does now (loot, unlock, open, use, ...).\n- `active`, `interactive` (whether it can be used) and `popup`, its tooltip text.\n- `lock`: whether it needs a key (`keyRequired`), the key's tag (`keyTag`), whether the party has it (`keyHeld`), and the lock-picking level needed (`pickLevel`).\n- `leadsTo`, for a way out of the area: the destination area's tag and waypoint.\n\nUse one with `order` action=use.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "near": {
       "type": "string",
-      "description": "Measure from this creature; default the one controlled"
+      "description": "Measure distances from this creature, by id. Default: the creature you control."
      },
      "radius": {
       "type": "number",
-      "description": "Only those within this many metres of `near`"
+      "description": "Only those within this many meters of `near`. Default: the whole area."
      },
      "includeInactive": {
       "type": "boolean",
-      "description": "Those the area keeps hidden too; default false"
+      "description": "Also list placeables the area keeps hidden. Default false."
      },
      "interactive": {
       "type": "boolean",
-      "description": "Only those that can be used (true)"
+      "description": "true: only those that can be used; false: only those that cannot. Default: both."
      },
      "brief": {
       "type": "boolean",
-      "description": "A thing a line (`lines`) instead of in full"
+      "description": "Return one line per placeable (`lines`) instead of full detail. Default false."
      }
     }
    },
@@ -846,16 +860,16 @@
   },
   {
    "name": "plot",
-   "description": "The state of a quest or story: the flags of a plot, named by its resource in `plot` (\"bed000pt_main\", \"gen00pt_party\"; the names are the game's plot files, and a mod's own). Answers its `name` as the journal shows it and `flags`, each with `flag`, `name` and `set`, with the `journal` text of a set one that has any; `set` lists the names of those set. `flag` (a number or a name) asks for one. Flags numbered from 256 are computed by the plot's script, which a read here does not run: take those as the game's answer without it. Reading only.",
+   "description": "Returns the state of a quest or story: the flags of the plot named in `plot`. Plot names are the game's plot files (and a mod's own), e.g. \"bed000pt_main\" or \"gen00pt_party\"; `resources` with type plo and `journal` list them.\n\nThe answer includes the plot's `name` as the journal shows it, its `flags`, each with `flag` (number), `name`, whether it is `set`, and the `journal` text of a set flag that has one, and `set`, the names of all set flags. Pass `flag` to get just that one.\n\nFlags numbered 256 and up are normally computed by the plot's script, which this tool does not run; their values are what the game returns without it. Read only.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "plot": {
       "type": "string",
-      "description": "The plot's resource, like bed000pt_main"
+      "description": "The plot's name, e.g. bed000pt_main."
      },
      "flag": {
-      "description": "One flag, by number or name"
+      "description": "One flag to read, by number or name. Default: all flags."
      }
     },
     "required": [
@@ -868,26 +882,26 @@
   },
   {
    "name": "pointer",
-   "description": "Hold the game's cursor at a place without a click, as if the mouse rested there, for what shows only under the cursor (a path preview, a cost caption, a highlight). `target` (a creature or object id: the same pixel screen gives to click it), `point` ({x, y, z} in the world) or `pixel` ([x, y] in the game's pixels). The game's pick follows from its next pick (about a fifteenth of a second): wait a quarter second, then cursor says what it has under it, and a screenshot shows the rest. The real mouse is not moved, nor read for the pick, wherever it is, and the window need not be in front; the drawn cursor and the game's menus and bars still follow the real mouse. The hold ends after `seconds` (default 60; 0 for none) or with `release: true`, and while it holds a click acts on the place held, not under the real mouse.",
+   "description": "Makes the game act as if the mouse rested at a place, without clicking, to show what appears only under the cursor (a path preview, a cost caption, a highlight). Pass one of `target`, `point` or `pixel`, or `release: true` to stop.\n\nThe game picks up the new place within about a fifteenth of a second: wait a quarter second, then `cursor` says what is under it and `screenshot` shows the rest. The real mouse is not moved or read, and the window need not be in front; the drawn cursor and the game's menus and bars still follow the real mouse. While the hold lasts, a click acts on the held place, not under the real mouse. It ends after `seconds` or on release.\n\nThe answer includes the place `pointed` at (as `screen` gives places), how long it `holds`, and whether the game window is in the `foreground`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "target": {
-      "description": "A creature or object id"
+      "description": "A creature or object, by id; the cursor goes where `screen` would aim."
      },
      "point": {
-      "description": "{x, y, z} or [x, y, z] in the world"
+      "description": "A world point: {x, y, z} or [x, y, z]."
      },
      "pixel": {
-      "description": "[x, y] in the game's pixels"
+      "description": "A pixel: [x, y] in the game's pixels."
      },
      "seconds": {
       "type": "number",
-      "description": "How long to hold; default 60, 0 until released"
+      "description": "How long to hold, up to 3600 seconds; 0 holds until released. Default 60."
      },
      "release": {
       "type": "boolean",
-      "description": "Give the pick back to the mouse"
+      "description": "Stop holding and give the cursor back to the mouse."
      }
     }
    },
@@ -897,12 +911,12 @@
   },
   {
    "name": "press",
-   "description": "Press a `button` by its label or place: of the game's message box, or with none up, of the loot panel a container opens, Take All or Close (gui reads both): the game is sent what a click on it sends. Take All answers what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel unless it was.",
+   "description": "Presses a button, just as a click would. If a message box is up, the button is one of its own; otherwise it is one of the loot panel a container opens: Take All or Close. `gui` shows both.\n\nFor a message box, the answer includes the button `pressed` and the `box` text. Take All returns what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel unless it was full.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "button": {
-      "description": "A button's label (\"Take All\") or place from 0"
+      "description": "The button's label (such as \"Take All\") or its position, counting from 0."
      }
     },
     "required": [
@@ -912,23 +926,23 @@
   },
   {
    "name": "resources",
-   "description": "The game's resources by name, from every archive in its folder: `type`, an extension (utc a creature's template, for stage_spawn; uti an item's, for stage_equip; plo a plot, for plot; cut a cutscene), and `match`, words the name must hold (\"ogre\", \"hurlock archer\"). Answers each name without its extension and the archive it is in, sorted, at most `most` (default 100) and `count` of all that match. The core's and the campaign's archives are loaded in any game; an add-in's only where it runs. Read from disk on the first call (a few seconds), then kept.",
+   "description": "Searches the game's resources by name, across every archive in the game's folder. Use it to find the name to pass to another tool:\n\n- `utc`: creature templates, for `stage_spawn`.\n- `uti`: item templates, for `stage_equip`.\n- `plo`: plots, for `plot`.\n- `cut`: cutscenes, for `stage_cutscene`.\n\nReturns the matching names, sorted, each without its extension and with the archive it is in, up to `most`, and the `count` of all matches. The core and campaign archives are in every game; an add-in's resources only load where that add-in runs. The first call reads the archives from disk (a few seconds); later calls are fast.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "type": {
       "type": "string",
-      "description": "An extension: utc a creature's template, uti an item's, plo a plot, cut a cutscene"
+      "description": "The file extension to list: utc, uti, plo or cut. Default: all types."
      },
      "match": {
       "type": "string",
-      "description": "Words the name must hold"
+      "description": "Words that must all appear in the name, in any case, e.g. \"hurlock archer\"."
      },
      "most": {
       "type": "integer",
       "minimum": 1,
       "maximum": 2000,
-      "description": "At most this many (100)"
+      "description": "The most names to return. Default 100."
      }
     }
    },
@@ -938,7 +952,7 @@
   },
   {
    "name": "saves",
-   "description": "The game's saves. `action`: list, the saves of `character` (or every one) with each one's area, name, time played and level, as the load screen shows them; load, a save by `character` (default the one played, or the menu's), `kind` (manual, auto, quick; default manual) and `number`, from the main menu or in the world, as the load screen loads; force_load, the game's Force Load for a load it answered with \"requires the following content\" (gui), which loads without that content: such a game is never saved; save, a new manual save in the next free slot, with `name` (the default, and what a test does: it writes over nothing). A slot `number` that holds a save, and `kind` quick (the player's quicksave), are refused unless `overwrite` is true, for a test's own save. A load or save answers that the game was asked, and `cursor`: wait_for eluvian.game.loaded or eluvian.game.saved from it. The game declines a save in combat or a cutscene.",
+   "description": "Lists, loads and makes the game's saves. `action`:\n\n- `list`: the saves of `character` (or of every character), each with its area, name, time played and level, as the load screen shows them.\n- `load`: loads the save picked by `character`, `kind` and `number`, from the main menu or in the world. Refused during a conversation.\n- `force_load`: presses the game's Force Load after a load it answered with \"requires the following content\" (`gui` shows that message). The game loads without that content, and such a game is never saved.\n- `save`: makes a new manual save in the next free slot, named `name`. This is what a test should do, since it overwrites nothing.\n\nSaving into a slot `number` that already holds a save, or with `kind` quick (the player's quicksave), is refused unless `overwrite` is true. The game also refuses to save in combat or a cutscene.\n\nA load or save only asks the game: the answer includes a `cursor`, and `wait_for` eluvian.game.loaded or eluvian.game.saved from it says when it is done. If no load event comes, the game may be showing a message box; `gui` reads it.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -949,11 +963,12 @@
        "load",
        "force_load",
        "save"
-      ]
+      ],
+      "description": "What to do; each action is described above."
      },
      "character": {
       "type": "string",
-      "description": "A character's save folder, \"Aedan\""
+      "description": "A character's save folder, such as \"Aedan\". Default: the character being played (or, with `list`, every character)."
      },
      "kind": {
       "type": "string",
@@ -961,19 +976,20 @@
        "manual",
        "auto",
        "quick"
-      ]
+      ],
+      "description": "The kind of save. Default manual."
      },
      "number": {
       "type": "integer",
-      "description": "The slot's number"
+      "description": "The slot's number. Default for `load`: 1; for `save`: the next free slot."
      },
      "name": {
       "type": "string",
-      "description": "save: a manual save's name"
+      "description": "With `save`: the save's name."
      },
      "overwrite": {
       "type": "boolean",
-      "description": "save: write over the save in slot `number`, or the quicksave"
+      "description": "With `save`: allow writing over the save in slot `number`, or over the quicksave. Default false."
      }
     },
     "required": [
@@ -983,23 +999,23 @@
   },
   {
    "name": "scenario",
-   "description": "Run a list of steps in one call and get a transcript: call tools, wait for events, pause, check answers. A test's whole checklist step at once: order an attack, wait for the turn to end, check the target's health. A wait starts from the cursor taken just before the latest tool step, so what the tool set off is not missed. Stops at the first failed step unless continueOnError. At most 100 steps, within `budgetMs` (ten minutes by default and at most): waits and sleeps are cut to the time left, and the run stops with `timedOut` when it is gone. A tool step already running in the game is waited for to its end, since what it does cannot be taken back.",
+   "description": "Runs a list of steps in one call and returns a transcript. Steps can call tools, wait for events, pause, and check answers, so a whole test step fits in one call: order an attack, wait for the turn to end, check the target's health.\n\nA wait starts from the cursor taken just before the latest tool step, so it does not miss what that tool set off. The run stops at the first failed step unless `continueOnError` is true. It takes at most 100 steps and runs within `budgetMs`: waits and sleeps are cut to the time left, and the run stops with `timedOut` when it is gone. A tool step already running in the game is always waited for to its end, because what it does cannot be undone.\n\nThe answer includes `ok`, `timedOut`, `stepsRun`, `elapsedMs`, and `steps`, one entry per step run.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "steps": {
       "type": "array",
-      "description": "Each one of: {\"tool\": name, \"args\": {...}, \"as\": label}; {\"waitFor\": {\"topic\": ..., \"match\": {...}}, \"timeoutMs\": n, \"since\": cursor, \"as\": label}; {\"sleepMs\": n}; {\"expect\": {\"from\": label, \"pointer\": \"/given\", \"equals\" | \"notEquals\" | \"exists\" | \"atLeast\" | \"atMost\": value}}; {\"until\": {\"tool\", \"args\", \"pointer\", an expectation, \"intervalMs\"}, \"timeoutMs\": n, \"as\": label}, as wait_until"
+      "description": "The steps, 1 to 100, each one of:\n- {\"tool\": name, \"args\": {...}, \"as\": label}: call a tool.\n- {\"waitFor\": {\"topic\": ..., \"match\": {...}}, \"timeoutMs\": n, \"since\": cursor, \"as\": label}: wait for an event, like `wait_for`.\n- {\"sleepMs\": n}: pause, at most 60000 ms.\n- {\"expect\": {\"from\": label, \"pointer\": \"/given\", \"equals\" | \"notEquals\" | \"exists\" | \"atLeast\" | \"atMost\": value}}: check the answer of an earlier step labeled with `as`.\n- {\"until\": {\"tool\", \"args\", \"pointer\", an expectation, \"intervalMs\"}, \"timeoutMs\": n, \"as\": label}: call a tool until a condition holds, like `wait_until`.\nA step's `timeoutMs` defaults to 30000."
      },
      "continueOnError": {
       "type": "boolean",
-      "description": "Run on past a failed step; default false"
+      "description": "If true, keep going past a failed step. Default false."
      },
      "budgetMs": {
       "type": "integer",
       "minimum": 1,
       "maximum": 600000,
-      "description": "The time the whole run may take; ten minutes by default and at most"
+      "description": "The longest the whole run may take, in milliseconds. Default and maximum 600000 (ten minutes)."
      }
     },
     "required": [
@@ -1015,18 +1031,18 @@
   },
   {
    "name": "screen",
-   "description": "Where a thing is in the game's picture, for the real mouse. `target` (a creature or object id): `aim`, a pixel to click it at, well inside its body as the game picks it and where nothing else is in front (null if it is out of view or hidden; `clear` is how many of the eight pixels 10 away pick it too, 8 being wholly inside), and `position`, where its feet are. `point` ({x, y, z}): that world point's pixel. `pixel` ([x, y] in the game's own pixels): `hits`, what lies under it, nearest first, the first object being what a click there would act on. With none of them: the view's size and the window. Each place is given as `x`, `y` (the game's pixels from the picture's top left), `fx`, `fy` (fractions of the picture) and `desktop` (the pixel to send a real mouse to), with `coveredBy` naming the window on top of the game's there, if one is: a real mouse sent to that pixel clicks it, not the game, so move it or the game first. After moving the mouse, cursor says what the game has under it.",
+   "description": "Finds where things are on the game's screen, for driving the real mouse. Always returns the `view` size and the game `window`. Pass any of:\n\n- `target`: returns `aim`, a pixel to click it at, well inside the object and with nothing in front (null if it is out of view or hidden; `camera` can bring it into view). `clear` is how many of the eight pixels 10 away also hit it; 8 means well inside. `position` is where its feet are.\n- `point`: returns the pixel where that world point appears.\n- `pixel`: returns `hits`, what lies under that pixel, nearest first. The first object is what a click there would act on.\n\nEach place is given as `x`, `y` (the game's pixels from the top left), `fx`, `fy` (fractions of the picture) and `desktop` (the desktop pixel to send a real mouse to). `coveredBy` names another window covering the game there, if any: a click there would hit that window, so move it or the game first. After moving the mouse, `cursor` says what the game has under it.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "target": {
-      "description": "A creature or object id"
+      "description": "A creature or object to find, by id."
      },
      "point": {
-      "description": "{x, y, z} or [x, y, z] in the world"
+      "description": "A world point to find: {x, y, z} or [x, y, z]."
      },
      "pixel": {
-      "description": "[x, y] in the game's pixels"
+      "description": "A pixel to look under: [x, y] in the game's pixels."
      }
     }
    },
@@ -1036,7 +1052,7 @@
   },
   {
    "name": "screenshot",
-   "description": "A picture of the game as it is now, interface and all; no window over the game gets in the way. `source`: window (the default) has Windows draw the game's window from inside, at once, even while frames stop; game has the game take its own, as its screenshot key does, a frame or more later. Answers the picture as an image, with its size and file (Screenshots\\Eluvian or the game's Screenshots\\User); `image: false` answers the file alone, to save tokens; `quality` from 0.1 to 1 (window only), 0.8 by default.",
+   "description": "Takes a picture of the game as it is now, interface included. Other windows on top of the game do not get in the way. `source`:\n\n- `window` (the default): Windows draws the game's window at once, even while the game is not drawing frames. If the display is asleep or the session locked, the picture is all black (`black`); use `game` then.\n- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later.\n\nReturns the picture as an image, with its `width`, `height` and `file` (in Screenshots\\Eluvian; for `game`, the game's own file is `original`). Pass `image: false` to get only the file and save tokens.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1045,15 +1061,16 @@
       "enum": [
        "window",
        "game"
-      ]
+      ],
+      "description": "Who takes the picture. Default window."
      },
      "image": {
       "type": "boolean",
-      "description": "Answer the picture itself; default true"
+      "description": "Include the picture itself in the answer. Default true."
      },
      "quality": {
       "type": "number",
-      "description": "JPEG quality, 0.1 to 1; default 0.8"
+      "description": "With `window`: JPEG quality, 0.1 to 1. Default 0.8."
      }
     }
    },
@@ -1063,7 +1080,7 @@
   },
   {
    "name": "script",
-   "description": "Call any of the game's 661 script commands by name and get its answer: the general tool when no other fits (GetCreatureProperty, GetRemainingCooldown, SetCreatureProperty, Screenshot). `action`: call (default), find (commands whose name contains `command`), describe (one command's parameters and defaults). Arguments are positional (`args`: [...]) or by parameter name (`args`: {\"oCreature\": \"0x7d9\"}); left off, they take their defaults. Objects are ids; null is OBJECT_INVALID. Commands taking or returning a location, effect, event or command cannot be called by name.",
+   "description": "Calls any of the game's 661 script commands by name and returns its result (`value`). Use it when no other tool fits, for example GetCreatureProperty, GetRemainingCooldown or SetCreatureProperty. `action`:\n\n- `call` (the default): run `command` with `args`.\n- `find`: list the commands whose name contains `command` (any case).\n- `describe`: show one command's parameters, their types and defaults.\n\nPass arguments in order (`args`: [...]) or by parameter name (`args`: {\"oCreature\": \"0x7d9\"}); any left out take their defaults. Objects are ids, and null is OBJECT_INVALID. Commands that take or return a location, effect, event or command cannot be called by name.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1073,14 +1090,15 @@
        "call",
        "find",
        "describe"
-      ]
+      ],
+      "description": "What to do. Default call."
      },
      "command": {
       "type": "string",
-      "description": "The command's name, as script.ldf writes it"
+      "description": "The command's name as the game's scripts spell it, or with `find` part of one."
      },
      "args": {
-      "description": "An array in parameter order, or an object by parameter name"
+      "description": "With `call`: the arguments, as an array in parameter order or an object by parameter name. Default none."
      }
     },
     "required": [
@@ -1090,25 +1108,25 @@
   },
   {
    "name": "stage_cooldown",
-   "description": "Set creature `id`'s cooldown on `ability` to `seconds` left (0 makes it ready), of `total` if given. creature lists its abilities.",
+   "description": "Sets how long is left on a creature's cooldown for one ability; 0 makes the ability ready. `abilities` lists a creature's abilities with their ids. The answer includes the `cooldown` afterwards (`remaining` and `total`). Refuses an ability the creature does not have.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature: an id from creatures"
+      "description": "The creature, by id (from `creatures`)."
      },
      "ability": {
       "type": "integer",
-      "description": "The ability's id"
+      "description": "The ability, by id."
      },
      "seconds": {
       "type": "number",
-      "description": "The time left, 0 (ready) to 3600"
+      "description": "Seconds left on the cooldown, 0 (ready) to 3600."
      },
      "total": {
       "type": "number",
-      "description": "The whole it counts down from"
+      "description": "The full length of the cooldown, in seconds. Default: its current length, or `seconds`."
      }
     },
     "required": [
@@ -1120,13 +1138,13 @@
   },
   {
    "name": "stage_cutscene",
-   "description": "Play the cutscene `resource` (its name as the scripts give it, \"bed110cs_tainted_mirror.cut\"), as the scripts' LoadCutscene does. The game's mode is cutscene until it ends or is skipped (dialogue action=skip_cutscene).",
+   "description": "Plays a cutscene the way the game's scripts do. The game's mode changes to cutscene on the next frame (see `health`, or `wait_for` the event eluvian.mode.changed from `cursor`) and stays so until the cutscene ends or is skipped with `dialogue` action=skip_cutscene. Nothing happens if no cutscene has that name.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "resource": {
       "type": "string",
-      "description": "The cutscene's name"
+      "description": "The cutscene's name, such as \"bed110cs_tainted_mirror.cut\" (.cut is added if missing)."
      }
     },
     "required": [
@@ -1136,7 +1154,7 @@
   },
   {
    "name": "stage_effect",
-   "description": "Put a condition on a creature, or take its effects off, for a test's case. `action`: apply puts `effect` (stun, knockdown, paralyze, root, sleep, daze, slip, fear, confusion, grabbed, or an EFFECT_TYPE_* number) on creature `id` for `seconds` (default 6), as from `creator` and `ability` if given; remove takes off its effects of `effect`, `ability` or `creator`, or all with none given. Answers the `effects` on it after and `creature` as it is. The effects are the engine's bare ones, applied as scripts apply them.",
+   "description": "Puts a condition on a creature, or removes effects from it, to set up a test.\n\n- `apply`: puts `effect` on the creature for `seconds`, as if from `creator` and `ability` when given.\n- `remove`: removes the creature's effects that match `effect`, `ability` and `creator`. With none of them given, removes all its effects.\n\nThe answer includes the creature's `effects` afterwards, the `creature` and a `cursor`. The effects are the engine's plain ones, applied the way the game's scripts apply them.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1145,26 +1163,27 @@
       "enum": [
        "apply",
        "remove"
-      ]
+      ],
+      "description": "`apply` to add a condition, `remove` to take effects off."
      },
      "id": {
       "type": "string",
-      "description": "The creature: an id from creatures"
+      "description": "The creature, by id (from `creatures`)."
      },
      "effect": {
-      "description": "A condition's name or an EFFECT_TYPE_* number"
+      "description": "The condition: stun, knockdown, paralyze, root, sleep, daze, slip, fear, confusion, grabbed, or any EFFECT_TYPE_* number. Required for `apply`."
      },
      "seconds": {
       "type": "number",
-      "description": "apply: how long, default 6"
+      "description": "With `apply`: how long the effect lasts, in seconds, up to 600. Default 6."
      },
      "creator": {
       "type": "string",
-      "description": "Whom the effect is from; default none"
+      "description": "The creature the effect comes from, by id. Default none."
      },
      "ability": {
       "type": "integer",
-      "description": "The ability it is from; default none"
+      "description": "The ability the effect comes from, by id. Default none."
      }
     },
     "required": [
@@ -1175,25 +1194,25 @@
   },
   {
    "name": "stage_equip",
-   "description": "Make an item from `template` (an item's resource: resources with type uti) on creature `id` and put it on, in its own slot or `slot`; `equip` false leaves it in the backpack. Answers the `item` (item gives it in full) and whether it is `equipped`. equip moves what the party already has.",
+   "description": "Creates an item from a template in a creature's inventory and equips it, in the item's own slot or in `slot`. The answer includes the `item` (`item` gives it in full) and whether it was `equipped`; an item the creature cannot use there stays in the backpack. To move items the party already has, use `equip`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature: an id from creatures"
+      "description": "The creature, by id (from `creatures`)."
      },
      "template": {
       "type": "string",
-      "description": "The item's resource"
+      "description": "The item's template; `resources` with type uti finds them."
      },
      "slot": {
       "type": "string",
-      "description": "main, offhand, chest, head ..."
+      "description": "The slot: main, offhand, ammo, chest, head, boots, gloves, cloak, ring1, ring2, neck or belt. Default: the item's own."
      },
      "equip": {
       "type": "boolean",
-      "description": "Put it on; default true"
+      "description": "Whether to equip it; false leaves it in the backpack. Default true."
      }
     },
     "required": [
@@ -1204,25 +1223,25 @@
   },
   {
    "name": "stage_group",
-   "description": "Move creature `id` to `group` (0 the player's, 1 the hostile one, 2 friendly: the game keeps which pairs of groups fight), and with `toward` set whether `group` and that group are `hostile` first. A spawned creature moved to group 2 fights the hostile ones near it, for a fight the party is not in.",
+   "description": "Moves a creature to another group. Groups decide who fights whom: 0 is the player's, 1 the hostile one, 2 friendly, and the game keeps which pairs of groups are hostile.\n\nWith `toward`, it first sets whether `group` and the `toward` group are hostile. A spawned creature moved to group 2 fights the hostile creatures near it, which stages a fight without the party.\n\nThe answer includes the old group (`was`), the new `group`, and whether it is now `hostileToParty` and `hostileToGroup1`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature: an id from creatures"
+      "description": "The creature, by id (from `creatures`)."
      },
      "group": {
       "type": "integer",
-      "description": "The group to put it in"
+      "description": "The group to move it to, 0 to 255."
      },
      "toward": {
       "type": "integer",
-      "description": "Another group, to set hostility with"
+      "description": "Another group, whose hostility with `group` is set first."
      },
      "hostile": {
       "type": "boolean",
-      "description": "With `toward`; default true"
+      "description": "With `toward`: whether the two groups are hostile. Default true."
      }
     },
     "required": [
@@ -1233,17 +1252,17 @@
   },
   {
    "name": "stage_health",
-   "description": "Set creature `id`'s current health to `value`, for a test's case. Answers `creature` as it is after; stage_kill for a death.",
+   "description": "Sets a creature's current health to `value`. The answer includes the `creature` afterwards. To kill a creature, use `stage_kill`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature: an id from creatures"
+      "description": "The creature, by id (from `creatures`)."
      },
      "value": {
       "type": "number",
-      "description": "The health, 0 or more"
+      "description": "The new health, 0 or more."
      }
     },
     "required": [
@@ -1254,13 +1273,13 @@
   },
   {
    "name": "stage_kill",
-   "description": "Deal creature `id` more damage than it has. It dies a frame or more later, as eluvian.creature.died: wait_for that from `cursor`.",
+   "description": "Kills a creature by dealing it more damage than its health. The death happens a frame or more later: call `wait_for` with the event eluvian.creature.died from the returned `cursor`. If the game is paused, the death waits until it is unpaused (`pause` with paused=false); the answer says `paused`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "description": "The creature: an id from creatures"
+      "description": "The creature, by id (from `creatures`)."
      }
     },
     "required": [
@@ -1270,45 +1289,45 @@
   },
   {
    "name": "stage_reset",
-   "description": "Put things back as before a fight, for another in the same launch: the party (or `ids`) raised if fallen, health and mana or stamina full, every cooldown cleared, with `effects` every effect taken off too; and unless `clearDead` is false, the dead that died since the last reset (not the area's older bodies) taken away, if they are not the party's. Answers each creature as it is after (`reset`) and what was taken away (`removed`).",
+   "description": "Restores things to how they were before a fight, so another fight can run in the same session:\n- The party (or the creatures in `ids`) is revived if dead, health and mana or stamina are refilled, and every cooldown is cleared. With `effects`, every effect is removed too.\n- Unless `clearDead` is false, creatures that died since the last reset are removed, except the party's. Bodies that were in the area before are left alone.\n\nThe answer lists each creature afterwards (`reset`) and what was removed (`removed`).",
    "inputSchema": {
     "type": "object",
     "properties": {
      "ids": {
       "type": "array",
-      "description": "The creatures; default the party"
+      "description": "The creatures to reset, by id. Default: the party."
      },
      "effects": {
       "type": "boolean",
-      "description": "Take every effect off too"
+      "description": "Also remove every effect. Default false."
      },
      "clearDead": {
       "type": "boolean",
-      "description": "Take the dead away; default true"
+      "description": "Remove the creatures that died since the last reset. Default true."
      }
     }
    }
   },
   {
    "name": "stage_spawn",
-   "description": "Make a creature from `template` (as creatures gives each one's `template`) at `point`, facing `facing` degrees, in the controlled creature's area. `moved` says how far from the point the game put it (a point inside a wall is not kept); it is set up over the next frames. `group` puts it in that group at once, as stage_group does (`group`, `hostileToParty` say where it stands). Templates: resources with type utc and a word (ogre_default, hurlock_emissary_off, hurlock_epic_archer).",
+   "description": "Creates a creature from a template at `point`, in the area of the creature you control.\n\nA template is the game's creature resource, not a kind's name: `creatures` gives each creature's `template`, and `resources` with type utc and a word finds more (for example wolf, ogre_default, hurlock_epic_archer).\n\nThe game places the creature at the nearest spot it can stand. `moved` says how far from `point` that was; a point inside a wall may put it in the next room. The creature finishes setting up over the next few frames, so read its health later with `creature`. With `group`, it joins that group at once, and the answer says whether it is `hostileToParty`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "template": {
       "type": "string",
-      "description": "The creature's template"
+      "description": "The creature's template."
      },
      "point": {
-      "description": "{x, y, z} or [x, y, z]"
+      "description": "Where to create it: {x, y, z} or [x, y, z]."
      },
      "facing": {
       "type": "number",
-      "description": "Degrees; default 0"
+      "description": "Which way it faces, in degrees. Default 0."
      },
      "group": {
       "type": "integer",
-      "description": "The group to put it in"
+      "description": "The group to put it in, as `stage_group` does."
      }
     },
     "required": [
@@ -1319,7 +1338,7 @@
   },
   {
    "name": "state",
-   "description": "The game mode, pause, the area, the hero, the creature controlled, the party and who of it is selected in the party bar, the game's message box if one is up (`popup`: its text and buttons), and the event cursor.",
+   "description": "Returns the game's current state: the `mode`, whether it is `paused`, the `area`, the `hero`, the creature you control (`controlled`), the `party` and which members are `selected` in the party bar, the game's message box if one is open (`popup`: its text and buttons), and the event `cursor` to pass as `since` to `events` or `wait_for`.",
    "inputSchema": {
     "type": "object",
     "properties": {}
@@ -1330,7 +1349,7 @@
   },
   {
    "name": "store",
-   "description": "Buy or sell at the store screen that is up (a merchant's wares, opened by talking to the merchant: gui says `fullScreen` Store and reads `store`: the stock with each item's `price`, the pack with what each `sellsFor`, and the `money`, all in copper). `action`: buy, an `item` of the stock, or sell, an `item` of the pack; `count` of a stack, default 1. The game is sent what the screen's own button sends, and does the rest (it refuses a buy the money cannot pay). Answers the `money` before and after and what moved; `taken` false when the money did not change. input {\"message\": \"GUI.HideFullScreenGUI\"} closes the store.",
+   "description": "Buys or sells an item at the store screen that is open. Open a store by talking to a merchant and asking to see the wares.\n\nWhile a store is open, `gui` reports `fullScreen` Store, and its `store` lists the `stock` with each item's `price`, your `pack` with what each item `sellsFor`, and your `money`, all in copper.\n\n`action` is one of:\n- buy: buys `item` from the stock.\n- sell: sells `item` from your pack.\n\nThe tool sends what the screen's own button sends, and the game does the rest; it refuses a purchase you cannot afford. The answer includes the price of one (`each`), the `money` before and after, and `taken`, which is false when the money did not change. To close the store, call `input` with {\"message\": \"GUI.HideFullScreenGUI\"}.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1339,16 +1358,17 @@
       "enum": [
        "buy",
        "sell"
-      ]
+      ],
+      "description": "Buy or sell."
      },
      "item": {
       "type": "string",
-      "description": "An item's id, from gui's store"
+      "description": "The item, by its id from the `stock` or `pack` that `gui` lists."
      },
      "count": {
       "type": "integer",
       "minimum": 1,
-      "description": "How many of a stack; default 1"
+      "description": "How many of a stack to buy or sell, up to 999. Default 1."
      }
     },
     "required": [
@@ -1359,17 +1379,17 @@
   },
   {
    "name": "surroundings",
-   "description": "One look around, a thing a line: the `creatures`, the placeables that can be used (`usable`: chests, doors, bodies' remains, with their state and lock) and the `exits` within `radius` (default 30 m) of `near` (default the creature controlled), nearest first, each as creatures, placeables and exits give it with `brief: true`. The read on arriving anywhere; creatures, placeables and exits give a thing in full.",
+   "description": "A quick look around, one line per thing: the `creatures`, the placeables that can be used (`usable`: chests, doors, remains, with their state and lock) and the `exits` near a creature, nearest first. Each line is what `creatures`, `placeables` and `exits` return with `brief: true`. Call it on arriving anywhere; use those tools for full detail.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "near": {
       "type": "string",
-      "description": "Measure from this creature; default the one controlled"
+      "description": "Look around this creature, by id. Default: the creature you control."
      },
      "radius": {
       "type": "number",
-      "description": "Only those within this many metres of `near`"
+      "description": "Only things within this many meters of `near`. Default 30."
      }
     }
    },
@@ -1379,7 +1399,7 @@
   },
   {
    "name": "tactics",
-   "description": "A follower's tactics, as the tactics screen sets them (`id`, a party member, default the one the interface has selected; another is selected for the call and control given back). `action`: choices, what the screen offers: the `targets`, with `target` its `baseConditions`, and with `baseCondition` too the `conditions`, `actions`, `abilities` and `items` (the engine's own lists for this follower); set, slot `slot` (from 1) to `target`, `condition` and `command`, each by number or by label or name among those offered, with `ability` (an id) or `item` (an id) for the action, `enabled` (default true), answering the slot as the scripts read it back and whether it `took`; clear, slot `slot` emptied (`cleared`), to leave a follower as it was found; preset, load preset `preset` (`presetType`), answering the slots. tactics action=look reads them.",
+   "description": "Reads and sets a party member's tactics (what they do on their own in a fight), the way the tactics screen does. If `id` is not the party member selected in the interface, it is selected for the call and control is handed back afterwards (`selectedFirst`).\n\n`action` is one of:\n- look: returns `slots` (how many there are), `preset` (null when none is chosen), `behaviour`, and `tactics`: each slot in order with `enabled`, `target`, `condition`, `command` and the `ability` or `item` it uses. An unset slot is `empty`.\n- choices: returns what the screen offers this party member: the `targets`; with `target`, its `baseConditions`; with `baseCondition` as well, the `conditions`, `actions`, `abilities` and `items`.\n- set: sets slot `slot` to `target`, `condition` and `command`, each by number, label or name from what choices offers, with `ability` or `item` for the command and `enabled`. Returns the slot as the game reads it back and whether the change `took`.\n- clear: empties slot `slot` and returns whether it is `cleared`. Use it to put a party member's tactics back as you found them.\n- preset: loads preset `preset` of type `presetType` and returns the slots.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1391,44 +1411,49 @@
        "set",
        "clear",
        "preset"
-      ]
+      ],
+      "description": "What to do."
      },
      "id": {
       "type": "string",
-      "description": "The follower (default: the one selected)"
+      "description": "The party member, by creature id. Default: the one selected in the interface (for look, the creature you control)."
      },
      "slot": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "For set and clear: the slot, counting from 1. Default 1."
      },
      "target": {
-      "description": "A target type, by number or label or name"
+      "description": "For choices and set: a target type, by number, label or name."
      },
      "baseCondition": {
-      "description": "choices: a base condition, by number or label or name"
+      "description": "For choices: a base condition, by number, label or name."
      },
      "condition": {
-      "description": "set: a condition, by number or label or name"
+      "description": "For set: a condition, by number, label or name."
      },
      "command": {
-      "description": "set: an action (command type), by number or label or name"
+      "description": "For set: the action to take, by number, label or name."
      },
      "ability": {
       "type": "integer",
-      "description": "set: the ability the action uses"
+      "description": "For set: the id of the ability the action uses."
      },
      "item": {
       "type": "string",
-      "description": "set: the item the action uses"
+      "description": "For set: the id of the item the action uses."
      },
      "enabled": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "For set: whether the slot is on. Default true."
      },
      "preset": {
-      "type": "integer"
+      "type": "integer",
+      "description": "For preset: the preset's number. Default 0."
      },
      "presetType": {
-      "type": "integer"
+      "type": "integer",
+      "description": "For preset: the preset's type. Default 0."
      }
     },
     "required": [
@@ -1438,51 +1463,53 @@
   },
   {
    "name": "travel",
-   "description": "Walk a creature to a `target` (a creature or object id) or a `point`, opening what is shut on the way: it asks for the walk, uses the door in the way, waits, and goes on, up to `maxDoors` (default 4) and `budgetMs` (default 60000). `id` is who walks, default the creature controlled. `upTo` (metres) walks at most that far along the game's own path toward it, and answers where the walk was cut (`cutAt`); a walk no longer goes all the way. Answers `arrived` (within `within` metres, default 1.5, or as near as a creature can stand to a thing that fills its own place or hangs overhead: a door, a chest, a cocoon; then use it from there), `reason`, the `distance` left, what it `opened`, and each step with how it ended. It stops and says why when the journey is no longer its to make: a fight near (combat mode with a hostile within `fightNear`, default 20 m: a fight far off that keeps the mode is walked on; the stop names the hostile), a conversation or cutscene took the screen, the game is paused. Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say what came of the journey. To another area: `exit` (an id from exits) or `area` (an area's tag: the nearest active exit that leads there). The creature controlled walks to it, uses it, and the answer comes once the other `area` is in place; it stops and says so if the game asks first (a message box), opens the world map, or starts a fight or a conversation. Answering the box (press) lets the game go on by that exit to where it leads, a random encounter's exit to its journey's first destination: travel again from where it arrives. The game may autosave on the way. Across the world map: `to`, a pin's name, tag or index (worldmap lists them), alone with the map up, or with the `exit` that opens it; the pin is clicked and the answer comes once its area is in place. A random encounter on the way is said (`encounter`, the `area` it is in) and is not arrival: fight or talk it out, then travel `to` again.",
+   "description": "Moves a creature, or the party, opening doors on the way. Three kinds of trip:\n\n- Within the area: pass `target` (a creature or object id) or `point`. The creature walks there, opening up to `maxDoors` doors on the way. `upTo` limits the walk to that many meters and reports where it stopped (`cutAt`).\n- To another area: pass `exit` (an id from `exits`) or `area` (an area tag; the nearest exit that leads there is used). The creature you control walks to the exit and uses it. The call returns once the new area has loaded.\n- Across the world map: pass `to`, a map pin's name, tag or index as `worldmap` lists them, either with the map open or together with the `exit` that opens it.\n\nThe answer says whether it `arrived`, the `reason` if not, the `distance` left, the doors it `opened`, and each step. Arrived means within `within` meters, or as close as anyone can stand to a large object such as a door or a chest; use the object from there.\n\nIt stops early and says why when a hostile is within `fightNear` meters, a conversation or cutscene starts, the game is paused, or the game shows a message box (answer it with `press`, then travel again). A random encounter on the world map is reported as `encounter`: deal with it, then travel again. The game may autosave on the way. To see what happened during the trip, such as a door that started a fight, call `wait_for` from the returned `cursor`.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "id": {
-      "description": "Who walks: a creature id; default the one controlled"
+      "description": "Who walks, by creature id. Default: the creature you control."
      },
      "target": {
-      "description": "A creature or object id to walk to"
+      "description": "The creature or object to walk to, by id."
      },
      "point": {
-      "description": "{x, y, z} or [x, y, z]"
+      "description": "The point to walk to: {x, y, z} or [x, y, z]."
      },
      "exit": {
       "type": "string",
-      "description": "An exit's id, from exits"
+      "description": "The exit to use, by its id from `exits`."
      },
      "area": {
       "type": "string",
-      "description": "An area's tag, to go to by the nearest exit that leads there"
+      "description": "The area to go to, by its tag. The nearest exit that leads there is used."
      },
      "to": {
-      "description": "A world map pin: its name (any case), tag or index; alone with the map up, or with `exit`, the way to the map"
+      "description": "A world map pin to travel to: its name (any case), tag or index from `worldmap`."
      },
      "within": {
       "type": "number",
-      "description": "Metres that count as there; default 1.5"
+      "description": "How close counts as arrived, in meters. Default 1.5."
      },
      "upTo": {
       "type": "number",
-      "description": "With target or point: walk at most this many metres of the game's own path toward it"
+      "description": "With `target` or `point`: walk at most this many meters along the path."
      },
      "fightNear": {
       "type": "number",
-      "description": "In combat mode, walk on unless a hostile is this near (metres, default 20; 0 stops for any fight)"
+      "description": "During combat, keep walking unless a hostile is within this many meters. Default 20; 0 stops for any fight."
      },
      "maxDoors": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 20
+      "maximum": 20,
+      "description": "The most doors to open on the way. Default 4."
      },
      "budgetMs": {
       "type": "integer",
       "minimum": 1000,
-      "maximum": 600000
+      "maximum": 600000,
+      "description": "The longest the call may take, in milliseconds. Default 60000."
      }
     }
    },
@@ -1495,25 +1522,25 @@
   },
   {
    "name": "triggers",
-   "description": "The area's triggers, nearest first: each one's `id`, `tag`, `name`, `position`, `distance`, whether it is `active`, and `leadsTo` for one that takes the party elsewhere (exits lists those alone). A trigger is walked into, not used: travel or order move to its position. `radius` and `near` keep those within reach of a creature, `tag` those whose tag holds it; `ints` (names) reads those local ints on each, as its scripts set them (a puzzle's state, a switch's number).",
+   "description": "Lists the area's triggers, nearest first: each one's `id`, `tag`, `name`, `position`, `distance`, whether it is `active`, and `leadsTo` if it takes the party to another area (`exits` lists only those). A trigger is not used but walked into: `travel` or `order` move to its position.\n\nPass `ints` to read local integer variables on each trigger, as its scripts set them, such as a puzzle's state or a switch's number (returned as `ints`).",
    "inputSchema": {
     "type": "object",
     "properties": {
      "near": {
       "type": "string",
-      "description": "Measure from this creature; default the one controlled"
+      "description": "Measure distances from this creature, by id. Default: the creature you control."
      },
      "radius": {
       "type": "number",
-      "description": "Only those within this many metres of `near`"
+      "description": "Only those within this many meters of `near`. Default: the whole area."
      },
      "tag": {
       "type": "string",
-      "description": "Only those whose tag holds this (any case)"
+      "description": "Only those whose tag contains this, in any case."
      },
      "ints": {
       "type": "array",
-      "description": "Local int names to read on each, as its scripts set them"
+      "description": "Names of local integer variables to read on each trigger, up to 32."
      }
     }
    },
@@ -1523,27 +1550,27 @@
   },
   {
    "name": "wait_for",
-   "description": "Wait until an event matching `topic` and `match` happens, and return it; instead of sleeping and reading the log. `found` is false if the time ran out, with what is known of why nothing came (the game `paused`, say). Returns `next`, the cursor after it.",
+   "description": "Waits until an event matching `topic` and `match` happens, and returns it. Use it instead of sleeping and reading the log.\n\nThe answer has `found`, the `event`, and `next`, the cursor after it. If time runs out, `found` is false and the answer says what is known of why nothing came (for example, the game is `paused`).",
    "inputSchema": {
     "type": "object",
     "properties": {
      "topic": {
-      "description": "A topic (\"eluvian.command.ended\"), a prefix (\"mymod.*\"), \"*\", or an array of them. None: every topic."
+      "description": "A topic (\"eluvian.command.ended\"), a prefix (\"mymod.*\"), \"*\", or an array of these. Default: every topic."
      },
      "match": {
       "type": "object",
-      "description": "Payload fields the event must have, equal; objects match as subsets. Creatures are ids like \"0x7d9\": {\"id\": \"0x7d9\"}."
+      "description": "Payload fields the event must have, with equal values; nested objects match as subsets. Creatures are ids like \"0x7d9\": {\"id\": \"0x7d9\"}."
      },
      "since": {
       "type": "integer",
       "minimum": 0,
-      "description": "Wait for an event from this cursor on: `cursor` from the answer of the call that set it off, so an event that came before the wait is not missed. Default: from now."
+      "description": "Look for events from this cursor on. Pass the `cursor` from the answer of the call that set things off, so an event that came before the wait is not missed. Default: from now."
      },
      "timeoutMs": {
       "type": "integer",
       "minimum": 0,
       "maximum": 300000,
-      "description": "How long to wait; 30000 by default."
+      "description": "How long to wait, in milliseconds. Default 30000."
      }
     }
    },
@@ -1559,7 +1586,7 @@
   },
   {
    "name": "wait_ready",
-   "description": "Wait until the game takes input again: after an exit, a load, a fight's or a conversation's end, a cutscene. Answers when the game is in explore or combat, the party is dead, the main menu is up, a conversation is at a choice, a message box is up, or a full-screen interface (a picker, a map, a store); `ready`, the `mode`, `what` takes the input, and `passed`, the modes, saves and loads gone through on the way. `ready` false when `timeoutMs` (60000 by default) ran out first.",
+   "description": "Waits until the game takes input again, for example after an area exit, a load, the end of a fight or conversation, or a cutscene. It returns when the game is exploring or in combat, the party is dead, the main menu is open, a conversation is at a choice, a message box is open, or a full-screen interface is open (a picker, a map, a store).\n\nThe answer includes `ready`, the `mode`, `what` is taking input, and `passed`: the modes, saves and loads gone through on the way. `ready` is false if `timeoutMs` ran out first.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1567,13 +1594,13 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 600000,
-      "description": "60000 by default"
+      "description": "How long to wait, in milliseconds. Default 60000."
      },
      "intervalMs": {
       "type": "integer",
       "minimum": 50,
       "maximum": 5000,
-      "description": "250 by default"
+      "description": "How often to check the game, in milliseconds. Default 250."
      }
     }
    },
@@ -1589,49 +1616,51 @@
   },
   {
    "name": "wait_until",
-   "description": "Wait until a condition on a tool's answer holds: the tool is called every `intervalMs` until the value at `pointer` in its answer meets the expectation (equals, notEquals, exists, atLeast, atMost), or `timeoutMs` runs out. For a state no event marks: a creature dead, the party's health back, a mode gone. Answers `held`, the last `value`, `tries` and `waitedMs`; a call that failed (the game loading) counts as not yet. For an event, wait_for.",
+   "description": "Waits until a condition on a tool's answer holds. It calls `tool` with `args` every `intervalMs` until the value at `pointer` in the answer meets the expectation (`equals`, `notEquals`, `exists`, `atLeast` or `atMost`), or `timeoutMs` runs out. Use it for a state no event marks: a creature dead, the party's health back, a mode gone. To wait for an event, use `wait_for`.\n\nThe answer includes `held`, the last `value`, `tries` and `waitedMs`, and `unmet` or `lastError` when the condition did not hold. A failed call (for example while the game loads) counts as not yet.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "tool": {
       "type": "string",
-      "description": "The tool to ask, as it is called"
+      "description": "The tool to call, by name (not `wait_until` or `scenario`)."
      },
      "args": {
       "type": "object",
-      "description": "Its arguments"
+      "description": "The tool's arguments. Default: none."
      },
      "pointer": {
       "type": "string",
-      "description": "Where in its answer, a JSON pointer: \"/health/current\""
+      "description": "Where to look in the tool's answer, as a JSON pointer like \"/health/current\". Default \"\": the whole answer."
      },
      "equals": {
-      "description": "The value there equals this"
+      "description": "Holds when the value equals this."
      },
      "notEquals": {
-      "description": "The value there is anything but this"
+      "description": "Holds when the value is anything but this."
      },
      "exists": {
       "type": "boolean",
-      "description": "There is, or is not, a value there"
+      "description": "Holds when there is (true) or is not (false) a value at `pointer`."
      },
      "atLeast": {
-      "type": "number"
+      "type": "number",
+      "description": "Holds when the value is a number at least this."
      },
      "atMost": {
-      "type": "number"
+      "type": "number",
+      "description": "Holds when the value is a number at most this."
      },
      "intervalMs": {
       "type": "integer",
       "minimum": 50,
       "maximum": 60000,
-      "description": "250 by default"
+      "description": "How often to call the tool, in milliseconds. Default 250."
      },
      "timeoutMs": {
       "type": "integer",
       "minimum": 0,
       "maximum": 300000,
-      "description": "30000 by default"
+      "description": "How long to wait, in milliseconds. Default 30000."
      }
     },
     "required": [
@@ -1650,7 +1679,7 @@
   },
   {
    "name": "window",
-   "description": "The game's window on the desktop, for a test that must use the real mouse: `client`, its picture's top left corner in desktop pixels and its size, and whether it is minimised or the `foreground` window (the one the mouse and keys go to). A place in a screenshot, as a fraction of the picture, times the size, plus the corner, is where to click. Answers in any mode.",
+   "description": "Returns where the game's window is on the desktop, for tests that must use the real mouse: `client`, the top left corner of the game's picture in desktop pixels (`x`, `y`) and its `width` and `height`, and whether the window is `minimised` or the `foreground` window (the one that gets mouse and keyboard input).\n\nTo click a spot seen in a screenshot, take its position as a fraction of the picture, multiply by the size and add the corner. Works in any mode.",
    "inputSchema": {
     "type": "object",
     "properties": {}
@@ -1661,13 +1690,13 @@
   },
   {
    "name": "worldmap",
-   "description": "The world map: whether it is `up`, where the party is (`at`, an area's tag), and its `pins`, each with its `index`, `name`, `tag`, the `area` it leads to and its `state` (active pins can be travelled to; not active, greyed, unlockable, completed, destroyed). travel with `to` (a pin's name, tag or index) crosses to one, with the map up (a travel to the area's world-map exit opens it). The pins are read as the map screen reads them; with the map never opened this game, there may be none. In a city the map up may be the city's: `shown` names the map shown and `other` the one its toggle swaps to (input {\"message\": \"WorldMap.WorldMapSwapMaps\"}, as the button does; travel `to` swaps by itself for a pin on the other). The map is closed as its Close button closes it: input {\"message\": \"GUI.HideFullScreenGUI\"} (WorldMap.WorldMapClosed is the screen's report that it closed, not the close). `all: true` answers instead every map's pins, the cities' too, as the game's designer maps hold them (`maps`: each map's `tag`, file and `pins` with `name`, `tag` and `area`): which map a pin is on, from anywhere; those are the pins' first states.",
+   "description": "Returns the world map: whether it is open (`up`), where the party is (`at`, an area tag), and its `pins`. Each pin has an `index`, `name`, `tag`, the `area` it leads to, and a `state`: `active`, `not active`, `greyed`, `unlockable`, `completed` or `destroyed`. Only active pins can be traveled to.\n\nTo go to a pin, call `travel` with `to` (the pin's name, tag or index), either with the map open or together with the area's world map exit, which opens it. If the map has never been opened this game, there may be no pins yet.\n\nIn a city, the open map may be the city's own: `shown` names the map on screen and `other` the one its toggle button switches to. To switch, call `input` with {\"message\": \"WorldMap.WorldMapSwapMaps\"}; `travel` with `to` switches by itself when the pin is on the other map. To close the map, call `input` with {\"message\": \"GUI.HideFullScreenGUI\"}, as its Close button does. (WorldMap.WorldMapClosed only reports that the map closed; it does not close it.)\n\nWith `all: true`, it returns every map's pins instead, cities included, from the game's map files (`maps`: each map's `tag`, `file` and `pins` with `name`, `tag` and `area`). This works from anywhere and tells you which map a pin is on, but shows each pin's starting state, not its current one.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "all": {
       "type": "boolean",
-      "description": "Every map's pins, the cities' too, from the game's designer maps (their first states), in place of the map up"
+      "description": "Return every map's pins, cities included, from the game's files (starting states) instead of the open map. Default false."
      }
     }
    },
@@ -1679,102 +1708,102 @@
  "topics": [
   {
    "topic": "eluvian.command.ended",
-   "description": "A creature's command ended, and how.",
+   "description": "A creature's command ended. `result` says how.",
    "fields": {
-    "id": "the creature",
-    "type": "the command",
-    "playerIssued": "whether the player gave it",
-    "target": "as at its start",
-    "point": "as at its start",
-    "ability": "as at its start",
-    "result": "success, a COMMAND_FAILED_*, or cleared",
+    "id": "the creature's id",
+    "type": "the kind of command",
+    "playerIssued": "whether the player gave the command",
+    "target": "the same as when it started",
+    "point": "the same as when it started",
+    "ability": "the same as when it started",
+    "result": "how it ended: success, a COMMAND_FAILED_* code saying why it failed, or cleared (dropped from the queue before it finished)",
     "success": "true when it succeeded"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.command.started",
-   "description": "A creature started a command from its queue: an attack, a move, an ability, a wait, an animation.",
+   "description": "A creature started a command from its queue: an attack, a move, an ability, a wait, an animation, and so on.",
    "fields": {
-    "id": "the creature",
-    "type": "the command (Attack, MoveToObject, UseAbility, ...)",
-    "playerIssued": "whether the player gave it",
-    "target": "the object it acts on (an attack's, a use's, a move to an object's), if any",
-    "point": "[x, y, z] it goes to or aims at (a move's, an ability's), if any",
-    "ability": "a UseAbility's ability id"
+    "id": "the creature's id",
+    "type": "the kind of command (Attack, MoveToObject, UseAbility, ...)",
+    "playerIssued": "whether the player gave the command",
+    "target": "the object it acts on, for an attack, a use or a move to an object, if any",
+    "point": "the [x, y, z] point it moves to or aims at, for a move or an ability, if any",
+    "ability": "the ability's id, for a UseAbility"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.creature.died",
-   "description": "A creature died, or a party member fell, the moment it did: seen by watching creatures that were hurt or staged. The engine's own eluvian.script.death comes 1.5 to 2.5 s later, once the death has played out.",
+   "description": "A creature died, or a party member fell, at the moment it happened. It is noticed only for creatures that were hurt, or killed with `stage_kill`. The engine's own eluvian.script.death fires 1.5 to 2.5 seconds later, once the death has played out.",
    "fields": {
-    "id": "the creature",
+    "id": "the creature's id",
     "name": "its name",
-    "killer": "the last who hurt it, if known"
+    "killer": "the last creature to hurt it, if known"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.dialogue.chosen",
-   "description": "The player chose a reply, and the conversation goes on from it.",
+   "description": "The player chose a reply, and the conversation continues from it.",
    "fields": {
-    "index": "the reply's place in the file",
-    "text": "the reply"
+    "index": "the reply's position in the conversation file",
+    "text": "the reply's text"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.dialogue.line",
-   "description": "A line was spoken to the player in a conversation, or by creatures in passing (ambient lines are conversations too). Some have no text: a line that only routes to the next.",
+   "description": "Someone spoke a line: to the player in a conversation, or between creatures in passing (background chatter is a conversation too). Some lines have no text; they only lead on to the next line.",
    "fields": {
-    "index": "the line's place in the conversation's file",
-    "speaker": "who, as the file writes it: a tag, OWNER or PLAYER",
-    "by": "the creature who speaks it {id, name, tag}, as the game resolves the file's speaker: OWNER the conversation's owner, PLAYER the hero, a tag the creature that has it",
-    "to": "whom it is spoken to: `listener` as the file writes it (often empty) and the `creature` the game resolves",
+    "index": "the line's position in the conversation file",
+    "speaker": "who speaks it, as the file names them: a creature's tag, OWNER or PLAYER",
+    "by": "the creature who speaks it, as {id, name, tag}. OWNER means the conversation's owner, PLAYER the hero, and a tag the creature with that tag",
+    "to": "who it is spoken to: `listener` as the file names it (often empty), and `creature`, the creature the game picks",
     "text": "the line, in the player's language"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.dialogue.replies",
-   "description": "The replies now offered to the player, in their order on the screen.",
+   "description": "The player is offered replies, listed in the order shown on screen.",
    "fields": {
-    "replies": "each with its place, index, text and icon"
+    "replies": "each reply with its position, index, text and icon"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.equipment.equipped",
-   "description": "An item went on a creature, by any path: the inventory screen, equip, a script. A refusal is not told, nor the ammunition the engine puts on each creature as an area loads.",
+   "description": "An item was put on a creature, by any means: the inventory screen, `equip`, or a script. It does not fire when equipping is refused, nor for the ammunition the engine gives each creature when an area loads.",
    "fields": {
-    "creature": "{id, name, tag}",
-    "item": "{id, name, tag}",
-    "slot": "the slot's number (INVENTORY_SLOT_*)",
-    "slotName": "the slot by name, as inventory names it"
+    "creature": "the creature, as {id, name, tag}",
+    "item": "the item, as {id, name, tag}",
+    "slot": "the slot's number (an INVENTORY_SLOT_* value)",
+    "slotName": "the slot's name, as `inventory` names it"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.equipment.unequipped",
-   "description": "An item came off a creature, by any path; what an equip displaces (a shield for a two-handed weapon) comes off before the equip.",
+   "description": "An item was taken off a creature, by any means. When equipping one item pushes another out (a shield, for a two-handed weapon), the pushed-out item's event comes first.",
    "fields": {
-    "creature": "{id, name, tag}",
-    "item": "{id, name, tag}",
-    "slot": "the slot it was in (INVENTORY_SLOT_*)",
-    "slotName": "the slot by name",
-    "displaced": "true for an item an equip pushed out of its slot"
+    "creature": "the creature, as {id, name, tag}",
+    "item": "the item, as {id, name, tag}",
+    "slot": "the slot it was in (an INVENTORY_SLOT_* value)",
+    "slotName": "the slot's name",
+    "displaced": "true when equipping another item pushed it out"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.game.loaded",
-   "description": "A save loaded, or a new game began, and the world is in place.",
+   "description": "A save finished loading, or a new game started, and the world is ready.",
    "fields": {
     "newGame": "true for a new game",
     "character": "the save's character folder",
-    "kind": "manual, auto or quick",
-    "number": "the slot's number"
+    "kind": "the save's kind: manual, auto or quick",
+    "number": "the save slot's number"
    },
    "from": "eluvian"
   },
@@ -1783,35 +1812,35 @@
    "description": "The game wrote a save.",
    "fields": {
     "character": "the save's character folder",
-    "kind": "manual, auto or quick",
-    "number": "the slot's number"
+    "kind": "the save's kind: manual, auto or quick",
+    "number": "the save slot's number"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.gui.message",
-   "description": "A screen sent the engine one of its messages, as its buttons and its own script send them: what the interface asked of the game, the same text input's `message` sends.",
+   "description": "A game screen sent a message to the engine, as its buttons and scripts do. It shows what the menu asked the game to do, in the same form `input` sends with `message`.",
    "fields": {
-    "screen": "the movie that sent it, as the game names it (\"levelup\", \"inventory\")",
-    "text": "the message: \"Receiver.Message arguments\""
+    "screen": "the screen that sent it, by the game's name for it, such as \"levelup\" or \"inventory\"",
+    "text": "the message, as \"Receiver.Message arguments\""
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.mode.changed",
-   "description": "The game mode changed: explore, combat, dialog, cutscene, loading, pregame (the main menu), gui (a menu over the game), and the rest.",
+   "description": "The game's mode changed. Modes include explore, combat, dialog, cutscene, loading, pregame (the main menu) and gui (a menu open over the game).",
    "fields": {
-    "from": "the mode before",
+    "from": "the mode before the change",
     "to": "the mode now"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.party.control_changed",
-   "description": "The creature the player controls changed, by any cause: the party bar, a key, a script, order move handing a follower control. A load reads as a change from nobody.",
+   "description": "The player now controls a different creature. It fires whatever caused the switch: the party bar, a key, a script, or an `order` move that hands control to a follower. After a load, it fires as a switch from nobody.",
    "fields": {
-    "before": "who was controlled {id, name, tag}, null for nobody",
-    "now": "who is controlled now {id, name, tag}"
+    "before": "the creature controlled before, as {id, name, tag}, or null for nobody",
+    "now": "the creature controlled now, as {id, name, tag}"
    },
    "from": "eluvian"
   },
@@ -1819,171 +1848,171 @@
    "topic": "eluvian.paused",
    "description": "The game was paused or unpaused.",
    "fields": {
-    "paused": "true or false"
+    "paused": "true when the game is now paused"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.ability_cast_impact",
-   "description": "The script event EVENT_TYPE_ABILITY_CAST_IMPACT (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_ABILITY_CAST_IMPACT (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.ability_cast_start",
-   "description": "The script event EVENT_TYPE_ABILITY_CAST_START (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_ABILITY_CAST_START (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.apply_effect",
-   "description": "The script event EVENT_TYPE_APPLY_EFFECT (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_APPLY_EFFECT (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.area_loaded",
-   "description": "The script event EVENT_TYPE_AREALOAD_POSTLOADEXIT (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_AREALOAD_POSTLOADEXIT (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.attack_impact",
-   "description": "The script event EVENT_TYPE_ATTACK_IMPACT (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_ATTACK_IMPACT (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters",
-    "attacker": "who attacked (delivered to them)",
-    "target": "who was attacked",
-    "hit": "COMBAT_RESULT_*",
-    "effectId": "the effect it made"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters",
+    "attacker": "the attacker (the event is sent to them)",
+    "target": "the creature attacked",
+    "hit": "how the attack landed (a COMBAT_RESULT_* value)",
+    "effectId": "the id of the effect the hit made"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.combat_initiated",
-   "description": "The script event EVENT_TYPE_COMBAT_INITIATED (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_COMBAT_INITIATED (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.damaged",
-   "description": "The script event EVENT_TYPE_DAMAGED (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_DAMAGED (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters",
-    "damager": "who dealt it",
-    "amount": "how much",
-    "damageType": "DAMAGE_TYPE_*",
-    "ability": "the ability it came from"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters",
+    "damager": "the creature that dealt the damage",
+    "amount": "how much damage",
+    "damageType": "the kind of damage (a DAMAGE_TYPE_* value)",
+    "ability": "the ability that dealt it"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.death",
-   "description": "The script event EVENT_TYPE_DEATH (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_DEATH (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.gamemode_change",
-   "description": "The script event EVENT_TYPE_GAMEMODE_CHANGE (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_GAMEMODE_CHANGE (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.order_received",
-   "description": "The script event EVENT_TYPE_ON_ORDER_RECEIVED (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_ON_ORDER_RECEIVED (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.partymember_added",
-   "description": "The script event EVENT_TYPE_PARTYMEMBER_ADDED (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_PARTYMEMBER_ADDED (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.popup_result",
-   "description": "The script event EVENT_TYPE_POPUP_RESULT (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_POPUP_RESULT (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   },
   {
    "topic": "eluvian.script.remove_effect",
-   "description": "The script event EVENT_TYPE_REMOVE_EFFECT (EVENT_TYPE_*), as the scripts receive it.",
+   "description": "The game's script event EVENT_TYPE_REMOVE_EFFECT (an EVENT_TYPE_* value), as the game's scripts receive it.",
    "fields": {
-    "receiver": "the object the event was delivered to (not always the one it is about)",
-    "creator": "the event's creator",
-    "objects": "its object parameters, as GetEventObject reads them",
-    "integers": "its integer parameters",
-    "floats": "its float parameters"
+    "receiver": "the object the event was sent to, which is not always the one it is about",
+    "creator": "the object that created the event",
+    "objects": "the event's object parameters, as scripts read them with GetEventObject",
+    "integers": "the event's whole-number parameters",
+    "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
   }

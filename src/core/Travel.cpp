@@ -121,7 +121,7 @@ class Journey
             upTo_ = args.Number("upTo");
             if (*upTo_ <= 0)
             {
-                throw ToolError("travel: `upTo` is a length in metres, more than 0");
+                throw ToolError("travel: `upTo` is a length in meters, more than 0");
             }
         }
     }
@@ -1631,54 +1631,54 @@ void AddTravelTool(Bench &bench)
         Budgeted(
             ToolSpec{
                 "travel",
-                "Walk a creature to a `target` (a creature or object id) or a `point`, opening what is shut on the "
-                "way: it asks for the walk, uses the door in the way, waits, and goes on, up to `maxDoors` "
-                "(default 4) and `budgetMs` (default 60000). `id` is who walks, default the creature controlled. "
-                "`upTo` (metres) walks at most that far along the game's own path toward it, and answers where "
-                "the walk was cut (`cutAt`); a walk no longer goes all the way. "
-                "Answers `arrived` (within `within` metres, default 1.5, or as near as a creature can stand to a "
-                "thing that fills its own place or hangs overhead: a door, a chest, a cocoon; then use it from "
-                "there), `reason`, the `distance` left, what it "
-                "`opened`, and each step with how it ended. It stops and says why when the journey is no longer "
-                "its to make: a fight near (combat mode with a hostile within `fightNear`, default 20 m: a "
-                "fight far off that keeps the mode is walked on; the stop names the hostile), a conversation or "
-                "cutscene took the screen, the game is paused. "
-                "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say "
-                "what came of the journey. "
-                "To another area: `exit` (an id from exits) or `area` (an area's tag: the nearest "
-                "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
-                "comes once the other `area` is in place; it stops and says so if the game asks first (a "
-                "message box), opens the world map, or starts a fight or a conversation. Answering the box "
-                "(press) lets the game go on by that exit to where it leads, a random "
-                "encounter's exit to its journey's first destination: travel again from where it arrives. "
-                "The game may autosave on the way. "
-                "Across the world map: `to`, a pin's name, tag or index (worldmap lists them), "
-                "alone with the map up, or with the `exit` that opens it; the pin is clicked and the answer "
-                "comes once its area is in place. A random encounter on the way is said (`encounter`, the "
-                "`area` it is in) and is not arrival: fight or talk it out, then travel `to` again.",
+                "Moves a creature, or the party, opening doors on the way. Three kinds of trip:\n\n"
+                "- Within the area: pass `target` (a creature or object id) or `point`. The creature walks there, "
+                "opening up to `maxDoors` doors on the way. `upTo` limits the walk to that many meters and reports "
+                "where it stopped (`cutAt`).\n"
+                "- To another area: pass `exit` (an id from `exits`) or `area` (an area tag; the nearest exit that "
+                "leads there is used). The creature you control walks to the exit and uses it. The call returns "
+                "once the new area has loaded.\n"
+                "- Across the world map: pass `to`, a map pin's name, tag or index as `worldmap` lists them, either "
+                "with the map open or together with the `exit` that opens it.\n\n"
+                "The answer says whether it `arrived`, the `reason` if not, the `distance` left, the doors it "
+                "`opened`, and each step. Arrived means within `within` meters, or as close as anyone can stand "
+                "to a large object such as a door or a chest; use the object from there.\n\n"
+                "It stops early and says why when a hostile is within `fightNear` meters, a conversation or "
+                "cutscene starts, the game is paused, or the game shows a message box (answer it with `press`, "
+                "then travel again). A random encounter on the world map is reported as `encounter`: deal with "
+                "it, then travel again. The game may autosave on the way. To see what happened during the trip, "
+                "such as a door that started a fight, call `wait_for` from the returned `cursor`.",
                 Json{{"type", "object"},
                      {"properties",
-                      {{"id", {{"description", "Who walks: a creature id; default the one controlled"}}},
-                       {"target", {{"description", "A creature or object id to walk to"}}},
-                       {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
-                       {"exit", {{"type", "string"}, {"description", "An exit's id, from exits"}}},
+                      {{"id", {{"description", "Who walks, by creature id. Default: the creature you control."}}},
+                       {"target", {{"description", "The creature or object to walk to, by id."}}},
+                       {"point", {{"description", "The point to walk to: {x, y, z} or [x, y, z]."}}},
+                       {"exit", {{"type", "string"}, {"description", "The exit to use, by its id from `exits`."}}},
                        {"area",
                         {{"type", "string"},
-                         {"description", "An area's tag, to go to by the nearest exit that leads there"}}},
+                         {"description", "The area to go to, by its tag. The nearest exit that leads there is used."}}},
                        {"to",
-                        {{"description", "A world map pin: its name (any case), tag or index; alone with the map "
-                                         "up, or with `exit`, the way to the map"}}},
-                       {"within", {{"type", "number"}, {"description", "Metres that count as there; default 1.5"}}},
+                        {{"description", "A world map pin to travel to: its name (any case), tag or index from "
+                                         "`worldmap`."}}},
+                       {"within",
+                        {{"type", "number"}, {"description", "How close counts as arrived, in meters. Default 1.5."}}},
                        {"upTo",
                         {{"type", "number"},
-                         {"description",
-                          "With target or point: walk at most this many metres of the game's own path toward it"}}},
+                         {"description", "With `target` or `point`: walk at most this many meters along the path."}}},
                        {"fightNear",
                         {{"type", "number"},
-                         {"description", "In combat mode, walk on unless a hostile is this near (metres, default "
-                                         "20; 0 stops for any fight)"}}},
-                       {"maxDoors", {{"type", "integer"}, {"minimum", 0}, {"maximum", 20}}},
-                       {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}}}}},
+                         {"description", "During combat, keep walking unless a hostile is within this many meters. "
+                                         "Default 20; 0 stops for any fight."}}},
+                       {"maxDoors",
+                        {{"type", "integer"},
+                         {"minimum", 0},
+                         {"maximum", 20},
+                         {"description", "The most doors to open on the way. Default 4."}}},
+                       {"budgetMs",
+                        {{"type", "integer"},
+                         {"minimum", 1000},
+                         {"maximum", 600000},
+                         {"description", "The longest the call may take, in milliseconds. Default 60000."}}}}}},
                 Thread::Listener},
             "budgetMs", 60000),
         [&bench](const Json &raw) -> ToolResult {

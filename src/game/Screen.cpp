@@ -313,23 +313,24 @@ void AddScreen(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"screen",
-                 "Where a thing is in the game's picture, for the real mouse. `target` (a creature or object id): "
-                 "`aim`, a pixel to click it at, well inside its body as the game picks it and where nothing "
-                 "else is in front (null if it is out of view or hidden; `clear` is how many of the eight pixels "
-                 "10 away pick it too, 8 being wholly inside), and `position`, where its feet are. `point` ({x, y, "
-                 "z}): that world "
-                 "point's pixel. `pixel` ([x, y] in the game's own pixels): `hits`, what lies under it, nearest "
-                 "first, the first object being what a click there would act on. With none of them: the view's "
-                 "size and the window. Each place is given as `x`, `y` (the game's pixels from the picture's top "
-                 "left), `fx`, `fy` (fractions of the picture) and `desktop` (the pixel to send a real mouse "
-                 "to), with `coveredBy` naming the window on top of the game's there, if one is: a real mouse "
-                 "sent to that pixel clicks it, not the game, so move it or the game first. After moving the "
-                 "mouse, cursor says what the game has under it.",
+                 "Finds where things are on the game's screen, for driving the real mouse. Always returns the "
+                 "`view` size and the game `window`. Pass any of:\n\n"
+                 "- `target`: returns `aim`, a pixel to click it at, well inside the object and with nothing in "
+                 "front (null if it is out of view or hidden; `camera` can bring it into view). `clear` is how "
+                 "many of the eight pixels 10 away also hit it; 8 means well inside. `position` is where its "
+                 "feet are.\n"
+                 "- `point`: returns the pixel where that world point appears.\n"
+                 "- `pixel`: returns `hits`, what lies under that pixel, nearest first. The first object is what "
+                 "a click there would act on.\n\n"
+                 "Each place is given as `x`, `y` (the game's pixels from the top left), `fx`, `fy` (fractions of "
+                 "the picture) and `desktop` (the desktop pixel to send a real mouse to). `coveredBy` names "
+                 "another window covering the game there, if any: a click there would hit that window, so move it "
+                 "or the game first. After moving the mouse, `cursor` says what the game has under it.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"target", {{"description", "A creature or object id"}}},
-                        {"point", {{"description", "{x, y, z} or [x, y, z] in the world"}}},
-                        {"pixel", {{"description", "[x, y] in the game's pixels"}}}}}},
+                       {{"target", {{"description", "A creature or object to find, by id."}}},
+                        {"point", {{"description", "A world point to find: {x, y, z} or [x, y, z]."}}},
+                        {"pixel", {{"description", "A pixel to look under: [x, y] in the game's pixels."}}}}}},
                  Thread::Frame, true},
         [&watch](const Json &raw) -> ToolResult { return ToolScreen(watch, raw); });
 
@@ -342,23 +343,27 @@ void AddScreen(Bench &bench, const Watch &watch)
     bench.Tools().Add(
         ToolSpec{
             "pointer",
-            "Hold the game's cursor at a place without a click, as if the mouse rested there, for what "
-            "shows only under the cursor (a path preview, a cost caption, a highlight). `target` (a "
-            "creature or object id: the same pixel screen gives to click it), `point` ({x, y, z} in the "
-            "world) or `pixel` ([x, y] in the game's pixels). The game's pick follows from its next pick "
-            "(about a fifteenth of a second): wait a quarter second, then cursor says what it "
-            "has under it, and a screenshot shows the rest. The real mouse is not moved, nor read for the "
-            "pick, wherever it is, and the window need not be in front; the drawn cursor and the game's "
-            "menus and bars still follow the real mouse. The hold ends after `seconds` "
-            "(default 60; 0 for none) or with `release: true`, and while it holds a click acts on the "
-            "place held, not under the real mouse.",
+            "Makes the game act as if the mouse rested at a place, without clicking, to show what appears only "
+            "under the cursor (a path preview, a cost caption, a highlight). Pass one of `target`, `point` or "
+            "`pixel`, or `release: true` to stop.\n\n"
+            "The game picks up the new place within about a fifteenth of a second: wait a quarter second, then "
+            "`cursor` says what is under it and `screenshot` shows the rest. The real mouse is not moved or "
+            "read, and the window need not be in front; the drawn cursor and the game's menus and bars still "
+            "follow the real mouse. While the hold lasts, a click acts on the held place, not under the real "
+            "mouse. It ends after `seconds` or on release.\n\n"
+            "The answer includes the place `pointed` at (as `screen` gives places), how long it `holds`, and "
+            "whether the game window is in the `foreground`.",
             Json{{"type", "object"},
                  {"properties",
-                  {{"target", {{"description", "A creature or object id"}}},
-                   {"point", {{"description", "{x, y, z} or [x, y, z] in the world"}}},
-                   {"pixel", {{"description", "[x, y] in the game's pixels"}}},
-                   {"seconds", {{"type", "number"}, {"description", "How long to hold; default 60, 0 until released"}}},
-                   {"release", {{"type", "boolean"}, {"description", "Give the pick back to the mouse"}}}}}},
+                  {{"target",
+                    {{"description", "A creature or object, by id; the cursor goes where `screen` would aim."}}},
+                   {"point", {{"description", "A world point: {x, y, z} or [x, y, z]."}}},
+                   {"pixel", {{"description", "A pixel: [x, y] in the game's pixels."}}},
+                   {"seconds",
+                    {{"type", "number"},
+                     {"description", "How long to hold, up to 3600 seconds; 0 holds until released. Default 60."}}},
+                   {"release",
+                    {{"type", "boolean"}, {"description", "Stop holding and give the cursor back to the mouse."}}}}}},
             Thread::Frame, true},
         [&watch](const Json &raw) -> ToolResult { return ToolPointer(watch, raw); });
 }

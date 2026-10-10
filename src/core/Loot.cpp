@@ -502,37 +502,49 @@ void AddLootTool(Bench &bench, milliseconds show)
         Budgeted(
             ToolSpec{
                 "loot",
-                "Take what a container holds (a chest, a body's remains, a pile of bones: an id from "
-                "placeables), in one call: the creature controlled, or `id`, another party member, "
-                "given control for the looting and control given back after (`controlled` says to whom), "
-                "walks to `target` (as travel does, "
-                "opening doors on the way), uses it, which opens the game's loot panel, and takes all as the "
-                "panel's Take All does, which closes it. With no `target`, takes from the loot panel up now. "
-                "Answers `looted`, `reason`, the `container`, what was `taken` and what is `left` (each item "
-                "in brief), whether the backpack was `full` (then the rest stays and the panel stays up), "
-                "whether the panel `closed`, and the `walk`. It stops and says why when the container does not "
-                "open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains "
-                "open no panel). With `radius` (metres) instead of `target`, every placeable within it whose use "
-                "is a loot or an unlock (placeables' `action`), nearest first: one report "
-                "each in `containers`, `count` looted, what else was there in `skipped`; it stops "
-                "(`stopped`) at a fight, a conversation, a question or a full pack, and passes a "
-                "locked or empty one. A container's treasure may be chosen "
-                "only as it opens, so one that read empty may not be. The events from `cursor` say what "
-                "followed (an opening may start a fight or a plot's step). `budgetMs` (default 60000) is for "
-                "the whole. `showMs` (default 1000) is how long it lingers on the panel before Take All, so "
-                "whoever watches sees it; 0 for none.",
+                "Takes everything a container holds (a chest, a body's remains, a pile of bones: an id from "
+                "`placeables`) in one call. The looter walks to `target` (like `travel`, opening doors on the "
+                "way), uses it to open the game's loot panel, and takes everything like the panel's Take All "
+                "button, which closes the panel. Without `target`, it takes from the loot panel open now.\n\n"
+                "The looter is the creature you control, or `id`, another party member, who is given control for "
+                "the looting and gives it back afterwards (`controlled` says who has it).\n\n"
+                "The answer includes `looted`, `reason`, the `container`, what was `taken` and what is `left` "
+                "(each item in brief), whether the backpack was `full` (the rest then stays, and so does the "
+                "panel), whether the panel `closed`, and the `walk`. It stops and says why when the container "
+                "does not open: it is locked, a fight or conversation starts, a message box appears, or there is "
+                "nothing to take (`empty`: an emptied body's remains open no loot panel at all).\n\n"
+                "With `radius` instead of `target`, it loots every placeable within that many meters whose use is "
+                "a loot or an unlock (`action` in `placeables`), nearest first. The answer has one report each in "
+                "`containers`, the `count` looted, and what else was there in `skipped`. It passes locked or "
+                "empty containers, and stops (`stopped`) at a fight, a conversation, a question or a full pack.\n\n"
+                "Some containers choose their treasure only when opened, so one that read as empty may not be. "
+                "Read the events from `cursor` (`events` or `wait_for`) to see what followed: opening a container "
+                "may start a fight or a plot step.",
                 Json{{"type", "object"},
                      {"properties",
-                      {{"target", {{"type", "string"}, {"description", "The container's id; none: the panel up now"}}},
+                      {{"target",
+                        {{"type", "string"},
+                         {"description", "The container, by id. Default: the loot panel open now."}}},
                        {"id",
                         {{"type", "string"},
-                         {"description", "The party member who loots (default: the one controlled)"}}},
+                         {"description", "The party member who loots, by creature id. Default: the creature you "
+                                         "control."}}},
                        {"radius",
                         {{"type", "number"},
                          {"minimum", 0},
-                         {"description", "Every container within this many metres"}}},
-                       {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 600000}}},
-                       {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
+                         {"description", "Loot every container within this many meters, instead of one `target`."}}},
+                       {"budgetMs",
+                        {{"type", "integer"},
+                         {"minimum", 1000},
+                         {"maximum", 600000},
+                         {"description", "The longest the whole call may take, in milliseconds. Default 60000, or "
+                                         "300000 with `radius`."}}},
+                       {"showMs",
+                        {{"type", "integer"},
+                         {"minimum", 0},
+                         {"maximum", 10000},
+                         {"description", "How long to linger on the panel before Take All, in milliseconds, so "
+                                         "whoever watches sees it. Default 1000; 0 for none."}}}}}},
                 Thread::Listener},
             "budgetMs", 300000),
         [&bench, show](const Json &raw) -> ToolResult {

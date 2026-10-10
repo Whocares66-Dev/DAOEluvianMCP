@@ -221,22 +221,31 @@ ToolResult ToolScript(const Watch &watch, const Json &raw)
 void AddScript(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
-        ToolSpec{
-            "script",
-            "Call any of the game's 661 script commands by name and get its answer: the general tool when no "
-            "other fits (GetCreatureProperty, GetRemainingCooldown, SetCreatureProperty, "
-            "Screenshot). `action`: call (default), find (commands whose name contains "
-            "`command`), describe (one command's parameters and defaults). Arguments are positional "
-            "(`args`: [...]) or by parameter name (`args`: {\"oCreature\": \"0x7d9\"}); left off, they take "
-            "their defaults. Objects are ids; null is OBJECT_INVALID. Commands taking or returning a "
-            "location, effect, event or command cannot be called by name.",
-            Json{{"type", "object"},
-                 {"properties",
-                  {{"action", {{"type", "string"}, {"enum", {"call", "find", "describe"}}}},
-                   {"command", {{"type", "string"}, {"description", "The command's name, as script.ldf writes it"}}},
-                   {"args", {{"description", "An array in parameter order, or an object by parameter name"}}}}},
-                 {"required", {"command"}}},
-            Thread::Frame},
+        ToolSpec{"script",
+                 "Calls any of the game's 661 script commands by name and returns its result (`value`). Use it when "
+                 "no other tool fits, for example GetCreatureProperty, GetRemainingCooldown or SetCreatureProperty. "
+                 "`action`:\n\n"
+                 "- `call` (the default): run `command` with `args`.\n"
+                 "- `find`: list the commands whose name contains `command` (any case).\n"
+                 "- `describe`: show one command's parameters, their types and defaults.\n\n"
+                 "Pass arguments in order (`args`: [...]) or by parameter name (`args`: {\"oCreature\": \"0x7d9\"}); "
+                 "any left out take their defaults. Objects are ids, and null is OBJECT_INVALID. Commands that take "
+                 "or return a location, effect, event or command cannot be called by name.",
+                 Json{{"type", "object"},
+                      {"properties",
+                       {{"action",
+                         {{"type", "string"},
+                          {"enum", {"call", "find", "describe"}},
+                          {"description", "What to do. Default call."}}},
+                        {"command",
+                         {{"type", "string"},
+                          {"description", "The command's name as the game's scripts spell it, or with `find` part of "
+                                          "one."}}},
+                        {"args",
+                         {{"description", "With `call`: the arguments, as an array in parameter order or an object by "
+                                          "parameter name. Default none."}}}}},
+                      {"required", {"command"}}},
+                 Thread::Frame},
         [&watch](const Json &raw) -> ToolResult { return ToolScript(watch, raw); });
 }
 

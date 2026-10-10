@@ -103,22 +103,29 @@ void AddCamera(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"camera",
-                 "The camera in explore or combat mode. `action`: read (the default), what it follows, its focus, "
-                 "position, yaw and pitch in degrees, zoom (1 close in, -1 the tactical view); face, turn it at "
-                 "once so that `target` (a creature or object) or `point` lies ahead of the focus, for a "
-                 "screenshot that shows it; follow, have it follow `target` and put it there at once, as "
-                 "selecting a party member does (nothing is selected), to look at a creature elsewhere; turn, to "
-                 "`yawDegrees`. The view is as asked from the next frame: take the screenshot after. A mod "
-                 "easing the camera takes a turn from here for the player's and lets go.",
+                 "Reads or moves the camera, in explore or combat mode. `action`:\n\n"
+                 "- `read` (the default): returns what it is `following`, its `focus`, `position`, `yawDegrees` "
+                 "and `pitchDegrees`, whether it is `tactical`, and `zoom` (1 close in, -1 the tactical view).\n"
+                 "- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, "
+                 "for a screenshot that shows it.\n"
+                 "- `follow`: makes it follow `target` and jump there at once, as selecting a party member does "
+                 "(nothing gets selected). Use it to look at a creature elsewhere.\n"
+                 "- `turn`: turns it to `yawDegrees`.\n\n"
+                 "Every action returns the camera as `read` does. The new view shows from the next frame, so take "
+                 "the screenshot after this call. A mod that smooths camera moves treats a turn from here as the "
+                 "player's and stops its own move.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"read", "face", "follow", "turn"}}}},
-                        {"target", {{"description", "A creature or object id"}}},
-                        {"point", {{"description", "action=face: {x, y, z} or [x, y, z]"}}},
+                       {{"action",
+                         {{"type", "string"},
+                          {"enum", {"read", "face", "follow", "turn"}},
+                          {"description", "What to do. Default read."}}},
+                        {"target", {{"description", "With `face` or `follow`: the creature or object, by id."}}},
+                        {"point", {{"description", "With `face`: a world point, {x, y, z} or [x, y, z]."}}},
                         {"yawDegrees",
                          {{"type", "number"},
-                          {"description", "action=turn: the direction from the focus to the camera, from +x "
-                                          "toward +y"}}}}}},
+                          {"description", "With `turn`: the direction from the focus to the camera, in degrees, "
+                                          "measured from +x toward +y."}}}}}},
                  Thread::Frame},
         [&watch](const Json &raw) -> ToolResult { return ToolCamera(watch, raw); });
 }

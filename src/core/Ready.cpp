@@ -100,21 +100,27 @@ Json Passed(Bench &bench, std::uint64_t since)
 
 void AddWaitReadyTool(Bench &bench)
 {
-    const Json schema = {
-        {"type", "object"},
-        {"properties",
-         {{"timeoutMs",
-           {{"type", "integer"}, {"minimum", 0}, {"maximum", 600000}, {"description", "60000 by default"}}},
-          {"intervalMs",
-           {{"type", "integer"}, {"minimum", 50}, {"maximum", 5000}, {"description", "250 by default"}}}}}};
+    const Json schema = {{"type", "object"},
+                         {"properties",
+                          {{"timeoutMs",
+                            {{"type", "integer"},
+                             {"minimum", 0},
+                             {"maximum", 600000},
+                             {"description", "How long to wait, in milliseconds. Default 60000."}}},
+                           {"intervalMs",
+                            {{"type", "integer"},
+                             {"minimum", 50},
+                             {"maximum", 5000},
+                             {"description", "How often to check the game, in milliseconds. Default 250."}}}}}};
     bench.Tools().Add(
         Budgeted(
             ToolSpec{"wait_ready",
-                     "Wait until the game takes input again: after an exit, a load, a fight's or a conversation's end, "
-                     "a cutscene. Answers when the game is in explore or combat, the party is dead, the main menu is "
-                     "up, a conversation is at a choice, a message box is up, or a full-screen interface (a picker, a "
-                     "map, a store); `ready`, the `mode`, `what` takes the input, and `passed`, the modes, saves and "
-                     "loads gone through on the way. `ready` false when `timeoutMs` (60000 by default) ran out first.",
+                     "Waits until the game takes input again, for example after an area exit, a load, the end of a "
+                     "fight or conversation, or a cutscene. It returns when the game is exploring or in combat, the "
+                     "party is dead, the main menu is open, a conversation is at a choice, a message box is open, or "
+                     "a full-screen interface is open (a picker, a map, a store).\n\n"
+                     "The answer includes `ready`, the `mode`, `what` is taking input, and `passed`: the modes, "
+                     "saves and loads gone through on the way. `ready` is false if `timeoutMs` ran out first.",
                      schema, Thread::Listener, true},
             "timeoutMs", 60000),
         [&bench](const Json &raw) -> ToolResult {

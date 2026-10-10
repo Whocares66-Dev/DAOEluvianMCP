@@ -688,29 +688,41 @@ void AddCraftTool(Bench &bench, milliseconds show)
     bench.Tools().Add(
         ToolSpec{
             "craft",
-            "Make poisons, potions and traps as the game's crafting screen makes them, so its rules hold. "
-            "`kind`: poison, herbalism or traps. Without `recipe` it lists what the screen offers the maker "
-            "(`id`, a party member, default the one controlled): each recipe's `id`, `name`, `product`, "
-            "whether it `canMake` now, the `skill` rank it needs and whether the maker has it (`skillHeld`), "
-            "and its `ingredients` with how many it needs and the pack has; nothing is made. With `recipe` (an "
-            "id or a name, from that list) and `count` (default 1) it makes it as the screen's Create button "
-            "does, one at a time, while the screen allows. Answers `made`, the recipe's `ingredients` after, "
-            "`done` and `reason`: what was short, or which skill rank was missing, if it stopped. The screen "
-            "opens for the character controlled, so another maker is given control first and the one before "
-            "given it back (`controlBack`). Refused for a maker without the skill; recipes are bought from "
-            "merchants. `showMs` (default 1000) is how long it lingers on the screen, so whoever watches sees "
-            "it; 0 for none.",
+            "Makes poisons, potions and traps through the game's crafting screen, so the game's own rules apply. "
+            "`kind` picks the skill: poison, herbalism or traps. The maker is `id`, a party member (default: the "
+            "creature you control).\n\n"
+            "- Without `recipe`, lists the recipes the screen offers the maker and makes nothing. Each has its "
+            "`id`, `name`, `product`, whether it `canMake` now, the `skill` rank it needs and whether the maker "
+            "has it (`skillHeld`), and its `ingredients` with how many it needs and how many the pack has.\n"
+            "- With `recipe` (an id or a name from that list), makes it `count` times, one at a time, like the "
+            "screen's Create button, for as long as the screen allows.\n\n"
+            "The answer includes `made`, the recipe's `ingredients` afterwards, `done`, and `reason`: what ran "
+            "short or which skill rank was missing, if it stopped. The screen opens for the creature you "
+            "control, so another maker is given control first and control is handed back afterwards "
+            "(`controlBack`). It refuses a maker without the skill. Recipes are bought from merchants.",
             Json{{"type", "object"},
                  {"properties",
                   {{"kind",
                     {{"type", "string"},
                      {"enum", {"poison", "herbalism", "traps"}},
-                     {"description", "The crafting skill whose recipes to use"}}},
+                     {"description", "The crafting skill whose recipes to use."}}},
                    {"id",
-                    {{"type", "string"}, {"description", "The maker, a party member; default the one controlled"}}},
-                   {"recipe", {{"description", "A recipe's id (a number) or name, as the list without one gives"}}},
-                   {"count", {{"type", "integer"}, {"minimum", 1}, {"maximum", kMostCount}}},
-                   {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}},
+                    {{"type", "string"},
+                     {"description", "The maker, a party member's creature id. Default: the creature you control."}}},
+                   {"recipe",
+                    {{"description", "The recipe to make: its id (a number) or name, as the list shows. Omit it to "
+                                     "list the recipes."}}},
+                   {"count",
+                    {{"type", "integer"},
+                     {"minimum", 1},
+                     {"maximum", kMostCount},
+                     {"description", "How many to make. Default 1."}}},
+                   {"showMs",
+                    {{"type", "integer"},
+                     {"minimum", 0},
+                     {"maximum", 10000},
+                     {"description", "How long to linger on the screen, in milliseconds, so whoever watches sees "
+                                     "it. Default 1000; 0 for none."}}}}},
                  {"required", {"kind"}}},
             Thread::Listener},
         [&bench, show](const Json &raw) -> ToolResult {

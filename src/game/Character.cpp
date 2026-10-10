@@ -666,33 +666,44 @@ void AddCharacter(Bench &bench, const Watch &watch)
     AddGift(bench, watch);
     bench.Tools().Add(
         Read("character",
-             "A creature's sheet (`id`, default the one controlled): race, gender, class, level, experience "
-             "and whether it can level up with the points left to spend, rank, the six attributes (total "
-             "and base), its combat numbers (attack, defense, armor, armor penetration, spellpower, "
-             "weapon damage, fatigue and the rest), health and mana or "
-             "stamina, weapon style and set, whether it is plot or immortal, for a member of the party `follower` "
-             "(its state, "
-             "approval, whether it is locked in and whether its own AI is on), `properties` (every property it has "
-             "that is not nothing, by the game's own "
-             "names: resistances, regeneration, damage), and what it wears, slot by slot in brief. "
-             "equipment gives the items "
-             "in full, inventory the backpack, creature its effects and abilities.",
-             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
+             "Reads a creature's character sheet. It returns:\n"
+             "- race, gender, class, level, experience, rank, and `canLevelUp` with the `pointsToSpend`.\n"
+             "- the six `attributes`, each with total and base.\n"
+             "- `combat` numbers: attack, defense, armor, armor penetration, spellpower, weapon damage, "
+             "fatigue and more.\n"
+             "- `health` and `manaStamina`, weapon style, and whether it is `plot` or `immortal`.\n"
+             "- for a party member, `follower`: its state, approval, whether it is locked in the party, and "
+             "whether its own AI is on.\n"
+             "- `properties`: every property that is not zero, by the game's own names (resistances, "
+             "regeneration, damage bonuses and so on).\n"
+             "- `equipment`: what it wears, slot by slot, in brief.\n\n"
+             "For more, call `equipment` (worn items in full), `inventory` (the backpack) or `creature` "
+             "(effects and abilities).",
+             Json{{"id",
+                   {{"type", "string"},
+                    {"description", "Who to read, by creature id. Default: the creature you control."}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindCharacter(watch, raw); });
 
     bench.Tools().Add(
         Read("abilities",
-             "Everything a creature knows (`id`, default the one controlled), not only what is on its "
-             "quickbar: its `talents`, `spells`, `skills` and `items`' abilities, each by id and name, with "
-             "whether it is `ready` (the engine's own check, the one the quickbar greys a button by: the "
-             "cost against its mana or stamina, the cooldown, what holds it; `why` says why not, as "
-             "\"Insufficient stamina\"), its `cost` in mana or stamina with its fatigue, and its cooldown. A "
-             "sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank "
-             "it has. An item's ability lists the `items` that give it (id, tag, name, stack) and how many "
-             "are `held`, for order action=ability with `item` or `itemTag`, and its `cooldown` (seconds "
-             "`remaining` of `total`) while one runs, as a talent's: a poultice drunk, until it comes back. "
-             "`count` is the game's own count of them.",
-             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
+             "Lists every ability a creature has, not only those on its quickbar: its `talents`, `spells`, "
+             "`skills`, and the abilities of its `items`. A skill with ranks has one entry per rank. `count` "
+             "is the game's own total.\n\n"
+             "Each entry has the ability's id and name, and:\n"
+             "- `ready`: whether it can be used now. This is the same check the quickbar uses to gray out a "
+             "button (mana or stamina, cooldown, anything stopping it). When false, `why` gives the reason, "
+             "such as \"Insufficient stamina\". For a sustained ability that is switched on, the check includes its "
+             "ongoing cost.\n"
+             "- `cost`: its mana or stamina cost, including fatigue.\n"
+             "- `cooldown`: while one runs, the seconds `remaining` of the `total`. This includes an item's "
+             "ability, such as a poultice already drunk.\n"
+             "- for an item's ability: the `items` that give it (id, tag, name, stack) and how many are "
+             "`held`. Use one with `order` action=ability and `item` or `itemTag`.",
+             Json{{"id",
+                   {{"type", "string"},
+                    {"description", "Who to read, by creature id. Default: the creature you control."}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindAbilities(watch, raw); });
 
     // A creature's tactics, by the scripts' own commands. Slots count from 1
@@ -716,27 +727,35 @@ void AddCharacter(Bench &bench, const Watch &watch)
 
     bench.Tools().Add(
         Read("equipment",
-             "What a creature wears (`id`, default the one controlled), each slot's item in full: name, tag, "
-             "template, base type and material (by the game's own labels), value, its stats (armor, damage, "
-             "defense, attack, crit chance, armor penetration, fatigue, optimum range and the rest, by "
-             "the game's own names), its properties with their power, and what using it does. `slots` "
-             "are the active weapon set's main, offhand and ammo, then chest, head, boots, gloves, cloak, "
-             "the rings, neck and belt; `otherWeapons` is the set not in hand.",
-             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
+             "Lists what a creature wears, with each item in full, as `item` returns it: name, tag, "
+             "template, base type, material, value, stats (armor, damage, defense, attack, crit chance, armor "
+             "penetration, fatigue, optimum range and more, by the game's own names), properties with their "
+             "power, and what using it does.\n\n"
+             "`slots` holds main, offhand and ammo for the weapon set in hand, then chest, head, boots, "
+             "gloves, cloak, ring1, ring2, neck and belt. `weaponSet` is the set in hand, and "
+             "`otherWeapons` is the other set.",
+             Json{{"id",
+                   {{"type", "string"},
+                    {"description", "Who to read, by creature id. Default: the creature you control."}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindEquipment(watch, raw); });
 
     bench.Tools().Add(
         Read("inventory",
-             "The backpack of a creature (`id`, default the hero, whose backpack is the party's), or what "
-             "a container holds without opening it (a chest, a body, a pile of bones: an `id` from "
-             "placeables): each item in brief (name, tag, template, base type, stack, value, plot), "
-             "with `count`; for a creature also the most it `holds` and `money`, the party's purse. `full: "
-             "true` gives each item as item does. Not what is worn: that is "
-             "equipment. A container's treasure may be chosen only as it is opened (a body's remains "
-             "read empty, then held a gem once open), so an empty list before is not the last word: the "
-             "loot tool opens and empties one.",
-             Json{{"id", {{"type", "string"}, {"description", "The creature or container; default the hero"}}},
-                  {"full", {{"type", "boolean"}, {"description", "Each item in full"}}}},
+             "Lists the items in a creature's backpack, or in a container without opening it (a chest, a "
+             "body, a pile of bones). The hero's backpack is the party's. Worn items are not included; "
+             "`equipment` lists those.\n\n"
+             "The answer has `count` and `items`, each in brief (name, tag, template, base type, stack, "
+             "value, plot). For a creature it also has `holds` (the most the backpack can hold) and "
+             "`money` (the party's).\n\n"
+             "A container's contents may only be decided when it is opened, so an empty list does not mean "
+             "it is empty. The `loot` tool opens a container and takes what is inside.",
+             Json{{"id",
+                   {{"type", "string"},
+                    {"description", "The creature or container, by id (containers come from `placeables`). "
+                                    "Default: the hero."}}},
+                  {"full",
+                   {{"type", "boolean"}, {"description", "Return each item in full, as `item` does. Default false."}}}},
              {}),
         [&watch](const Json &raw) -> ToolResult { return KindInventory(watch, raw); });
 
@@ -753,13 +772,13 @@ void AddCharacter(Bench &bench, const Watch &watch)
         [&watch](const Json &args) -> ToolResult { return KindLevelup(watch, args); });
 
     bench.Tools().Add(
-        Read("item",
-             "One item in full, by its `id` (as inventory and equipment give them): name, "
-             "tag, template, base type, material, stack and the most a stack holds, value, where it is "
-             "worn, its stats, its properties with their power, what using it does, and whether it is "
-             "plot, droppable or indestructible.",
-             Json{{"id", {{"type", "string"}, {"description", "The item: an id from inventory or equipment"}}}},
-             {"id"}),
+        Read(
+            "item",
+            "Reads one item in full: name, tag, template, base type, material, `stack` and `maxStack`, value, "
+            "the slot it is worn in (`equippedIn`), its stats, its properties with their power, what using "
+            "it does (`ability`), and whether it is plot, droppable or indestructible.",
+            Json{{"id", {{"type", "string"}, {"description", "The item, by its id from `inventory` or `equipment`."}}}},
+            {"id"}),
         [&watch](const Json &raw) -> ToolResult { return KindItem(watch, raw); });
 }
 
@@ -907,7 +926,7 @@ void WhyNotOn(ObjectId item, ObjectId who, Json &answer)
                               "(GUI.SelectedChar.CanChangeEquipment), or the slot is held"
                             : "the game says " + Narrow(api::GetName(who)) +
                                   " cannot use it (CanUseItem): a requirement not met, most often "
-                                  "an attribute (strength for heavy armour), or a restriction; the "
+                                  "an attribute (strength for heavy armor), or a restriction; the "
                                   "inventory screen's tooltip names it";
     if (Json restrictions = Restrictions(item); !restrictions.empty())
     {
@@ -974,20 +993,32 @@ static void AddEquip(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         ToolSpec{"equip",
-                 "Put on an item of the pack, or take one off, as the inventory screen's paperdoll does, so the "
-                 "game's rules hold (requirements, what a slot takes). `action`: equip (default) or unequip; "
-                 "`item`, an id from inventory or equipment; `slot` for equip, by name (main, "
-                 "offhand, ring1, ring2, ...) or number, default the item's first. It acts on the character the "
-                 "interface has selected; `id`, another party member, is made the one selected for the equip and "
-                 "control given back after (`selectedFirst`). Answers what the "
-                 "slot held `before` and holds `after`, and whether it took (`equipped`); the item a slot held "
-                 "goes back to the pack.",
+                 "Puts an item from the pack on a party member, or takes one off, the way the inventory screen "
+                 "does, so the game's rules apply (requirements, which items fit which slot).\n\n"
+                 "`action` is one of:\n"
+                 "- equip (default): puts `item` in `slot`. Whatever the slot held goes back to the pack. "
+                 "Returns what the slot held `before` and holds `after`, and whether it worked (`equipped`). "
+                 "If it did not, the answer says whether the game thinks the creature can use the item "
+                 "(`canUse`), with its `requirements` and `restrictions` where known.\n"
+                 "- unequip: takes `item` off and puts it in the pack. Returns whether it came off "
+                 "(`unequipped`).\n\n"
+                 "It acts on the party member selected in the interface. If `id` names another, that one is "
+                 "selected for the call and control is handed back afterwards (`selectedFirst`).",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"equip", "unequip"}}}},
-                        {"item", {{"type", "string"}, {"description", "The item's id"}}},
-                        {"slot", {{"description", "equip: the slot's name or number; default the item's first"}}},
-                        {"id", {{"type", "string"}, {"description", "The party member (default: the one selected)"}}}}},
+                       {{"action",
+                         {{"type", "string"},
+                          {"enum", {"equip", "unequip"}},
+                          {"description", "What to do. Default: equip."}}},
+                        {"item",
+                         {{"type", "string"}, {"description", "The item, by its id from `inventory` or `equipment`."}}},
+                        {"slot",
+                         {{"description", "For equip: the slot, by name (main, offhand, ring1, ring2, ...) or "
+                                          "number. Default: the first slot the item fits."}}},
+                        {"id",
+                         {{"type", "string"},
+                          {"description", "The party member, by creature id. Default: the one selected in the "
+                                          "interface."}}}}},
                       {"required", {"item"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolEquip(bench, watch, raw); });

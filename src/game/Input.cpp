@@ -222,20 +222,24 @@ Json MovieCall(const Args &args)
 void AddInput(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
-        Spec(
-            "input",
-            "Send the game one of its own messages by its text. `message`: \"Receiver.Message arguments\", what "
-            "the interface's buttons send (\"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; gui shows what each "
-            "button of a box sends). `binding`: \"Message arguments\", what a key's binding names, sent as "
-            "pressing the key sends it (\"UserTogglePauseMessage\", \"SelectPartyMemberIndexMessage 0 1\"). The "
-            "general way in when no tool fits, as `script` is for script commands; the game does whatever the "
-            "message means, so know what it is. One that names a save (the quicksave key's \"SaveGameMessage -1 "
-            "2\" writes over the player's quicksave) is refused unless `confirmSave` is true. Answers `sent`: "
-            "false means the engine knows no such receiver or message. movie reaches what no message does.",
-            Json{{"message", {{"type", "string"}, {"description", "Receiver.Message arguments"}}},
-                 {"binding", {{"type", "string"}, {"description", "Message arguments, as a key's binding has it"}}},
-                 {"confirmSave", {{"type", "boolean"}, {"description", "Send a text that names a save all the same"}}}},
-            {}),
+        Spec("input",
+             "Sends the game one of its own internal messages, written as text. Use it when no other tool fits, "
+             "as `script` is for script commands. The game does whatever the message means, so know what it "
+             "does before sending it. Pass exactly one of:\n\n"
+             "- `message`: what an interface button sends, as \"Receiver.Message arguments\" (for example "
+             "\"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; `gui` shows what each button of a message box sends).\n"
+             "- `binding`: what a key's binding names, as \"Message arguments\", sent the way a key press sends it "
+             "(for example \"UserTogglePauseMessage\" or \"SelectPartyMemberIndexMessage 0 1\").\n\n"
+             "A text that saves the game is refused unless `confirmSave` is true: the quicksave key's "
+             "\"SaveGameMessage -1 2\" overwrites the player's quicksave. The answer's `sent` is false if the "
+             "engine knows no such receiver or message; it also includes a `cursor`. `movie` reaches what no "
+             "message does.",
+             Json{{"message",
+                   {{"type", "string"}, {"description", "A button's message: \"Receiver.Message arguments\"."}}},
+                  {"binding", {{"type", "string"}, {"description", "A key binding's message: \"Message arguments\"."}}},
+                  {"confirmSave",
+                   {{"type", "boolean"}, {"description", "Send a text that saves the game anyway. Default false."}}}},
+             {}),
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "input");
             if (watch.Mode() < 0)
@@ -261,26 +265,30 @@ void AddInput(Bench &bench, const Watch &watch)
         });
     bench.Tools().Add(
         Spec("movie",
-             "Drive a shown screen's own script, what no message reaches. `screen`, a screen shown, by its name in "
-             "gui (\"Options\"); then one of: `call` an ActionScript function by its path with `args` "
-             "(\"SceneManager.PlayScene\", [\"Controls\"] shows the Options' Controls page), `set` a variable to "
-             "`value`, `get` a path's value, or list a clip's `children` (each's `depth` and `path`, to `get` or "
-             "`call` under; `placed`: true for those placed in the movie's authoring as well as those made at run "
-             "time). A call answers whether it `ran` and what it returned, a get or a call the `type` and `value` "
-             "(an object or a clip as its string, a clip's being its full path), a set whether it was `done`.",
-             Json{{"screen", {{"type", "string"}, {"description", "A shown screen's name, as gui gives it"}}},
-                  {"call", {{"type", "string"}, {"description", "An ActionScript function's path in its movie"}}},
-                  {"args", {{"type", "array"}, {"description", "The call's arguments: strings, numbers, bools"}}},
-                  {"set", {{"type", "string"}, {"description", "A variable's path in its movie"}}},
-                  {"value", {{"description", "What `set` puts there: a string, number or bool"}}},
-                  {"get",
-                   {{"type", "string"},
-                    {"description", "A path in its movie: answers its `type` and `value` (a number, a bool, a "
-                                    "string; an object or a clip as its string, a clip's being its full path)"}}},
-                  {"children", {{"type", "string"}, {"description", "A clip's path: its children, by depth"}}},
+             "Drives the ActionScript of a screen that is shown, to reach what no message does (such as a tab "
+             "or a scroll). Pass `screen` (its name from `gui`, such as \"Options\") and exactly one of:\n\n"
+             "- `call`: call a function by its path, with `args`. For example \"SceneManager.PlayScene\" with "
+             "[\"Controls\"] shows the Options screen's Controls page. Returns whether it `ran` and what it "
+             "returned (`type` and `value`).\n"
+             "- `get`: read a path. Returns its `type` and `value`.\n"
+             "- `set`: set a variable to `value`. Returns whether it was `done` and whether the path `existed`; "
+             "setting a path that did not exist creates a new variable that nothing reads.\n"
+             "- `children`: list a clip's children, each with its `depth` and `path` (to `get` or `call` "
+             "under).\n\n"
+             "An object or clip comes back as a string; a clip's string is its full path.",
+             Json{{"screen", {{"type", "string"}, {"description", "The shown screen's name, from `gui`."}}},
+                  {"call", {{"type", "string"}, {"description", "The path of an ActionScript function to call."}}},
+                  {"args",
+                   {{"type", "array"},
+                    {"description", "With `call`: the arguments, as strings, numbers or booleans. Default none."}}},
+                  {"set", {{"type", "string"}, {"description", "The path of a variable to set."}}},
+                  {"value", {{"description", "With `set`: the new value, a string, number or boolean."}}},
+                  {"get", {{"type", "string"}, {"description", "The path to read."}}},
+                  {"children", {{"type", "string"}, {"description", "The path of a clip whose children to list."}}},
                   {"placed",
                    {{"type", "boolean"},
-                    {"description", "With `children`: the clips placed in authoring too (depths below 0)"}}}},
+                    {"description", "With `children`: also list clips built into the screen's design, not only "
+                                    "those made while it runs. Default false."}}}},
              {"screen"}),
         [&watch](const Json &raw) -> ToolResult {
             const Args args(raw, "movie");

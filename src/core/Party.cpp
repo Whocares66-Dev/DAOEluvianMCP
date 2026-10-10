@@ -343,23 +343,31 @@ void AddPartyTool(Bench &bench, std::chrono::milliseconds settle)
 {
     bench.Tools().Add(
         ToolSpec{"party",
-                 "The party picker, the screen the game shows after a follower joins and at camp, as a player "
-                 "works it. `action`: look, who is `chosen` (each slot's name and tag); choose `name`, a "
-                 "follower standing in the picker's scene, found by holding the cursor across the view until "
-                 "the name under it is theirs (some seconds), then clicked as a player clicks them; unchoose "
-                 "`name`, a chosen one, as a click on their portrait; clear, all but those the story keeps; "
-                 "accept, the party as chosen, answering the `party` once the picker has closed. Four may be "
-                 "chosen: unchoose one before choosing a fifth. Refused when the picker is not up (health "
-                 "says mode partypicker when it is), and choose, unchoose and clear when it is up with a "
-                 "`status` other than use (the scripts' GetPartyPickerGUIStatus: one opened by "
-                 "ShowPartyPickerGUI alone may be noUse; SetPartyPickerGUIStatus 2 before it opens it to "
-                 "change the party).",
+                 "Works the party picker, the screen the game shows after a follower joins and at camp, the way a "
+                 "player does. It refuses when the picker is not open (`health` reports mode `partypicker` when "
+                 "it is).\n\n"
+                 "`action`:\n"
+                 "- `look`: returns who is `chosen` (each slot's name and tag).\n"
+                 "- `choose`: picks the follower `name`, who must be standing in the picker's scene. The tool "
+                 "sweeps the cursor across the view until the name under it matches (a few seconds), then clicks "
+                 "them.\n"
+                 "- `unchoose`: removes the chosen follower `name`, like clicking their portrait.\n"
+                 "- `clear`: removes everyone except those the story keeps.\n"
+                 "- `accept`: confirms the party as chosen, and returns the `party` once the picker has closed.\n\n"
+                 "Up to four can be chosen: unchoose one before choosing a fifth. `choose`, `unchoose` and "
+                 "`clear` refuse when the picker's `status` is not `use`, meaning the picker is only for viewing. "
+                 "A picker you open yourself with the script command ShowPartyPickerGUI may be view-only: call "
+                 "SetPartyPickerGUIStatus with 2 through `script` before opening it, so it can change the party.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"look", "choose", "unchoose", "accept", "clear"}}}},
+                       {{"action",
+                         {{"type", "string"},
+                          {"enum", {"look", "choose", "unchoose", "accept", "clear"}},
+                          {"description", "What to do; each action is described above."}}},
                         {"name",
                          {{"type", "string"},
-                          {"description", "choose, unchoose: a follower's name as the picker shows it, or a tag"}}}}},
+                          {"description", "With `choose` or `unchoose`: a follower's name as the picker shows it, "
+                                          "or their tag."}}}}},
                       {"required", {"action"}}},
                  Thread::Listener},
         [&bench, settle](const Json &raw) -> ToolResult {

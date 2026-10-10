@@ -323,35 +323,46 @@ void AddDialogueTool(Bench &bench)
         Budgeted(
             ToolSpec{
                 "dialogue",
-                "Read or answer the conversation on the screen, or skip a cutscene. `action`: look, the conversation "
-                "(health's mode is dialog while one is): the `line` spoken last, its speaker, `by` and `to`, the "
-                "conversation's `owner`, and the `replies` the player may choose from now, each with its "
-                "`place`; `cutscene` and `movie` say whether one is playing; choose, the reply at "
-                "`place` among those look lists, as a click on it; continue, as the skip key: "
-                "the line being spoken is cut short and its replies offered, and a reply with no text is gone "
-                "through; skip_cutscene, as Escape in a cutscene or a pre-rendered movie. With `until`: "
-                "\"choice\", it goes on from there to the next real choice in one call: an answer the game "
-                "ignored is asked again, a reply with no text gone through, and the lines play as they would "
-                "for a player (`skipLines`: true cuts each short); it answers every line spoken on the way "
-                "(`lines`: speaker as the file writes it, `by` and `to` the creatures, and text), the `replies` of "
-                "the next choice, or that it `ended` and the "
-                "`mode` after (explore, a cutscene, a fight, an area loading). Without `until` it answers that "
-                "the game was asked, and `cursor`: wait_for eluvian.dialogue.chosen, .line or "
-                "eluvian.mode.changed from it. `budgetMs` (default 60000) bounds an `until`.",
+                "Reads or answers the conversation on screen, or skips a cutscene. While a conversation is open, "
+                "`health` reports mode `dialog`.\n\n"
+                "`action`:\n"
+                "- `look`: returns the conversation: the `line` spoken last, its speaker, `by` and `to`, the "
+                "conversation's `owner`, and the `replies` you can choose from now, each with its `place`. "
+                "`cutscene` and `movie` say whether one is playing.\n"
+                "- `choose`: picks the reply at `place` (as `look` lists them), like clicking it.\n"
+                "- `continue`: like the skip key. It cuts the current line short and shows its replies, and goes "
+                "through a reply with no text.\n"
+                "- `skip_cutscene`: like Escape in a cutscene or a pre-rendered movie.\n\n"
+                "With `until: \"choice\"`, the call carries on to the next real choice. A choice the game ignored "
+                "is made again, replies with no text are gone through, and lines play at normal speed "
+                "(`skipLines: true` cuts each short). The answer lists every line spoken on the way (`lines`: the "
+                "speaker as the file names it, `by` and `to` as creatures, and the text), then either the "
+                "`replies` of the next choice, or `ended` and the `mode` after (explore, a cutscene, a fight, an "
+                "area loading).\n\n"
+                "Without `until`, the answer says the game was asked and gives a `cursor`: call `wait_for` from it "
+                "on eluvian.dialogue.chosen, eluvian.dialogue.line or eluvian.mode.changed.",
                 Json{{"type", "object"},
                      {"properties",
-                      {{"action", {{"type", "string"}, {"enum", {"look", "choose", "continue", "skip_cutscene"}}}},
+                      {{"action",
+                        {{"type", "string"},
+                         {"enum", {"look", "choose", "continue", "skip_cutscene"}},
+                         {"description", "What to do; each action is described above."}}},
                        {"place",
                         {{"type", "integer"},
                          {"minimum", 0},
-                         {"description", "action=choose: which reply, from 0, as dialogue action=look lists"}}},
+                         {"description", "With `choose`: which reply, counting from 0, as `look` lists them."}}},
                        {"until",
                         {{"type", "string"},
                          {"enum", {"step", "choice"}},
-                         {"description", "choice: go on to the next real choice or the conversation's end"}}},
+                         {"description", "\"choice\" carries on to the next real choice or the end of the "
+                                         "conversation. Default \"step\": one step only."}}},
                        {"skipLines",
-                        {{"type", "boolean"}, {"description", "with until: cut each line short; default false"}}},
-                       {"budgetMs", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 300000}}}}},
+                        {{"type", "boolean"}, {"description", "With `until`: cut each line short. Default false."}}},
+                       {"budgetMs",
+                        {{"type", "integer"},
+                         {"minimum", 1000},
+                         {"maximum", 300000},
+                         {"description", "The longest an `until` call may take, in milliseconds. Default 60000."}}}}},
                      {"required", {"action"}}},
                 Thread::Listener},
             "budgetMs", 60000),

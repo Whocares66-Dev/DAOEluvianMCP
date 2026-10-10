@@ -91,19 +91,28 @@ std::filesystem::path GameScreenshot(Bench &bench, const Watch &watch)
 void AddScreenshot(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
-        ToolSpec{"screenshot",
-                 "A picture of the game as it is now, interface and all; no window over the game gets in the "
-                 "way. `source`: window (the default) has Windows draw the game's window from inside, at once, "
-                 "even while frames stop; game has the game take its own, as its screenshot key does, a frame "
-                 "or more later. Answers the picture as an image, with its size and file (Screenshots\\Eluvian "
-                 "or the game's Screenshots\\User); `image: false` answers the file alone, to save tokens; "
-                 "`quality` from 0.1 to 1 (window only), 0.8 by default.",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"source", {{"type", "string"}, {"enum", {"window", "game"}}}},
-                        {"image", {{"type", "boolean"}, {"description", "Answer the picture itself; default true"}}},
-                        {"quality", {{"type", "number"}, {"description", "JPEG quality, 0.1 to 1; default 0.8"}}}}}},
-                 Thread::Listener, true},
+        ToolSpec{
+            "screenshot",
+            "Takes a picture of the game as it is now, interface included. Other windows on top of the game "
+            "do not get in the way. `source`:\n\n"
+            "- `window` (the default): Windows draws the game's window at once, even while the game is not "
+            "drawing frames. If the display is asleep or the session locked, the picture is all black "
+            "(`black`); use `game` then.\n"
+            "- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later.\n\n"
+            "Returns the picture as an image, with its `width`, `height` and `file` (in Screenshots\\Eluvian; "
+            "for `game`, the game's own file is `original`). Pass `image: false` to get only the file and "
+            "save tokens.",
+            Json{{"type", "object"},
+                 {"properties",
+                  {{"source",
+                    {{"type", "string"},
+                     {"enum", {"window", "game"}},
+                     {"description", "Who takes the picture. Default window."}}},
+                   {"image",
+                    {{"type", "boolean"}, {"description", "Include the picture itself in the answer. Default true."}}},
+                   {"quality",
+                    {{"type", "number"}, {"description", "With `window`: JPEG quality, 0.1 to 1. Default 0.8."}}}}}},
+            Thread::Listener, true},
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "screenshot");
             const auto source = args.Choice("source", {"window", "game"}, "window");

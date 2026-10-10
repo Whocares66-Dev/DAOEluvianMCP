@@ -86,29 +86,42 @@ void AddWaitUntilTool(Bench &bench)
     const Json schema = {
         {"type", "object"},
         {"properties",
-         {{"tool", {{"type", "string"}, {"description", "The tool to ask, as it is called"}}},
-          {"args", {{"type", "object"}, {"description", "Its arguments"}}},
+         {{"tool",
+           {{"type", "string"}, {"description", "The tool to call, by name (not `wait_until` or `scenario`)."}}},
+          {"args", {{"type", "object"}, {"description", "The tool's arguments. Default: none."}}},
           {"pointer",
-           {{"type", "string"}, {"description", "Where in its answer, a JSON pointer: \"/health/current\""}}},
-          {"equals", {{"description", "The value there equals this"}}},
-          {"notEquals", {{"description", "The value there is anything but this"}}},
-          {"exists", {{"type", "boolean"}, {"description", "There is, or is not, a value there"}}},
-          {"atLeast", {{"type", "number"}}},
-          {"atMost", {{"type", "number"}}},
-          {"intervalMs", {{"type", "integer"}, {"minimum", 50}, {"maximum", 60000}, {"description", "250 by default"}}},
+           {{"type", "string"},
+            {"description", "Where to look in the tool's answer, as a JSON pointer like \"/health/current\". "
+                            "Default \"\": the whole answer."}}},
+          {"equals", {{"description", "Holds when the value equals this."}}},
+          {"notEquals", {{"description", "Holds when the value is anything but this."}}},
+          {"exists",
+           {{"type", "boolean"},
+            {"description", "Holds when there is (true) or is not (false) a value at `pointer`."}}},
+          {"atLeast", {{"type", "number"}, {"description", "Holds when the value is a number at least this."}}},
+          {"atMost", {{"type", "number"}, {"description", "Holds when the value is a number at most this."}}},
+          {"intervalMs",
+           {{"type", "integer"},
+            {"minimum", 50},
+            {"maximum", 60000},
+            {"description", "How often to call the tool, in milliseconds. Default 250."}}},
           {"timeoutMs",
-           {{"type", "integer"}, {"minimum", 0}, {"maximum", kMostWaitMs}, {"description", "30000 by default"}}}}},
+           {{"type", "integer"},
+            {"minimum", 0},
+            {"maximum", kMostWaitMs},
+            {"description", "How long to wait, in milliseconds. Default 30000."}}}}},
         {"required", {"tool"}}};
     bench.Tools().Add(
         Budgeted(
-            ToolSpec{
-                "wait_until",
-                "Wait until a condition on a tool's answer holds: the tool is called every `intervalMs` until the "
-                "value at `pointer` in its answer meets the expectation (equals, notEquals, exists, atLeast, "
-                "atMost), or `timeoutMs` runs out. For a state no event marks: a creature dead, the party's health "
-                "back, a mode gone. Answers `held`, the last `value`, `tries` and `waitedMs`; a call that failed "
-                "(the game loading) counts as not yet. For an event, wait_for.",
-                schema, Thread::Listener, true},
+            ToolSpec{"wait_until",
+                     "Waits until a condition on a tool's answer holds. It calls `tool` with `args` every `intervalMs` "
+                     "until the value at `pointer` in the answer meets the expectation (`equals`, `notEquals`, "
+                     "`exists`, `atLeast` or `atMost`), or `timeoutMs` runs out. Use it for a state no event marks: a "
+                     "creature dead, the party's health back, a mode gone. To wait for an event, use `wait_for`.\n\n"
+                     "The answer includes `held`, the last `value`, `tries` and `waitedMs`, and `unmet` or `lastError` "
+                     "when the condition did not hold. A failed call (for example while the game loads) counts as not "
+                     "yet.",
+                     schema, Thread::Listener, true},
             "timeoutMs", 30000),
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "wait_until");

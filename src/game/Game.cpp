@@ -341,31 +341,49 @@ void AddGame(Bench &bench, const Watch &watch)
     // mod, through its own settings.
     bench.Tools().Add(
         Spec("saves",
-             "The game's saves. `action`: list, the saves of `character` (or every one) with each one's area, "
-             "name, time played and level, as the load screen shows them; load, a save by `character` (default "
-             "the one played, or the menu's), `kind` (manual, auto, quick; default manual) and `number`, from the "
-             "main menu or in the world, as the load screen loads; force_load, the game's Force Load for a load "
-             "it answered with \"requires the following content\" (gui), which loads without that content: such "
-             "a game is never saved; save, a new manual save in the next free slot, with `name` (the default, and "
-             "what a test does: it writes over nothing). A slot `number` that holds a save, and `kind` quick (the "
-             "player's quicksave), are refused unless `overwrite` is true, for a test's own save. A load or save "
-             "answers that the game was asked, and `cursor`: wait_for eluvian.game.loaded or eluvian.game.saved "
-             "from it. The game declines a save in combat or a cutscene.",
-             Json{{"action", {{"type", "string"}, {"enum", {"list", "load", "force_load", "save"}}}},
-                  {"character", {{"type", "string"}, {"description", "A character's save folder, \"Aedan\""}}},
-                  {"kind", {{"type", "string"}, {"enum", {"manual", "auto", "quick"}}}},
-                  {"number", {{"type", "integer"}, {"description", "The slot's number"}}},
-                  {"name", {{"type", "string"}, {"description", "save: a manual save's name"}}},
+             "Lists, loads and makes the game's saves. `action`:\n\n"
+             "- `list`: the saves of `character` (or of every character), each with its area, name, time played "
+             "and level, as the load screen shows them.\n"
+             "- `load`: loads the save picked by `character`, `kind` and `number`, from the main menu or in the "
+             "world. Refused during a conversation.\n"
+             "- `force_load`: presses the game's Force Load after a load it answered with \"requires the "
+             "following content\" (`gui` shows that message). The game loads without that content, and such a "
+             "game is never saved.\n"
+             "- `save`: makes a new manual save in the next free slot, named `name`. This is what a test should "
+             "do, since it overwrites nothing.\n\n"
+             "Saving into a slot `number` that already holds a save, or with `kind` quick (the player's "
+             "quicksave), is refused unless `overwrite` is true. The game also refuses to save in combat or a "
+             "cutscene.\n\n"
+             "A load or save only asks the game: the answer includes a `cursor`, and `wait_for` "
+             "eluvian.game.loaded or eluvian.game.saved from it says when it is done. If no load event comes, "
+             "the game may be showing a message box; `gui` reads it.",
+             Json{{"action",
+                   {{"type", "string"},
+                    {"enum", {"list", "load", "force_load", "save"}},
+                    {"description", "What to do; each action is described above."}}},
+                  {"character",
+                   {{"type", "string"},
+                    {"description", "A character's save folder, such as \"Aedan\". Default: the character being "
+                                    "played (or, with `list`, every character)."}}},
+                  {"kind",
+                   {{"type", "string"},
+                    {"enum", {"manual", "auto", "quick"}},
+                    {"description", "The kind of save. Default manual."}}},
+                  {"number",
+                   {{"type", "integer"},
+                    {"description", "The slot's number. Default for `load`: 1; for `save`: the next free slot."}}},
+                  {"name", {{"type", "string"}, {"description", "With `save`: the save's name."}}},
                   {"overwrite",
                    {{"type", "boolean"},
-                    {"description", "save: write over the save in slot `number`, or the quicksave"}}}},
+                    {"description", "With `save`: allow writing over the save in slot `number`, or over the "
+                                    "quicksave. Default false."}}}},
              {"action"}),
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolSaves(bench, watch, raw); });
     bench.Tools().Add(
         Spec("pause",
-             "Pause the game or let it run, as the space bar does: `paused` true pauses, false unpauses. Answers "
-             "whether it is `paused` after. Tools on the frame thread run paused or not.",
-             Json{{"paused", {{"type", "boolean"}, {"description", "true pauses, false lets it run"}}}}, {"paused"}),
+             "Pauses or unpauses the game, like the space bar. Returns whether it is `paused` afterwards. Other "
+             "tools keep working while the game is paused.",
+             Json{{"paused", {{"type", "boolean"}, {"description", "true to pause, false to unpause."}}}}, {"paused"}),
         [&watch](const Json &raw) -> ToolResult {
             const Args args(raw, "pause");
             auto &app = RunningApp(watch, "pause");
@@ -374,11 +392,14 @@ void AddGame(Bench &bench, const Watch &watch)
         });
     bench.Tools().Add(
         Spec("press",
-             "Press a `button` by its label or place: of the game's message box, or with none up, of the loot "
-             "panel a container opens, Take All or Close (gui reads both): the game is sent what a click on it "
-             "sends. Take All answers what was `taken`, what is `left` and whether the backpack was `full`, and "
-             "closes the panel unless it was.",
-             Json{{"button", {{"description", "A button's label (\"Take All\") or place from 0"}}}}, {"button"}),
+             "Presses a button, just as a click would. If a message box is up, the button is one of its own; "
+             "otherwise it is one of the loot panel a container opens: Take All or Close. `gui` shows both.\n\n"
+             "For a message box, the answer includes the button `pressed` and the `box` text. Take All returns "
+             "what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel unless "
+             "it was full.",
+             Json{{"button",
+                   {{"description", "The button's label (such as \"Take All\") or its position, counting from 0."}}}},
+             {"button"}),
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "press");
             RunningApp(watch, "press");

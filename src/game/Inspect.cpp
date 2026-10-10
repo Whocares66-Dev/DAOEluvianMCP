@@ -983,25 +983,30 @@ void AddInspect(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         Read("state",
-             "The game mode, pause, the area, the hero, the creature controlled, the party and who of it is "
-             "selected in the party bar, the game's message box if one is up (`popup`: its text and "
-             "buttons), and the event cursor.",
+             "Returns the game's current state: the `mode`, whether it is `paused`, the `area`, the `hero`, "
+             "the creature you control (`controlled`), the `party` and which members are `selected` in the "
+             "party bar, the game's message box if one is open (`popup`: its text and buttons), and the "
+             "event `cursor` to pass as `since` to `events` or `wait_for`.",
              Json::object(), {}),
         [&bench, &watch](const Json &args) -> ToolResult { return KindGame(bench, watch, args); });
 
     bench.Tools().Add(
         Read("data",
-             "The game's data tree, which its interface is bound to: the value at a dotted `path` "
-             "(\"GUI.SelectedChar\", \"Map.ShowAllLabels\", \"GUIPopupLayer.DialogBoxText\"), as `text` "
-             "and as `number`, and its `type`; or several at once with `paths`. `found` is false for a path "
-             "the tree has not. What the interface shows of the game is read here without a picture. "
-             "`members: true` reads the list at `path` (a container's Container.Inventory, the level-up "
-             "screen's chains): `count` and each member's path, to read the same way. "
-             "Reading only. Answers in any mode.",
-             Json{{"path", {{"type", "string"}, {"description", "A dotted path in the data tree"}}},
-                  {"paths", {{"type", "array"}, {"description", "Several paths, answered together"}}},
+             "Reads the game's data tree, the values its interface displays. Use it to read what a screen "
+             "shows without a screenshot.\n\n"
+             "Pass a dotted `path` (\"GUI.SelectedChar\", \"Map.ShowAllLabels\", "
+             "\"GUIPopupLayer.DialogBoxText\") to get its value as `text` and as `number`, and its `type`; or "
+             "pass `paths` to read several at once (`values`). `found` is false for a path that does not "
+             "exist.\n\n"
+             "With `members: true`, it lists the members of the list at `path` (e.g. Container.Inventory, or "
+             "the level-up screen's chains): their `count` and each member's path, which you can read the "
+             "same way. Read only; works in any mode once the game has started.",
+             Json{{"path", {{"type", "string"}, {"description", "A dotted path in the data tree."}}},
+                  {"paths", {{"type", "array"}, {"description", "Up to 64 paths to read together."}}},
                   {"members",
-                   {{"type", "boolean"}, {"description", "The list at `path`: its members' paths and how many"}}}},
+                   {{"type", "boolean"},
+                    {"description", "List the members of the list at `path` instead of reading its value. "
+                                    "Default false."}}}},
              {}),
         [&watch](const Json &raw) -> ToolResult { return KindData(watch, raw); });
 
@@ -1017,36 +1022,38 @@ void AddInspect(Bench &bench, const Watch &watch)
     // was not looked into.
     bench.Tools().Add(
         Read("plot",
-             "The state of a quest or story: the flags of a plot, named by its resource in `plot` "
-             "(\"bed000pt_main\", \"gen00pt_party\"; the names are the game's plot files, and a mod's own). "
-             "Answers its `name` as the journal shows it and `flags`, each with `flag`, `name` and `set`, "
-             "with the `journal` text of a set one that has any; `set` lists the names of those set. "
-             "`flag` (a number or a name) asks for one. Flags numbered from 256 are computed by the plot's "
-             "script, which a read here does not run: take those as the game's answer without it. "
-             "Reading only.",
-             Json{{"plot", {{"type", "string"}, {"description", "The plot's resource, like bed000pt_main"}}},
-                  {"flag", {{"description", "One flag, by number or name"}}}},
+             "Returns the state of a quest or story: the flags of the plot named in `plot`. Plot names are "
+             "the game's plot files (and a mod's own), e.g. \"bed000pt_main\" or \"gen00pt_party\"; "
+             "`resources` with type plo and `journal` list them.\n\n"
+             "The answer includes the plot's `name` as the journal shows it, its `flags`, each with `flag` "
+             "(number), `name`, whether it is `set`, and the `journal` text of a set flag that has one, and "
+             "`set`, the names of all set flags. Pass `flag` to get just that one.\n\n"
+             "Flags numbered 256 and up are normally computed by the plot's script, which this tool does not "
+             "run; their values are what the game returns without it. Read only.",
+             Json{{"plot", {{"type", "string"}, {"description", "The plot's name, e.g. bed000pt_main."}}},
+                  {"flag", {{"description", "One flag to read, by number or name. Default: all flags."}}}},
              {"plot"}),
         [&watch](const Json &raw) -> ToolResult { return KindPlot(watch, raw); });
 
     bench.Tools().Add(
         Read("cursor",
-             "What the game says is under the real mouse cursor now, in explore and combat mode: `object`, "
-             "the one a click would act on (null over none), the `ground` point under it and whether it is "
-             "`walkable`, and `hits`, everything the cursor's ray meets, nearest first. After moving the "
-             "real mouse, ask before clicking: a click beside a creature is a move order. The game picks "
-             "again 15 times a second. No `hits` at all, not even ground, means the game cast no ray: the "
-             "cursor is over a piece of the interface (a creature's name label among them) or outside "
-             "the picture.",
+             "Returns what is under the real mouse cursor right now, in explore and combat mode: `object`, "
+             "what a click would act on (null if nothing), the `ground` point under it and whether it is "
+             "`walkable`, and `hits`, everything the cursor's ray meets, nearest first (up to 8).\n\n"
+             "After moving the real mouse, check here before clicking: a click just beside a creature is a "
+             "move order. The game updates this 15 times a second. Empty `hits`, not even ground, means the "
+             "cursor is over the interface (including a creature's name label) or outside the game's picture.",
              Json::object(), {}),
         [&watch](const Json &args) -> ToolResult { return KindCursor(watch, args); });
 
     bench.Tools().Add(
         Read("window",
-             "The game's window on the desktop, for a test that must use the real mouse: `client`, its "
-             "picture's top left corner in desktop pixels and its size, and whether it is minimised or the "
-             "`foreground` window (the one the mouse and keys go to). A place in a screenshot, as a fraction "
-             "of the picture, times the size, plus the corner, is where to click. Answers in any mode.",
+             "Returns where the game's window is on the desktop, for tests that must use the real mouse: "
+             "`client`, the top left corner of the game's picture in desktop pixels (`x`, `y`) and its "
+             "`width` and `height`, and whether the window is `minimised` or the `foreground` window (the "
+             "one that gets mouse and keyboard input).\n\n"
+             "To click a spot seen in a screenshot, take its position as a fraction of the picture, multiply "
+             "by the size and add the corner. Works in any mode.",
              Json::object(), {}),
         [](const Json &args) -> ToolResult { return KindWindow(args); });
 
@@ -1063,52 +1070,75 @@ void AddInspect(Bench &bench, const Watch &watch)
         [&watch](const Json &args) -> ToolResult { return KindDialogue(watch, args); });
 
     bench.Tools().Add(
-        Read("placeables",
-             "The doors, chests, levers and other placeables in the area (or within `radius` of `near`), "
-             "nearest first: id, name, tag, template, position, distance, `state` (the placeable's own "
-             "number: a door's or a chest's changes when it opens) and `stateName` (shut, locked, open, "
-             "destroyed), what a use of it does now (`action`, `actionName`: loot, unlock, open, use, ...), "
-             "whether it is active and can be interacted with, what its tooltip says, and its `lock`: "
-             "whether it needs a key, the key's tag and whether the party holds it (`keyHeld`), and the "
-             "level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
-             "waypoint's there). order action=use uses one. `interactive: true` keeps only those that can be "
-             "used; `brief: true` answers a line each (`lines`) instead.",
-             Json{{"near",
-                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
-                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
-                  {"includeInactive",
-                   {{"type", "boolean"}, {"description", "Those the area keeps hidden too; default false"}}},
-                  {"interactive", {{"type", "boolean"}, {"description", "Only those that can be used (true)"}}},
-                  {"brief", {{"type", "boolean"}, {"description", "A thing a line (`lines`) instead of in full"}}}},
-             {}),
+        Read(
+            "placeables",
+            "Lists the doors, chests, levers and other placeables in the area, nearest first. Each has its "
+            "`id`, `name`, `tag`, `template`, `position` and `distance`, and:\n\n"
+            "- `state`, the placeable's own state number (it changes when a door or chest opens), and "
+            "`stateName`: shut, locked, open or destroyed.\n"
+            "- `action` and `actionName`: what using it does now (loot, unlock, open, use, ...).\n"
+            "- `active`, `interactive` (whether it can be used) and `popup`, its tooltip text.\n"
+            "- `lock`: whether it needs a key (`keyRequired`), the key's tag (`keyTag`), whether the party "
+            "has it (`keyHeld`), and the lock-picking level needed (`pickLevel`).\n"
+            "- `leadsTo`, for a way out of the area: the destination area's tag and waypoint.\n\n"
+            "Use one with `order` action=use.",
+            Json{{"near",
+                  {{"type", "string"},
+                   {"description", "Measure distances from this creature, by id. Default: the creature you "
+                                   "control."}}},
+                 {"radius",
+                  {{"type", "number"},
+                   {"description", "Only those within this many meters of `near`. Default: "
+                                   "the whole area."}}},
+                 {"includeInactive",
+                  {{"type", "boolean"}, {"description", "Also list placeables the area keeps hidden. Default false."}}},
+                 {"interactive",
+                  {{"type", "boolean"},
+                   {"description", "true: only those that can be used; false: only those that cannot. "
+                                   "Default: both."}}},
+                 {"brief",
+                  {{"type", "boolean"},
+                   {"description", "Return one line per placeable (`lines`) instead of full detail. "
+                                   "Default false."}}}},
+            {}),
         [&watch](const Json &raw) -> ToolResult { return KindPlaceables(watch, raw); });
 
     bench.Tools().Add(
         Read("surroundings",
-             "One look around, a thing a line: the `creatures`, the placeables that can be used (`usable`: "
-             "chests, doors, bodies' remains, with their state and lock) and the `exits` within `radius` "
-             "(default 30 m) of `near` (default the creature controlled), nearest first, each as "
-             "creatures, placeables and exits give it with `brief: true`. The read on arriving "
-             "anywhere; creatures, placeables and exits give a thing in full.",
+             "A quick look around, one line per thing: the `creatures`, the placeables that can be used "
+             "(`usable`: chests, doors, remains, with their state and lock) and the `exits` near a creature, "
+             "nearest first. Each line is what `creatures`, `placeables` and `exits` return with "
+             "`brief: true`. Call it on arriving anywhere; use those tools for full detail.",
              Json{{"near",
-                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
-                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}}},
+                   {{"type", "string"},
+                    {"description", "Look around this creature, by id. Default: the creature you control."}}},
+                  {"radius",
+                   {{"type", "number"},
+                    {"description", "Only things within this many meters of `near`. Default "
+                                    "30."}}}},
              {}),
         [&bench, &watch](const Json &raw) -> ToolResult { return KindSurroundings(bench, watch, raw); });
 
     bench.Tools().Add(
         Read("exits",
-             "The ways out of the area: every door or other placeable and every trigger that takes the "
-             "party to another area, nearest first, with `leadsTo` (the area's tag and the waypoint's "
-             "there), its kind, position, distance and whether it is active. A placeable is used with "
-             "order action=use; a trigger is walked into (travel to its position). Some doors choose where "
-             "they lead only when used, so their `leadsTo` may be empty or the last use's. Going through "
-             "one loads the other area, and the game may autosave. `radius` keeps those within it; `brief: "
-             "true` answers a line each (`lines`).",
+             "Lists the ways out of the area: every door, other placeable or trigger that takes the party to "
+             "another area, nearest first. Each has `leadsTo` (the destination area's tag and waypoint), its "
+             "`kind` (placeable or trigger), `position`, `distance` and whether it is `active`.\n\n"
+             "The easiest way to leave is `travel` with `exit` (an id from here) or `area`. By hand, use a "
+             "placeable with `order` action=use, and walk into a trigger by moving to its position. Some "
+             "doors only decide where they lead when used, so their `leadsTo` may be empty or show the last "
+             "destination. Leaving loads the other area, and the game may autosave.",
              Json{{"near",
-                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
-                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
-                  {"brief", {{"type", "boolean"}, {"description", "A thing a line (`lines`) instead of in full"}}}},
+                   {{"type", "string"},
+                    {"description", "Measure distances from this creature, by id. Default: the creature you "
+                                    "control."}}},
+                  {"radius",
+                   {{"type", "number"},
+                    {"description", "Only those within this many meters of `near`. Default: "
+                                    "the whole area."}}},
+                  {"brief",
+                   {{"type", "boolean"},
+                    {"description", "Return one line per exit (`lines`) instead of full detail. Default false."}}}},
              {}),
         [&watch](const Json &raw) -> ToolResult { return KindExits(watch, raw); });
 
@@ -1119,85 +1149,116 @@ void AddInspect(Bench &bench, const Watch &watch)
     // choose, so the names are asked for.
     bench.Tools().Add(
         Read("triggers",
-             "The area's triggers, nearest first: each one's `id`, `tag`, `name`, `position`, `distance`, "
-             "whether it is `active`, and `leadsTo` for one that takes the party elsewhere (exits lists "
-             "those alone). A trigger is walked into, not used: travel or order move to its position. "
-             "`radius` and `near` keep those within reach of a creature, `tag` those whose tag holds it; "
-             "`ints` (names) reads those local ints on each, as its scripts set them (a puzzle's state, a "
-             "switch's number).",
+             "Lists the area's triggers, nearest first: each one's `id`, `tag`, `name`, `position`, "
+             "`distance`, whether it is `active`, and `leadsTo` if it takes the party to another area "
+             "(`exits` lists only those). A trigger is not used but walked into: `travel` or `order` move to "
+             "its position.\n\n"
+             "Pass `ints` to read local integer variables on each trigger, as its scripts set them, such as "
+             "a puzzle's state or a switch's number (returned as `ints`).",
              Json{{"near",
-                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
-                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
-                  {"tag", {{"type", "string"}, {"description", "Only those whose tag holds this (any case)"}}},
+                   {{"type", "string"},
+                    {"description", "Measure distances from this creature, by id. Default: the creature you "
+                                    "control."}}},
+                  {"radius",
+                   {{"type", "number"},
+                    {"description", "Only those within this many meters of `near`. Default: "
+                                    "the whole area."}}},
+                  {"tag", {{"type", "string"}, {"description", "Only those whose tag contains this, in any case."}}},
                   {"ints",
-                   {{"type", "array"}, {"description", "Local int names to read on each, as its scripts set them"}}}},
+                   {{"type", "array"},
+                    {"description", "Names of local integer variables to read on each trigger, up to 32."}}}},
              {}),
         [&watch](const Json &raw) -> ToolResult { return KindTriggers(watch, raw); });
 
     bench.Tools().Add(
         Read("journal",
-             "The quests in the journal: `active`, the one marked, and `quests`, those under way, each with "
-             "`plot` (its resource: plot with it gives the flags), `name`, `description` and its "
-             "`objective` as the journal shows them, its group, area, and whether it was `updated` or is "
-             "`completed`, and `parent` for a quest within another (one done may stay listed here, with "
-             "`completed` true). `completed: true` "
-             "lists the quests done too; otherwise only their count. Reading only.",
-             Json{{"completed", {{"type", "boolean"}, {"description", "List the quests done too"}}}}, {}),
+             "Lists the quests in the journal: `active`, the quest currently marked, and `quests`, those in "
+             "progress. Each quest has its `plot` name (pass it to `plot` for its flags), its `name`, "
+             "`description` and `objective` as the journal shows them, its `group` and `area`, whether it "
+             "was `updated` or is `completed`, and `parent` if it is part of another quest. A finished quest "
+             "may stay in `quests` with `completed` true.\n\n"
+             "Finished quests are only counted (`completedCount`) unless you pass `completed: true`. Read "
+             "only.",
+             Json{{"completed",
+                   {{"type", "boolean"}, {"description", "Also list the finished quests. Default false."}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindJournal(watch, raw); });
 
     bench.Tools().Add(
         Read("creatures",
-             "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
-             "(party, hostile, neutral: from the creature controlled, the hero where none is), its `group` (the "
-             "game's own: 0 the player's, 1 "
-             "hostile, 2 friendly), position, distance, dead, health and mana or stamina, combat state, "
-             "whom it attacks, its `room` (number; `seen` by the party: never, which the game draws "
-             "black with what stands in it, in view, or before; `shown`; and how much the game wants "
-             "the room and whether it is in memory), and the command it is carrying out. `brief: true` "
-             "answers a line each (`lines`: id, name, tag, side, health, dead, distance) instead.",
+             "Lists every creature in the area, nearest first. Each has its `id`, `name`, `tag`, "
+             "`template`, `position`, `distance`, whether it is `dead`, its `health` and `manaStamina`, "
+             "`combatState`, `attackTarget`, the `command` it is carrying out, and:\n\n"
+             "- `side`: party, hostile or neutral, as seen by the creature you control (or the hero if "
+             "none).\n"
+             "- `group`: the game's own faction number: 0 the player's, 1 hostile, 2 friendly.\n"
+             "- `room`: the room it stands in (`number`), whether the party has `seen` it (never, in view "
+             "or before; a room never seen is drawn black, along with everything in it), whether it is "
+             "`shown`, how much the game wants it (`wanted`: dropped, kept, now) and whether it is in memory "
+             "(`load`). Null where the area has no rooms.\n\n"
+             "`creature` gives one creature in full detail.",
              Json{{"near",
-                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
-                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
+                   {{"type", "string"},
+                    {"description", "Measure distances from this creature, by id. Default: the creature you "
+                                    "control."}}},
+                  {"radius",
+                   {{"type", "number"},
+                    {"description", "Only those within this many meters of `near`. Default: "
+                                    "the whole area."}}},
                   {"side",
-                   {{"type", "string"}, {"enum", {"party", "hostile", "neutral"}}, {"description", "Only this side"}}},
-                  {"includeDead", {{"type", "boolean"}, {"description", "Default true"}}},
+                   {{"type", "string"},
+                    {"enum", {"party", "hostile", "neutral"}},
+                    {"description", "Only creatures on this side. Default: all sides."}}},
+                  {"includeDead", {{"type", "boolean"}, {"description", "Include dead creatures. Default true."}}},
                   {"includeInactive",
-                   {{"type", "boolean"}, {"description", "Those the area keeps hidden too; default false"}}},
-                  {"brief", {{"type", "boolean"}, {"description", "A thing a line (`lines`) instead of in full"}}}},
+                   {{"type", "boolean"}, {"description", "Also list creatures the area keeps hidden. Default false."}}},
+                  {"brief",
+                   {{"type", "boolean"},
+                    {"description", "Return one line per creature (`lines`: id, name, tag, side, health, dead, "
+                                    "distance) instead of full detail. Default false."}}}},
              {}),
         [&watch](const Json &raw) -> ToolResult { return KindCreatures(watch, raw); });
 
     bench.Tools().Add(
         Read("creature",
-             "One creature in full: its summary (with the command it is carrying out), facing, appearance, the "
-             "abilities on its quickbar and in its tactics with each one's cooldown (seconds left, and of how "
-             "many), its "
-             "movement's path (`beingWalked` says whether it is walking it now), and every effect "
-             "on it: its type (EFFECT_TYPE_*), creator, ability (id and name) and time left (seconds; null "
-             "for effects that do not run out).",
-             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
+             "Returns one creature in full: the summary `creatures` gives (including the `command` it is "
+             "carrying out), plus:\n\n"
+             "- `facing` and `appearance`.\n"
+             "- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, "
+             "out of how many).\n"
+             "- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n"
+             "- `effects`: every effect on it, with its type (an EFFECT_TYPE_* name), creator, ability (id "
+             "and name) and time left in seconds (null for effects that do not expire).",
+             Json{{"id",
+                   {{"type", "string"}, {"description", "The creature, by id. Default: the creature you control."}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindCreature(watch, raw); });
 
     bench.Tools().Add(
         Read("geometry",
-             "Between a creature (`id`, default the one controlled) and a creature (`target`) or a point "
-             "(`point`): the straight distance, the line of sight as the engine judges it (eye height to eye "
-             "height; where it is cut, if it is; only walls and placeables block, not creatures), and the "
-             "creature's movement path with its length and what is left of it; `beingWalked` says "
-             "whether it is walking it now (`waypoints: true` lists its points). `walk: true` also searches the "
-             "path it would walk there, as the game's pathfinder finds it now: `found` with its `length`, or "
-             "why not, and for a shut door or the like in the way, `blocker`: use that first, then move. The "
-             "creature is left as it is.",
-             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}},
-                  {"target", {{"type", "string"}, {"description", "The creature or object to measure to"}}},
-                  {"point", {{"description", "The point to measure to, {x, y, z} or [x, y, z]"}}},
+             "Measures from a creature (`id`) to another creature or object (`target`) or a `point`. Returns "
+             "the straight-line distance, the line of sight as the engine judges it (eye height to eye "
+             "height, and where it is blocked, if it is; only walls and placeables block it, not creatures), "
+             "and the creature's current movement path with its length and how much is left. "
+             "`beingWalked` says whether it is walking that path now.\n\n"
+             "With `walk: true`, it also asks the game's pathfinder for the path the creature would walk "
+             "there now: `found` and its `length`, or why not. If a shut door or similar is in the way, "
+             "`blocker` names it: use it first, then move. The creature is not moved.",
+             Json{{"id",
+                   {{"type", "string"},
+                    {"description", "The creature to measure from, by id. Default: the creature you control."}}},
+                  {"target", {{"type", "string"}, {"description", "The creature or object to measure to, by id."}}},
+                  {"point", {{"description", "The point to measure to: {x, y, z} or [x, y, z]."}}},
                   {"walk",
                    {{"type", "boolean"},
-                    {"description",
-                     "Also search the path the creature would walk there: its length, or what is in the way"}}},
+                    {"description", "Also find the path the creature would walk there: its length, or what is in "
+                                    "the way. Default false."}}},
                   {"trace",
-                   {{"type", "boolean"}, {"description", "With walk: the search's own record, a line a slice"}}},
-                  {"waypoints", {{"type", "boolean"}, {"description", "List the paths' points"}}}},
+                   {{"type", "boolean"},
+                    {"description", "With `walk`: include the path search's internal log, for diagnosing a "
+                                    "search that failed. Default false."}}},
+                  {"waypoints",
+                   {{"type", "boolean"}, {"description", "List the points along the paths. Default false."}}}},
              {}),
         [&watch](const Json &raw) -> ToolResult { return KindGeometry(watch, raw); });
 }

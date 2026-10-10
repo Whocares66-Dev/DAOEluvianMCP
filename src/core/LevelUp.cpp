@@ -1052,42 +1052,51 @@ class Levelling
 void AddLevelUpTool(Bench &bench, milliseconds show)
 {
     bench.Tools().Add(
-        ToolSpec{
-            "levelup",
-            "Spend a creature's level-up points as the game's level-up screen does, so its rules hold, for "
-            "`id` (default the creature controlled). One of: `offers`: true, what the screen offers, nothing "
-            "spent (`points`, `attributes`, and the class's `talents`, `spells` and `skills`, each a list "
-            "of abilities with `id`, `name` and `state`: `has`, `learnable` now, or `not yet`; and the "
-            "`specializations`, each `id`, `name` and `state`: `has`, `learnable`, `locked` or `no point to "
-            "spend`); `specialization` (one `offers` lists, by name or id, taken first, as a click on its icon, "
-            "so its chain can be spent on in the same call; refused saying why: taken, locked, no point), "
-            "`abilities` "
-            "(ids `offers` lists as learnable, the first of a chain before the next) and `attributes` ({\"strength\": "
-            "2, ...}), spent as the screen's buttons spend "
-            "them, an ability not learnable refusing the lot with nothing spent; or `auto`: true, the screen's "
-            "Auto Level Up, which spends every point as the game chooses for the class (all a follower needs), "
-            "again while points are left. It opens the screen for the creature, spends, ends it complete and "
-            "closes it. Answers `levelled`, `reason`, `before` and "
-            "`after` (level, points to spend), the `attributes` raised and by how much, the talents, spells "
-            "and skills `gained`, and `cursor`. Refused for a creature with no points to spend "
-            "(character says `canLevelUp`). A level-up is the character's for good once the "
-            "game is saved. `showMs` (default 1000) is how long it lingers on the screen before Auto Level Up "
-            "and on the result after, so whoever watches sees it; 0 for none.",
-            Json{{"type", "object"},
-                 {"properties",
-                  {{"id",
-                    {{"type", "string"}, {"description", "Who levels up: a creature id; default the one controlled"}}},
-                   {"auto",
-                    {{"type", "boolean"}, {"description", "Spend every point as the screen's Auto Level Up does"}}},
-                   {"offers", {{"type", "boolean"}, {"description", "What the screen offers; nothing spent"}}},
-                   {"abilities",
-                    {{"type", "array"}, {"description", "Ability ids to take, learnable in `offers`, in order"}}},
-                   {"attributes",
-                    {{"type", "object"}, {"description", R"(Points per attribute: {"strength": 2, "cunning": 1})"}}},
-                   {"specialization",
-                    {{"description", "A specialization to take, by name or ability id, from `offers`"}}},
-                   {"showMs", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}}},
-            Thread::Listener},
+        ToolSpec{"levelup",
+                 "Spends a creature's level-up points through the game's level-up screen, so the game's own rules "
+                 "apply. `id` picks the creature (default: the creature you control). The tool opens the screen, "
+                 "spends the points, completes the level-up and closes the screen. Pass exactly one of:\n\n"
+                 "- `offers: true`: returns what the screen offers and spends nothing: `points`, `attributes`, and "
+                 "the class's `talents`, `spells` and `skills`, each a list of abilities with `id`, `name` and "
+                 "`state` (`has`, `learnable` now, or `not yet`); and the `specializations`, each with `id`, `name` "
+                 "and `state` (`has`, `learnable`, `locked` or `no point to spend`).\n"
+                 "- The points to spend: `specialization`, `abilities` and `attributes`, in any combination, spent as "
+                 "the screen's buttons spend them. A specialization is taken first, like a click on its icon, so its "
+                 "abilities can be taken in the same call; it is refused, saying why, if already taken, locked, or "
+                 "there is no point for it. List `abilities` with the first of a chain before the next. If any "
+                 "ability is not learnable, nothing is spent.\n"
+                 "- `auto: true`: the screen's Auto Level Up, which spends every point as the game chooses for the "
+                 "class (all a follower needs), repeating while points are left.\n\n"
+                 "The answer includes `levelled`, `reason`, `before` and `after` (level and points to spend), the "
+                 "`attributes` raised and by how much, the talents, spells and skills `gained`, and a `cursor`. It "
+                 "refuses a creature with no points to spend (`character` shows `canLevelUp`). A level-up is "
+                 "permanent once the game is saved.",
+                 Json{{"type", "object"},
+                      {"properties",
+                       {{"id",
+                         {{"type", "string"},
+                          {"description", "Who levels up, by creature id. Default: the creature you control."}}},
+                        {"auto",
+                         {{"type", "boolean"},
+                          {"description", "If true, spend every point as the screen's Auto Level Up does."}}},
+                        {"offers",
+                         {{"type", "boolean"},
+                          {"description", "If true, return what the screen offers and spend nothing."}}},
+                        {"abilities",
+                         {{"type", "array"},
+                          {"description", "Ability ids to take, in order, from those `offers` lists as learnable."}}},
+                        {"attributes",
+                         {{"type", "object"},
+                          {"description", R"(Points to put in each attribute, e.g. {"strength": 2, "cunning": 1}.)"}}},
+                        {"specialization",
+                         {{"description", "A specialization to take, by name or ability id, as `offers` lists it."}}},
+                        {"showMs",
+                         {{"type", "integer"},
+                          {"minimum", 0},
+                          {"maximum", 10000},
+                          {"description", "How long to linger on the screen before Auto Level Up and on the result, in "
+                                          "milliseconds, so whoever watches sees it. Default 1000; 0 for none."}}}}}},
+                 Thread::Listener},
         [&bench, show](const Json &raw) -> ToolResult {
             const Args args(raw, "levelup");
             return Levelling(bench, args, show).Run();

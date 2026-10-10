@@ -127,34 +127,36 @@ void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
     static const Json kFilterProperties = {
         {"topic",
          {{"description", "A topic (\"eluvian.command.ended\"), a prefix (\"mymod.*\"), \"*\", or an array of "
-                          "them. None: every topic."}}},
+                          "these. Default: every topic."}}},
         {"match",
          {{"type", "object"},
-          {"description", "Payload fields the event must have, equal; objects match as subsets. Creatures are ids "
-                          "like \"0x7d9\": {\"id\": \"0x7d9\"}."}}},
+          {"description", "Payload fields the event must have, with equal values; nested objects match as subsets. "
+                          "Creatures are ids like \"0x7d9\": {\"id\": \"0x7d9\"}."}}},
     };
 
     Json eventsSchema = {{"type", "object"}, {"properties", kFilterProperties}};
     eventsSchema["properties"]["since"] = {
         {"oneOf", Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"const", "end"}}})},
-        {"description", "The cursor to read from: `next` from the last read, or `cursor` from an answer. 0, the "
-                        "default: the oldest event still held. \"end\": no events, and `next` the cursor now, a "
-                        "mark to read from after acting."}};
-    eventsSchema["properties"]["limit"] = {
-        {"type", "integer"}, {"minimum", 1}, {"maximum", 1000}, {"description", "At most this many; 100 by default."}};
+        {"description", "Where to start reading: `next` from the last read, or `cursor` from another tool's answer. "
+                        "\"end\" returns no events and `next` set to now, to read from after acting. Default 0: the "
+                        "oldest event still held."}};
+    eventsSchema["properties"]["limit"] = {{"type", "integer"},
+                                           {"minimum", 1},
+                                           {"maximum", 1000},
+                                           {"description", "The most events to return. Default 100."}};
     eventsSchema["properties"]["describe"] = {
         {"type", "boolean"},
-        {"description", "List the topics there are (those passing `topic`) with what each means and what its "
-                        "payload holds, instead of reading events."}};
+        {"description", "If true, lists the topics (those matching `topic`), what each means and what its payload "
+                        "holds, instead of reading events. Default false."}};
     bench.Tools().Add(
         ToolSpec{"events",
-                 "The bench's events since a cursor: what happened in the game (eluvian.*) and what mods emit (their "
-                 "own prefix), in "
-                 "order, each with its sequence number, frame and time. Returns `next`, the cursor to read from "
-                 "next time (pass it as `since`; other tools' answers call theirs `cursor`), and `missed`, how many "
-                 "were too old to keep. Filter with `topic`: one, a prefix or an array of them. With no `since` it "
-                 "reads from the oldest held, not from now: take `since: \"end\"` before acting, then read from "
-                 "its `next` after.",
+                 "Returns the events since a cursor, in order: what happened in the game (topics `eluvian.*`) and "
+                 "what mods emit (under their own prefix). Each event has its sequence number, frame and time.\n\n"
+                 "The answer includes `next`, the cursor to pass as `since` next time (other tools' answers call "
+                 "theirs `cursor`), and `missed`, how many events were too old to keep.\n\n"
+                 "Without `since` it reads from the oldest event held, not from now. To see what an action causes, "
+                 "call with `since: \"end\"` first, act, then read from the `next` it returned. Filter with `topic` "
+                 "and `match`; `describe` lists the topics instead.",
                  eventsSchema, Thread::Listener, true},
         [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "events");
@@ -188,18 +190,20 @@ void AddEventTools(Bench &bench, std::function<Json()> whyNothing)
     waitSchema["properties"]["since"] = {
         {"type", "integer"},
         {"minimum", 0},
-        {"description", "Wait for an event from this cursor on: `cursor` from the answer of the call that set it "
-                        "off, so an event that came before the wait is not missed. Default: from now."}};
+        {"description", "Look for events from this cursor on. Pass the `cursor` from the answer of the call that set "
+                        "things off, so an event that came before the wait is not missed. Default: from now."}};
     waitSchema["properties"]["timeoutMs"] = {{"type", "integer"},
                                              {"minimum", 0},
                                              {"maximum", 300000},
-                                             {"description", "How long to wait; 30000 by default."}};
+                                             {"description", "How long to wait, in milliseconds. Default 30000."}};
     bench.Tools().Add(
         Budgeted(
             ToolSpec{"wait_for",
-                     "Wait until an event matching `topic` and `match` happens, and return it; instead of sleeping and "
-                     "reading the log. `found` is false if the time ran out, with what is known of why nothing came "
-                     "(the game `paused`, say). Returns `next`, the cursor after it.",
+                     "Waits until an event matching `topic` and `match` happens, and returns it. Use it instead of "
+                     "sleeping and reading the log.\n\n"
+                     "The answer has `found`, the `event`, and `next`, the cursor after it. If time runs out, `found` "
+                     "is false and the answer says what is known of why nothing came (for example, the game is "
+                     "`paused`).",
                      waitSchema, Thread::Listener, true},
             "timeoutMs", 30000),
         [&bench, whyNothing = std::move(whyNothing)](const Json &raw) -> ToolResult {
@@ -279,22 +283,22 @@ void AddLogTool(Bench &bench, std::filesystem::path directory)
         {"properties",
          {{"file",
            {{"type", "string"},
-            {"description", "The log, by name: \"loader\", \"eluvian\", a mod's, any in the folder. Omit "
-                            "to list them."}}},
+            {"description", "The log's name: \"loader\", \"eluvian\", a mod's, or any other in the folder. Omit "
+                            "to list the logs."}}},
           {"since",
            {{"description", "The byte cursor to read from: `next` from the last read. \"end\" reads nothing and "
-                            "returns the end as `next`, a mark to read from after acting. Default: the start."}}},
-          {"grep", {{"type", "string"}, {"description", "Keep only lines this regular expression finds a match in."}}},
+                            "returns the end as `next`, to read from after acting. Default: the start of the file."}}},
+          {"grep", {{"type", "string"}, {"description", "Keep only the lines this regular expression matches."}}},
           {"limit",
            {{"type", "integer"},
             {"minimum", 1},
             {"maximum", 5000},
-            {"description", "At most this many lines; 300 by default."}}}}}};
+            {"description", "The most lines to return. Default 300."}}}}}};
     bench.Tools().Add(
         ToolSpec{"log",
-                 "Read a DAOLib log (Documents\\BioWare\\Dragon Age\\daolib\\) from a cursor: the lines written since "
-                 "`since`, and `next` to read from next time. `restarted` says the file began again (the game "
-                 "restarted).",
+                 "Reads a DAOLib log (in Documents\\BioWare\\Dragon Age\\daolib\\) from a cursor. Returns the lines "
+                 "written since `since`, and `next`, the cursor to read from next time. `restarted` is true when the "
+                 "file began again because the game restarted. Without `file`, lists the logs.",
                  schema, Thread::Listener, true},
         [directory = std::move(directory)](const Json &raw) -> ToolResult {
             const Args args(raw, "log");

@@ -315,33 +315,51 @@ ToolResult ToolTactics(const Watch &watch, const Json &raw)
 void AddTactics(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
-        ToolSpec{"tactics",
-                 "A follower's tactics, as the tactics screen sets them (`id`, a party member, default the one the "
-                 "interface has selected; another is selected for the call and control given back). "
-                 "`action`: choices, what the screen offers: the `targets`, with `target` its "
-                 "`baseConditions`, and with `baseCondition` too the `conditions`, `actions`, `abilities` and "
-                 "`items` (the engine's own lists for this follower); set, slot `slot` (from 1) to `target`, "
-                 "`condition` and `command`, each by number or by label or name among those offered, with "
-                 "`ability` (an id) or `item` (an id) for the action, `enabled` (default true), answering the slot "
-                 "as the scripts read it back and whether it `took`; clear, slot `slot` emptied (`cleared`), "
-                 "to leave a follower as it was found; preset, load preset `preset` "
-                 "(`presetType`), answering the slots. tactics action=look reads them.",
-                 Json{{"type", "object"},
-                      {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"look", "choices", "set", "clear", "preset"}}}},
-                        {"id", {{"type", "string"}, {"description", "The follower (default: the one selected)"}}},
-                        {"slot", {{"type", "integer"}, {"minimum", 1}}},
-                        {"target", {{"description", "A target type, by number or label or name"}}},
-                        {"baseCondition", {{"description", "choices: a base condition, by number or label or name"}}},
-                        {"condition", {{"description", "set: a condition, by number or label or name"}}},
-                        {"command", {{"description", "set: an action (command type), by number or label or name"}}},
-                        {"ability", {{"type", "integer"}, {"description", "set: the ability the action uses"}}},
-                        {"item", {{"type", "string"}, {"description", "set: the item the action uses"}}},
-                        {"enabled", {{"type", "boolean"}}},
-                        {"preset", {{"type", "integer"}}},
-                        {"presetType", {{"type", "integer"}}}}},
-                      {"required", {"action"}}},
-                 Thread::Frame},
+        ToolSpec{
+            "tactics",
+            "Reads and sets a party member's tactics (what they do on their own in a fight), the way the "
+            "tactics screen does. If `id` is not the party member selected in the interface, it is selected "
+            "for the call and control is handed back afterwards (`selectedFirst`).\n\n"
+            "`action` is one of:\n"
+            "- look: returns `slots` (how many there are), `preset` (null when none is chosen), "
+            "`behaviour`, and `tactics`: each slot in order with `enabled`, `target`, `condition`, "
+            "`command` and the `ability` or `item` it uses. An unset slot is `empty`.\n"
+            "- choices: returns what the screen offers this party member: the `targets`; with `target`, "
+            "its `baseConditions`; with `baseCondition` as well, the `conditions`, `actions`, `abilities` "
+            "and `items`.\n"
+            "- set: sets slot `slot` to `target`, `condition` and `command`, each by number, label or name "
+            "from what choices offers, with `ability` or `item` for the command and `enabled`. Returns the "
+            "slot as the game reads it back and whether the change `took`.\n"
+            "- clear: empties slot `slot` and returns whether it is `cleared`. Use it to put a party "
+            "member's tactics back as you found them.\n"
+            "- preset: loads preset `preset` of type `presetType` and returns the slots.",
+            Json{
+                {"type", "object"},
+                {"properties",
+                 {{"action",
+                   {{"type", "string"},
+                    {"enum", {"look", "choices", "set", "clear", "preset"}},
+                    {"description", "What to do."}}},
+                  {"id",
+                   {{"type", "string"},
+                    {"description", "The party member, by creature id. Default: the one selected in the "
+                                    "interface (for look, the creature you control)."}}},
+                  {"slot",
+                   {{"type", "integer"},
+                    {"minimum", 1},
+                    {"description", "For set and clear: the slot, counting from 1. Default 1."}}},
+                  {"target", {{"description", "For choices and set: a target type, by number, label or name."}}},
+                  {"baseCondition", {{"description", "For choices: a base condition, by number, label or name."}}},
+                  {"condition", {{"description", "For set: a condition, by number, label or name."}}},
+                  {"command", {{"description", "For set: the action to take, by number, label or name."}}},
+                  {"ability",
+                   {{"type", "integer"}, {"description", "For set: the id of the ability the action uses."}}},
+                  {"item", {{"type", "string"}, {"description", "For set: the id of the item the action uses."}}},
+                  {"enabled", {{"type", "boolean"}, {"description", "For set: whether the slot is on. Default true."}}},
+                  {"preset", {{"type", "integer"}, {"description", "For preset: the preset's number. Default 0."}}},
+                  {"presetType", {{"type", "integer"}, {"description", "For preset: the preset's type. Default 0."}}}}},
+                {"required", {"action"}}},
+            Thread::Frame},
         [&watch](const Json &raw) -> ToolResult { return ToolTactics(watch, raw); });
 }
 

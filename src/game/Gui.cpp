@@ -213,24 +213,26 @@ void AddGui(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
         Read("gui",
-             "What the interface has up, for when health's mode is gui or the game waits on something: "
-             "`screens`, the game's screens on the screen now, the top first, each by `name` (Inventory, "
-             "Store, WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options, Main the HUD), "
-             "its `movie` and `layer`; `fullScreen`, the name of the full-screen one up (the inventory, "
-             "the map, the journal...), null with none; `fullScreenHidden`, a full-screen one left on "
-             "the game's stack of them but not on the screen (a screen closed by its report alone, "
-             "WorldMap.WorldMapClosed): input {\"message\": \"GUI.HideFullScreenGUI\"} clears it, as a "
-             "screen's Close button does; `popup`, the game's message box with "
-             "its text and each button's label and what pressing it sends (a box holds the game until "
-             "it is answered, and nothing else says it is there: ask when a load or an order was taken "
-             "and nothing followed); and `loot`, the loot panel a container opens (a chest, a body's "
-             "remains, a pile of bones), "
-             "which is the Inventory screen: its `container`, the `items` in it, the `backpack`'s items "
-             "and most, and its `buttons`, Take All and Close, with what each sends. press "
-             "presses a button of the message box or the loot panel; the loot tool walks to a "
-             "container, opens it and takes all in one call. `store`, with a merchant's Store screen up: "
-             "the `stock` with each item's `price`, the `pack` with what each `sellsFor`, the `money` "
-             "(copper), the markups; the store tool buys and sells. Answers in any mode.",
+             "Returns what the game's interface is showing. Call it when `health` reports mode gui, or when "
+             "the game seems to be waiting on something. Works in any mode. The answer includes:\n\n"
+             "- `screens`: the screens shown now, top first, each with its `name` (Inventory, Store, "
+             "WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options; Main is the HUD), "
+             "`movie` and `layer`.\n"
+             "- `fullScreen`: the name of the full-screen screen that is open (inventory, map, journal...), "
+             "or null.\n"
+             "- `fullScreenHidden`: present when a full-screen screen is still open in the game but not "
+             "drawn, e.g. after WorldMap.WorldMapClosed alone. Clear it with `input` "
+             "{\"message\": \"GUI.HideFullScreenGUI\"}, as a Close button does.\n"
+             "- `popup`: the game's message box, with its text and each button's label and what pressing it "
+             "sends. A message box blocks the game until answered, and nothing else reports it, so check "
+             "here when a load or an order was accepted but nothing happened.\n"
+             "- `loot`: the loot panel a container opens (a chest, remains, a pile of bones), part of the "
+             "Inventory screen: its `container`, the `items` in it, the `backpack`'s item count and limit, "
+             "and its `buttons`, Take All and Close, with what each sends.\n"
+             "- `store`: with a merchant's Store screen open, the `stock` with each item's `price`, your "
+             "`pack` with what each item `sellsFor`, the `money` (in copper) and the markups.\n\n"
+             "To act on these: `press` presses a message box or loot panel button; `loot` walks to a "
+             "container, opens it and takes everything in one call; `store` buys and sells.",
              Json::object(), {}),
         [&watch](const Json &) -> ToolResult {
             // DAOLib's ShownScreens and CurrentFullScreen (0dd22bb, #2): a
@@ -279,12 +281,14 @@ void AddGui(Bench &bench, const Watch &watch)
     // MemberNames, as the screen's ListMemberNames gives them.
     bench.Tools().Add(
         Read("controls",
-             "The key bindings, as the Options screen's Controls list shows them: each action's `name`, "
-             "its `description`, and its `primary` and `secondary` keys as shown (\"Ctrl + T\", \"\" for "
-             "none). `match` keeps those whose name or description holds it, in any case. A plugin's own "
-             "actions are among them. Reading only; answers in any mode once the game runs.",
+             "Lists the key bindings shown in the Options screen's Controls list: each action's `name`, "
+             "`description`, and `primary` and `secondary` keys as displayed (\"Ctrl + T\", or \"\" for "
+             "none). Actions added by plugins are included. Read only; works in any mode once the game "
+             "has started.",
              Json{{"match",
-                   {{"type", "string"}, {"description", "Only the actions whose name or description holds this"}}}},
+                   {{"type", "string"},
+                    {"description", "Only actions whose name or description contains this text, in any case. "
+                                    "Default: all."}}}},
              {}),
         [&watch](const Json &raw) -> ToolResult {
             const Args args(raw, "controls");

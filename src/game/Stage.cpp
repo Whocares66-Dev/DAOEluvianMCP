@@ -458,7 +458,7 @@ ObjectId StageSpawn(const Args &args, Json &answer)
     // Read in the frame it was made, a spawned creature is not set up yet:
     // health 1 of 1 in the answer, 85 of 85 three seconds on (2026-09-30).
     answer["note"] = moved > 1.0F
-                         ? "the point asked for is not a place to stand: the creature was made `moved` metres from "
+                         ? "the point asked for is not a place to stand: the creature was made `moved` meters from "
                            "it, perhaps in another room (see `creature`'s position and room). It is set up over "
                            "the next frames; creature reads its health"
                          : "a creature spawned is set up over the next frames; creature reads its health";
@@ -475,7 +475,7 @@ ObjectId StageEffects(const Args &args, Json &answer)
 // A creature's `id`, as every stage tool on one takes it.
 Json IdProperty()
 {
-    return Json{{"type", "string"}, {"description", "The creature: an id from creatures"}};
+    return Json{{"type", "string"}, {"description", "The creature, by id (from `creatures`)."}};
 }
 
 } // namespace
@@ -500,80 +500,118 @@ void AddStage(Bench &bench, const Watch &watch)
             });
     };
     add("stage_effect",
-        "Put a condition on a creature, or take its effects off, for a test's case. `action`: apply puts "
-        "`effect` (stun, knockdown, paralyze, root, sleep, daze, slip, fear, confusion, grabbed, or an "
-        "EFFECT_TYPE_* number) on creature `id` for `seconds` (default 6), as from `creator` and `ability` if "
-        "given; remove takes off its effects of `effect`, `ability` or `creator`, or all with none given. "
-        "Answers the `effects` on it after and `creature` as it is. The effects are the engine's bare ones, "
-        "applied as scripts apply them.",
-        Json{{"action", {{"type", "string"}, {"enum", {"apply", "remove"}}}},
+        "Puts a condition on a creature, or removes effects from it, to set up a test.\n\n"
+        "- `apply`: puts `effect` on the creature for `seconds`, as if from `creator` and `ability` when given.\n"
+        "- `remove`: removes the creature's effects that match `effect`, `ability` and `creator`. With none of "
+        "them given, removes all its effects.\n\n"
+        "The answer includes the creature's `effects` afterwards, the `creature` and a `cursor`. The effects are "
+        "the engine's plain ones, applied the way the game's scripts apply them.",
+        Json{{"action",
+              {{"type", "string"},
+               {"enum", {"apply", "remove"}},
+               {"description", "`apply` to add a condition, `remove` to take effects off."}}},
              {"id", IdProperty()},
-             {"effect", {{"description", "A condition's name or an EFFECT_TYPE_* number"}}},
-             {"seconds", {{"type", "number"}, {"description", "apply: how long, default 6"}}},
-             {"creator", {{"type", "string"}, {"description", "Whom the effect is from; default none"}}},
-             {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}}},
+             {"effect",
+              {{"description", "The condition: stun, knockdown, paralyze, root, sleep, daze, slip, fear, confusion, "
+                               "grabbed, or any EFFECT_TYPE_* number. Required for `apply`."}}},
+             {"seconds",
+              {{"type", "number"},
+               {"description", "With `apply`: how long the effect lasts, in seconds, up to 600. Default 6."}}},
+             {"creator",
+              {{"type", "string"}, {"description", "The creature the effect comes from, by id. Default none."}}},
+             {"ability",
+              {{"type", "integer"}, {"description", "The ability the effect comes from, by id. Default none."}}}},
         {"action", "id"}, StageEffects);
     add("stage_health",
-        "Set creature `id`'s current health to `value`, for a test's case. Answers `creature` as it is after; "
-        "stage_kill for a death.",
-        Json{{"id", IdProperty()}, {"value", {{"type", "number"}, {"description", "The health, 0 or more"}}}},
+        "Sets a creature's current health to `value`. The answer includes the `creature` afterwards. To kill a "
+        "creature, use `stage_kill`.",
+        Json{{"id", IdProperty()}, {"value", {{"type", "number"}, {"description", "The new health, 0 or more."}}}},
         {"id", "value"}, StageHealth);
     add("stage_cooldown",
-        "Set creature `id`'s cooldown on `ability` to `seconds` left (0 makes it ready), of `total` if given. "
-        "creature lists its abilities.",
+        "Sets how long is left on a creature's cooldown for one ability; 0 makes the ability ready. `abilities` "
+        "lists a creature's abilities with their ids. The answer includes the `cooldown` afterwards "
+        "(`remaining` and `total`). Refuses an ability the creature does not have.",
         Json{{"id", IdProperty()},
-             {"ability", {{"type", "integer"}, {"description", "The ability's id"}}},
-             {"seconds", {{"type", "number"}, {"description", "The time left, 0 (ready) to 3600"}}},
-             {"total", {{"type", "number"}, {"description", "The whole it counts down from"}}}},
+             {"ability", {{"type", "integer"}, {"description", "The ability, by id."}}},
+             {"seconds", {{"type", "number"}, {"description", "Seconds left on the cooldown, 0 (ready) to 3600."}}},
+             {"total",
+              {{"type", "number"},
+               {"description", "The full length of the cooldown, in seconds. Default: its current length, or "
+                               "`seconds`."}}}},
         {"id", "ability", "seconds"}, StageCooldown);
     add("stage_kill",
-        "Deal creature `id` more damage than it has. It dies a frame or more later, as eluvian.creature.died: "
-        "wait_for that from `cursor`.",
+        "Kills a creature by dealing it more damage than its health. The death happens a frame or more later: "
+        "call `wait_for` with the event eluvian.creature.died from the returned `cursor`. If the game is "
+        "paused, the death waits until it is unpaused (`pause` with paused=false); the answer says `paused`.",
         Json{{"id", IdProperty()}}, {"id"}, StageKill);
     add("stage_group",
-        "Move creature `id` to `group` (0 the player's, 1 the hostile one, 2 friendly: the game keeps which pairs "
-        "of groups fight), and with `toward` set whether `group` and that group are `hostile` first. A spawned "
-        "creature moved to group 2 fights the hostile ones near it, for a fight the party is not in.",
+        "Moves a creature to another group. Groups decide who fights whom: 0 is the player's, 1 the hostile "
+        "one, 2 friendly, and the game keeps which pairs of groups are hostile.\n\n"
+        "With `toward`, it first sets whether `group` and the `toward` group are hostile. A spawned creature "
+        "moved to group 2 fights the hostile creatures near it, which stages a fight without the party.\n\n"
+        "The answer includes the old group (`was`), the new `group`, and whether it is now `hostileToParty` "
+        "and `hostileToGroup1`.",
         Json{{"id", IdProperty()},
-             {"group", {{"type", "integer"}, {"description", "The group to put it in"}}},
-             {"toward", {{"type", "integer"}, {"description", "Another group, to set hostility with"}}},
-             {"hostile", {{"type", "boolean"}, {"description", "With `toward`; default true"}}}},
+             {"group", {{"type", "integer"}, {"description", "The group to move it to, 0 to 255."}}},
+             {"toward",
+              {{"type", "integer"}, {"description", "Another group, whose hostility with `group` is set first."}}},
+             {"hostile",
+              {{"type", "boolean"},
+               {"description", "With `toward`: whether the two groups are hostile. Default true."}}}},
         {"id", "group"}, StageGroup);
     add("stage_spawn",
-        "Make a creature from `template` (as creatures gives each one's `template`) at `point`, facing `facing` "
-        "degrees, in the controlled creature's area. `moved` says how far from the point the game put it (a point "
-        "inside a wall is not kept); it is set up over the next frames. `group` puts it in that group at once, as "
-        "stage_group does (`group`, `hostileToParty` say where it stands). Templates: resources with type utc "
-        "and a word (ogre_default, hurlock_emissary_off, hurlock_epic_archer).",
-        Json{{"template", {{"type", "string"}, {"description", "The creature's template"}}},
-             {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
-             {"facing", {{"type", "number"}, {"description", "Degrees; default 0"}}},
-             {"group", {{"type", "integer"}, {"description", "The group to put it in"}}}},
+        "Creates a creature from a template at `point`, in the area of the creature you control.\n\n"
+        "A template is the game's creature resource, not a kind's name: `creatures` gives each creature's "
+        "`template`, and `resources` with type utc and a word finds more (for example wolf, ogre_default, "
+        "hurlock_epic_archer).\n\n"
+        "The game places the creature at the nearest spot it can stand. `moved` says how far from `point` "
+        "that was; a point inside a wall may put it in the next room. The creature finishes setting up over the "
+        "next few frames, so read its health later with `creature`. With `group`, it joins that group at once, "
+        "and the answer says whether it is `hostileToParty`.",
+        Json{{"template", {{"type", "string"}, {"description", "The creature's template."}}},
+             {"point", {{"description", "Where to create it: {x, y, z} or [x, y, z]."}}},
+             {"facing", {{"type", "number"}, {"description", "Which way it faces, in degrees. Default 0."}}},
+             {"group", {{"type", "integer"}, {"description", "The group to put it in, as `stage_group` does."}}}},
         {"template", "point"}, StageSpawn);
     add("stage_equip",
-        "Make an item from `template` (an item's resource: resources with type uti) on creature `id` and put it "
-        "on, in its own slot or `slot`; `equip` false leaves it in the backpack. Answers the `item` (item gives "
-        "it in full) and whether it is `equipped`. equip moves what the party already has.",
+        "Creates an item from a template in a creature's inventory and equips it, in the item's own slot or in "
+        "`slot`. The answer includes the `item` (`item` gives it in full) and whether it was `equipped`; an "
+        "item the creature cannot use there stays in the backpack. To move items the party already has, use "
+        "`equip`.",
         Json{{"id", IdProperty()},
-             {"template", {{"type", "string"}, {"description", "The item's resource"}}},
-             {"slot", {{"type", "string"}, {"description", "main, offhand, chest, head ..."}}},
-             {"equip", {{"type", "boolean"}, {"description", "Put it on; default true"}}}},
+             {"template",
+              {{"type", "string"}, {"description", "The item's template; `resources` with type uti finds them."}}},
+             {"slot",
+              {{"type", "string"},
+               {"description", "The slot: main, offhand, ammo, chest, head, boots, gloves, cloak, ring1, ring2, "
+                               "neck or belt. Default: the item's own."}}},
+             {"equip",
+              {{"type", "boolean"},
+               {"description", "Whether to equip it; false leaves it in the backpack. Default true."}}}},
         {"id", "template"}, StageEquip);
     add("stage_reset",
-        "Put things back as before a fight, for another in the same launch: the party (or `ids`) raised if "
-        "fallen, health and mana or stamina full, every cooldown cleared, with `effects` every effect taken off "
-        "too; and unless `clearDead` is false, the dead that died since the last reset (not the area's older "
-        "bodies) taken away, if they are not the party's. Answers each creature as it is after (`reset`) and "
-        "what was taken away (`removed`).",
-        Json{{"ids", {{"type", "array"}, {"description", "The creatures; default the party"}}},
-             {"effects", {{"type", "boolean"}, {"description", "Take every effect off too"}}},
-             {"clearDead", {{"type", "boolean"}, {"description", "Take the dead away; default true"}}}},
+        "Restores things to how they were before a fight, so another fight can run in the same session:\n"
+        "- The party (or the creatures in `ids`) is revived if dead, health and mana or stamina are refilled, "
+        "and every cooldown is cleared. With `effects`, every effect is removed too.\n"
+        "- Unless `clearDead` is false, creatures that died since the last reset are removed, except the "
+        "party's. Bodies that were in the area before are left alone.\n\n"
+        "The answer lists each creature afterwards (`reset`) and what was removed (`removed`).",
+        Json{{"ids", {{"type", "array"}, {"description", "The creatures to reset, by id. Default: the party."}}},
+             {"effects", {{"type", "boolean"}, {"description", "Also remove every effect. Default false."}}},
+             {"clearDead",
+              {{"type", "boolean"},
+               {"description", "Remove the creatures that died since the last reset. Default true."}}}},
         {}, StageReset);
     add("stage_cutscene",
-        "Play the cutscene `resource` (its name as the scripts give it, \"bed110cs_tainted_mirror.cut\"), as the "
-        "scripts' LoadCutscene does. The game's mode is cutscene until it ends or is skipped (dialogue "
-        "action=skip_cutscene).",
-        Json{{"resource", {{"type", "string"}, {"description", "The cutscene's name"}}}}, {"resource"}, StageCutscene);
+        "Plays a cutscene the way the game's scripts do. The game's mode changes to cutscene on the next frame "
+        "(see `health`, or `wait_for` the event eluvian.mode.changed from `cursor`) and stays so until the "
+        "cutscene ends or is skipped with `dialogue` action=skip_cutscene. Nothing happens if no cutscene has "
+        "that name.",
+        Json{{"resource",
+              {{"type", "string"},
+               {"description", "The cutscene's name, such as \"bed110cs_tainted_mirror.cut\" (.cut is added if "
+                               "missing)."}}}},
+        {"resource"}, StageCutscene);
 }
 
 } // namespace eluvian::game

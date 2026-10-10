@@ -156,24 +156,29 @@ ToolResult KindResources(const Json &raw)
 void AddResources(Bench &bench)
 {
     bench.Tools().Add(
-        Read(
-            "resources",
-            "The game's resources by name, from every archive in its folder: `type`, an extension (utc a "
-            "creature's template, for stage_spawn; uti an item's, for stage_equip; plo a plot, "
-            "for plot; cut a cutscene), and `match`, words the name must hold (\"ogre\", "
-            "\"hurlock archer\"). Answers each name without its extension and the archive it is in, sorted, at "
-            "most `most` (default 100) and `count` of all that match. The core's and the campaign's archives "
-            "are loaded in any game; an add-in's only where it runs. Read from disk on the first call (a "
-            "few seconds), then kept.",
-            Json{
-                {"type",
-                 {{"type", "string"},
-                  {"description",
-                   "An extension: utc a creature's template, uti an item's, plo a plot, cut a cutscene"}}},
-                {"match", {{"type", "string"}, {"description", "Words the name must hold"}}},
-                {"most",
-                 {{"type", "integer"}, {"minimum", 1}, {"maximum", 2000}, {"description", "At most this many (100)"}}}},
-            {}, true, Thread::Listener),
+        Read("resources",
+             "Searches the game's resources by name, across every archive in the game's folder. Use it to find "
+             "the name to pass to another tool:\n\n"
+             "- `utc`: creature templates, for `stage_spawn`.\n"
+             "- `uti`: item templates, for `stage_equip`.\n"
+             "- `plo`: plots, for `plot`.\n"
+             "- `cut`: cutscenes, for `stage_cutscene`.\n\n"
+             "Returns the matching names, sorted, each without its extension and with the archive it is in, up "
+             "to `most`, and the `count` of all matches. The core and campaign archives are in every game; an "
+             "add-in's resources only load where that add-in runs. The first call reads the archives from disk "
+             "(a few seconds); later calls are fast.",
+             Json{{"type",
+                   {{"type", "string"},
+                    {"description", "The file extension to list: utc, uti, plo or cut. Default: all types."}}},
+                  {"match",
+                   {{"type", "string"},
+                    {"description", "Words that must all appear in the name, in any case, e.g. \"hurlock archer\"."}}},
+                  {"most",
+                   {{"type", "integer"},
+                    {"minimum", 1},
+                    {"maximum", 2000},
+                    {"description", "The most names to return. Default 100."}}}},
+             {}, true, Thread::Listener),
         [](const Json &raw) -> ToolResult { return KindResources(raw); });
 }
 
