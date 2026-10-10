@@ -242,6 +242,56 @@ Json Lines(const Json &things, std::string (*line)(const Json &))
 namespace
 {
 
+// Why combat mode stays with no fight left: the game leaves combat only once
+// a living party member stands within 7.5 m of each fallen one (the scripts'
+// CheckResurrection, RULES_RESURRECTION_DISTANCE; module_core asks again each
+// second through EVENT_TYPE_DELAYED_GM_CHANGE, as turn-based-agent read them),
+// and nothing said so: a playthrough's walks stopped "a fight began" for six
+// minutes after one (2026-10-03, #20). Null while a party member perceives a
+// hostile, or none is down.
+Json CombatHold(const std::set<ObjectId> &party)
+{
+    constexpr float kRaiseDistance = 7.5F;
+    std::vector<ObjectId> living;
+    std::vector<ObjectId> fallen;
+    for (const ObjectId member : party)
+    {
+        if (api::IsPerceivingHostiles(member) != 0)
+        {
+            return nullptr;
+        }
+        (api::IsDead(member) != 0 ? fallen : living).push_back(member);
+    }
+    if (fallen.empty())
+    {
+        return nullptr;
+    }
+    Json list = Json::array();
+    for (const ObjectId down : fallen)
+    {
+        Json entry = Brief(down);
+        const auto at = api::GetPosition(down);
+        ObjectId nearest = kInvalidObject;
+        float best = std::numeric_limits<float>::max();
+        for (const ObjectId up : living)
+        {
+            if (const float distance = Distance(api::GetPosition(up), at); distance < best)
+            {
+                best = distance;
+                nearest = up;
+            }
+        }
+        entry["nearestLiving"] = nearest == kInvalidObject ? Json(nullptr) : Brief(nearest);
+        entry["distance"] = nearest == kInvalidObject ? Json(nullptr) : Json(best);
+        entry["near"] = nearest != kInvalidObject && best <= kRaiseDistance;
+        list.push_back(std::move(entry));
+    }
+    return Json{{"within", kRaiseDistance},
+                {"fallen", std::move(list)},
+                {"why", "No hostile is in sight, but the game leaves combat only once a living party member stands "
+                        "within 7.5 meters of each fallen one: walk one there (travel to the fallen member's id)."}};
+}
+
 // The game kind's handler, registered by AddInspect.
 ToolResult KindGame(Bench &bench, const Watch &watch, const Json & /*args*/)
 {
@@ -260,6 +310,10 @@ ToolResult KindGame(Bench &bench, const Watch &watch, const Json & /*args*/)
         party.push_back(Brief(member));
     }
     answer["party"] = std::move(party);
+    if (watch.Mode() == static_cast<std::int32_t>(dao::GameMode::Combat))
+    {
+        answer["combatHold"] = CombatHold(PartyOf(hero));
+    }
     Json selected = Json::array();
     for (const ObjectId member : dao::party::Selected())
     {
@@ -986,7 +1040,10 @@ void AddInspect(Bench &bench, const Watch &watch)
              "Returns the game's current state: the `mode`, whether it is `paused`, the `area`, the `hero`, "
              "the creature you control (`controlled`), the `party` and which members are `selected` in the "
              "party bar, the game's message box if one is open (`popup`: its text and buttons), and the "
-             "event `cursor` to pass as `since` to `events` or `wait_for`.",
+             "event `cursor` to pass as `since` to `events` or `wait_for`.\n\n"
+             "In combat with no hostile in sight, `combatHold` says why the game stays in combat: it leaves "
+             "combat only once a living party member stands within 7.5 meters of each fallen one. It lists "
+             "each fallen member with the nearest living one and how far away it is; walk one there.",
              Json::object(), {}),
         [&bench, &watch](const Json &args) -> ToolResult { return KindGame(bench, watch, args); });
 
