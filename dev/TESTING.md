@@ -417,3 +417,11 @@ The level-up screen's own buttons, crafting and the rest, 2026-10-05 (turn-based
 - `craft` (#59): poisons, poultices and lyrium potions made through the crafting screen's own message, the listing true to the pack.
 - `equip` refusals (#31): `canUse`, and `requirements` as the inventory tooltip says them ("Requires: 38 strength"), read from the engine's own GetItemRequirements.
 - An argument a tool does not have is said (#61): `topics` on `events` answered "did you mean `topic`?".
+
+The 0.1.0 release's zip, 2026-10-10 (#115; built on DAOLib `v0.1.0`, plugin API 2). `build\package\DAOEluvianMCP-0.1.0.zip` of the gate's release build, extracted into the GOG game's folder as someone installing it would, under a claim, over the `eluvian` folder that was there:
+
+- With the loader the game had (turn-based-agent's build of DAOLib `1c64ab4`): `loader.log` said "eluvian.dll: loaded" and "turnbased.dll: loaded", `eluvian.log` "eluvian 0.1.0", and the mod's seven tools registered. The smoke test: 74 of 74 on Lyna's manual 4, no crash or hang log.
+- With DAOLib 0.1.0's own loader, `version.dll` and `version.pdb` out of the zip its GitHub release carries (the address files in the game were that zip's already, hash for hash): the same lines, and the smoke test 74 of 74 again. The loader that was there was put back after, the same file.
+- The bridge out of the zip, started from `bin_ship\daolib\plugins\eluvian\` with no `--exe`: `game_status` while no game ran, `game_launch` to the main menu (`health` said version 0.1.0 and the owner), `game_quit`.
+- The link: `eluvian.dll` 2.5 MB where the incremental link's was 5.6, `eluvian.pdb` 40 MB where a PDB linked into twice was 81.
+- Not seen: a crash log naming Eluvian's frames from this PDB, since nothing crashed; the EA and Steam games, where Eluvian has never been run.

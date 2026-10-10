@@ -17,6 +17,10 @@ down; calling one then says how to start it.
 
     claude mcp add eluvian -- python C:\\project\\DAOEluvianMCP\\tools\\eluvian_bridge.py
 
+A build copies this file beside eluvian.dll, and a release's zip has it there, in the
+game's bin_ship\\daolib\\plugins\\eluvian\\: started from there it takes that game as
+its own, and from here the GOG install's unless --exe names another.
+
 Standard library only. tools/test_bridge.py tests it against a stand-in for
 the game.
 """
@@ -41,7 +45,24 @@ DEFAULT_PORT = 8930
 DEFAULT_GAME = Path(
     r"C:\Program Files (x86)\GOG Galaxy\Games\Dragon Age Origins\bin_ship\DAOrigins.exe"
 )
+# The project's, CMakeLists.txt's: test_bridge.py holds the two together.
 VERSION = "0.1.0"
+
+
+def default_game(script: Path) -> Path:
+    """The game a bridge started with no --exe is for. A release has the bridge in the plugin's
+    folder, bin_ship\\daolib\\plugins\\eluvian\\, so there it is that install's game, whichever
+    store's it is (#115); from a source tree it is the GOG install's."""
+    folder = script.resolve().parent
+    if (folder.parent.name.lower(), folder.parent.parent.name.lower()) == (
+        "plugins",
+        "daolib",
+    ):
+        beside = folder.parents[2] / DEFAULT_GAME.name
+        if beside.exists():
+            return beside
+    return DEFAULT_GAME
+
 
 INSTRUCTIONS = (
     "This bridge keeps Eluvian, the test bench inside Dragon Age: Origins, connected while the game "
@@ -1386,7 +1407,13 @@ def main() -> None:
     parser.add_argument(
         "--port", type=int, help="the game's port; default: eluvian.json's, else 8930"
     )
-    parser.add_argument("--exe", type=Path, default=DEFAULT_GAME, help="DAOrigins.exe")
+    parser.add_argument(
+        "--exe",
+        type=Path,
+        default=default_game(Path(__file__)),
+        help="DAOrigins.exe; default: the game whose plugin folder this file is in, else "
+        "the GOG install's",
+    )
     parser.add_argument(
         "--call",
         nargs="+",

@@ -1,0 +1,12 @@
+# Changelog
+
+## 0.1.0
+
+The first release, for Dragon Age: Origins 1.05.13263.0 with [DAOLib 0.1.0](https://github.com/Whocares66-Dev/DAOLib/releases/tag/v0.1.0) or later. It is tested on the GOG build of the game:
+
+- **A test bench inside the game:** `eluvian.dll`, a DAOLib plugin, extracted into the game's folder as DAOLib is. While the game runs it serves it over [MCP](https://modelcontextprotocol.io) and plain HTTP on `127.0.0.1`, so an AI agent or a script reads the game and gives it orders with no screen at all. It answers on this machine only, with no authentication: it is for developing and testing mods, not for playing with.
+- **61 tools:** the creatures around with their health, effects and abilities, the party, inventories, quests and plot flags, and what the interface has up; orders to attack, use an ability, walk, talk, equip and press a button; `stage_*` tools that set a test's case up (spawn, kill, heal, apply an effect, equip); screenshots; and `script`, which calls any of the game's script commands by name. The [documentation](https://whocares66-dev.github.io/DAOEluvianMCP/) has each with its arguments.
+- **Waiting for what happens, not sleeping:** an order answers with a cursor, and `wait_for` returns the event it expects from there (27 topics: a command ended, a creature died, an area loaded, a line of dialogue, a save written) or says why none came. `wait_until` waits on a condition of any tool's answer, and `wait_ready` until the game takes input again.
+- **Whole jobs in one call:** `travel` walks the party through doors, across areas and over the world map; `loot`, `levelup`, `craft` and `gift` each do what takes a screen and many clicks; `scenario` runs a list of steps with their waits and checks and returns a transcript.
+- **A bridge that outlives the game:** `eluvian_bridge.py`, beside the DLL, is an MCP server over stdio that needs only Python 3. An agent stays connected to it while the game starts and stops, and it adds `game_launch` (into a save), `game_quit`, `game_status`, `game_saves` and a claim that tells agents sharing one game whose it is.
+- **Tools and events from other mods:** a DAOLib plugin registers its own through a small C interface, [`EluvianAPI.h`](https://github.com/Whocares66-Dev/DAOEluvianMCP/blob/v0.1.0/src/api/EluvianAPI.h) (MIT, interface 3), under its own prefix, and they are served and waited on like Eluvian's.

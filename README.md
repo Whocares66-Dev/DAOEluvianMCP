@@ -14,15 +14,23 @@ It is tested on the GOG build of the game, version 1.05.13263.0 (DAOLib's addres
 - [dev/DESIGN.md](dev/DESIGN.md): what it does and why, every tool and event, and the C interface for other plugins.
 - [dev/TESTING.md](dev/TESTING.md): how it is checked in the game, and what was seen there.
 
+## Installing
+
+Eluvian is a DAOLib plugin, so the game has [DAOLib](https://github.com/Whocares66-Dev/DAOLib/releases) first: its zip, extracted into the game's install folder, the one that holds `bin_ship`. An [Eluvian release](https://github.com/Whocares66-Dev/DAOEluvianMCP/releases) is extracted the same way, into the same folder, with the game closed. All of it lands in one folder, `bin_ship\daolib\plugins\eluvian\`: `eluvian.dll`, `eluvian.pdb` (which lets a crash log name Eluvian's own code), the bridge `eluvian_bridge.py`, and `VERSION.txt`, which names the DAOLib release it was built on, the oldest it works with. Deleting that folder takes Eluvian out. [CHANGELOG.md](CHANGELOG.md) says what each release brought.
+
+Start the game as always. `Documents\BioWare\Dragon Age\daolib\loader.log` then says that `eluvian` was loaded, and `eluvian.log` beside it has the port Eluvian serves on and every tool call with its arguments and answer.
+
 ## Connecting
 
-An agent connects through the bridge, `tools\eluvian_bridge.py`, a stdio MCP server that outlives the game. It forwards to the game while it runs, and adds `game_launch`, `game_quit`, `game_status`, `game_saves` and the claim that tells agents sharing one game whose it is. This repository's `.mcp.json` starts it; from another:
+An agent connects through the bridge, `eluvian_bridge.py`, a stdio MCP server that outlives the game and needs only Python 3. It forwards to the game while it runs, and adds `game_launch`, `game_quit`, `game_status`, `game_saves` and the claim that tells agents sharing one game whose it is. Started from the game's folder it takes that game as its own:
 
 ```sh
-claude mcp add eluvian -- python C:\project\DAOEluvianMCP\tools\eluvian_bridge.py
+claude mcp add eluvian -- python "C:\Program Files (x86)\GOG Galaxy\Games\Dragon Age Origins\bin_ship\daolib\plugins\eluvian\eluvian_bridge.py"
 ```
 
-A script calls one tool from the shell and reads the answer as JSON:
+In a clone of this repository the same file is `tools\eluvian_bridge.py`, which `.mcp.json` starts; there it takes the GOG install's game unless `--exe` names another.
+
+A script calls one tool from the shell and reads the answer as JSON (here from a clone):
 
 ```powershell
 python tools\eluvian_bridge.py --call game_launch '{"owner":"me","load":{"character":"Lyna","kind":"manual","number":1}}'
@@ -41,13 +49,13 @@ curl -X POST http://127.0.0.1:8930/api/tool/creatures -d '{"side":"hostile"}'
 - `src/core`: the bench without the game (HTTP, MCP, the tool registry, the event bus, and the tools that decide over other tools' answers), tested.
 - `src/game`: the tools that read and drive the game, through DAOLib.
 - `src/plugin`, `src/api`: the plugin itself, and the C interface other plugins include.
-- `tools/`: building, deploying, the bridge, `smoke.py` (every tool once in the game) and `build_docs.py` (the docs site).
+- `tools/`: building, deploying, packaging and releasing, the bridge, `smoke.py` (every tool once in the game) and `build_docs.py` (the docs site).
 - `docs/`: the docs site's theme and the reference it is built from (`_data/eluvian.json`, what `eluvian_describe` prints).
 - `dev/`: the docs above.
 
 ## Building
 
-Visual Studio 2022 with the C++ workload, [vcpkg](https://github.com/microsoft/vcpkg) with `VCPKG_ROOT` set, and Python 3. Everything is 32-bit, as the game is.
+Only to work on Eluvian: to use it, install a release. Visual Studio 2022 with the C++ workload, [vcpkg](https://github.com/microsoft/vcpkg) with `VCPKG_ROOT` set, and Python 3. Everything is 32-bit, as the game is.
 
 ```powershell
 git submodule update --init --recursive   # DAOLib, and its address library
@@ -55,9 +63,10 @@ git submodule update --init --recursive   # DAOLib, and its address library
 .\tools\build.ps1 -Preset release -Test   # what the game plays
 .\tools\deploy.ps1                        # the release build into the game (with the game closed)
 .\tools\deploy.ps1 -Remove                # take it out again
+.\tools\package.ps1                       # the release build as the zip a release carries
 ```
 
-Logs are written to `Documents\BioWare\Dragon Age\daolib\`; `eluvian.log` has every tool call with its arguments and answer.
+[dev/RELEASING.md](dev/RELEASING.md) is how a release is cut.
 
 ## Working on Eluvian
 

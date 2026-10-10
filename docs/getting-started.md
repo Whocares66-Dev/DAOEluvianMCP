@@ -10,22 +10,19 @@ Eluvian runs inside Dragon Age: Origins and lets an AI agent, or a script, read 
 
 ## 1. Install
 
-Build Eluvian and copy it into the game, with the game closed:
+Eluvian is a plugin for [DAOLib](https://github.com/Whocares66-Dev/DAOLib/releases), so install that first: extract its zip into the game's install folder, the one that holds `bin_ship`. Then extract an [Eluvian release](https://github.com/Whocares66-Dev/DAOEluvianMCP/releases) into the same folder, with the game closed. Eluvian is then one folder, `bin_ship\daolib\plugins\eluvian\`, and deleting it takes Eluvian out.
 
-```powershell
-.\tools\build.ps1 -Preset release -Test
-.\tools\deploy.ps1
-```
-
-The [README](https://github.com/Whocares66-Dev/DAOEluvianMCP#building) lists what the build needs.
+To build it yourself instead, see the [README](https://github.com/Whocares66-Dev/DAOEluvianMCP#building).
 
 ## 2. Connect your agent
 
-The bridge is an MCP server that stays connected while the game starts and stops:
+The bridge is an MCP server that stays connected while the game starts and stops. It needs Python 3, and it is in the folder you just extracted:
 
 ```sh
-claude mcp add eluvian -- python C:\project\DAOEluvianMCP\tools\eluvian_bridge.py
+claude mcp add eluvian -- python "C:\Program Files (x86)\GOG Galaxy\Games\Dragon Age Origins\bin_ship\daolib\plugins\eluvian\eluvian_bridge.py"
 ```
+
+Use your own game's path. Started from there, the bridge launches that game.
 
 ## 3. Start the game
 

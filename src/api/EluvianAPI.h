@@ -53,8 +53,9 @@
 // Build your plugin against the same version of this header as the Eluvian it runs with, and
 // deploy the two together. ELUVIAN_INTERFACE_VERSION changes whenever the interface's layout
 // does. If the versions differ, EluvianFind returns null and your plugin carries on without
-// Eluvian, rather than calling into a table it does not understand. Eluvian has not been
-// released, so it keeps no support for plugins built against older versions.
+// Eluvian, rather than calling into a table it does not understand. An Eluvian serves the one
+// version it was built with and none older: a release's notes say when the version changed,
+// and a plugin is then built again.
 #pragma once
 
 #include <stdint.h>

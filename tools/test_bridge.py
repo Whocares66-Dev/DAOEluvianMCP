@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -425,6 +426,33 @@ class BridgeTest(unittest.TestCase):
             bridge_module.is_same_file(r"C:\Games\EA\bin_ship\daorigins.exe", exe)
         )
         self.assertFalse(bridge_module.is_same_file(None, exe))
+
+    def test_a_bridge_in_a_games_plugin_folder_takes_that_game(self) -> None:
+        game = self.folder / "bin_ship"
+        plugin = game / "daolib" / "plugins" / "eluvian"
+        plugin.mkdir(parents=True)
+        script = plugin / "eluvian_bridge.py"
+        # A folder laid out as a game's with no game in it, as a build tree's is.
+        self.assertEqual(bridge_module.default_game(script), bridge_module.DEFAULT_GAME)
+        (game / "DAOrigins.exe").write_bytes(b"")
+        self.assertEqual(
+            bridge_module.default_game(script), (game / "DAOrigins.exe").resolve()
+        )
+        # A game three folders up is not this bridge's unless the folders are a plugin's.
+        elsewhere = game / "tools" / "of" / "mine"
+        elsewhere.mkdir(parents=True)
+        self.assertEqual(
+            bridge_module.default_game(elsewhere / "eluvian_bridge.py"),
+            bridge_module.DEFAULT_GAME,
+        )
+
+    def test_the_bridges_version_is_the_projects(self) -> None:
+        cmake = Path(__file__).resolve().parent.parent / "CMakeLists.txt"
+        version = re.search(
+            r"project\(\w+ VERSION (\d+\.\d+\.\d+)", cmake.read_text(encoding="utf-8")
+        )
+        self.assertIsNotNone(version)
+        self.assertEqual(bridge_module.VERSION, version.group(1))
 
     def test_one_call_from_the_command_line_prints_its_answer(self) -> None:
         import io

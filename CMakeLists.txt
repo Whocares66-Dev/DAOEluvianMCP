@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(DAOEluvianMCP VERSION 0.2.0 LANGUAGES CXX)
+project(DAOEluvianMCP VERSION 0.1.0 LANGUAGES CXX)
 
 # C++20 for what the build fetches too: Catch2 compiled as its own default
 # has no printer for std::string_view, which the tests then lack at link
@@ -274,9 +274,41 @@ target_compile_definitions(
     PUBLIC EL_VERSION_STRING="${PROJECT_VERSION}"
 )
 
-add_daolib_plugin(eluvian SOURCES src/plugin/HostApi.cpp src/plugin/Plugin.cpp)
+# The bridge goes beside the DLL, so the plugin's folder is the whole of what
+# is installed, in the build tree, in the game and in a release's zip (#115):
+# an agent's client starts it from there (tools/eluvian_bridge.py's head).
+add_daolib_plugin(
+    eluvian
+    SOURCES src/plugin/HostApi.cpp src/plugin/Plugin.cpp
+    FILES tools/eluvian_bridge.py
+)
 el_apply_warnings(eluvian)
 target_link_libraries(eluvian PRIVATE el_game)
+# What the game plays is what is released (#76, #115). RelWithDebInfo links
+# incrementally unless told otherwise, which pads the DLL for the next link
+# and keeps every function nothing calls: 5.6 MB and an 80 MB PDB on
+# 2026-10-10. /DEBUG also turns /OPT:REF and /OPT:ICF off, so they are put
+# back, as DAOLib's dao_release_symbols does for its Release builds.
+if(MSVC)
+    target_link_options(
+        eluvian
+        PRIVATE "$<$<CONFIG:RelWithDebInfo>:/INCREMENTAL:NO;/OPT:REF;/OPT:ICF>"
+    )
+    # The linker writes into a PDB that is already there and leaves in it
+    # what earlier links wrote: after one relink the PDB was 81 MB where a
+    # new one is 40, and still held the path of the temporary files of a
+    # link made before tools\build.ps1 kept those in the build tree, which
+    # is under the user's name (2026-10-10). So each link starts its own.
+    # A debug link is incremental and needs the one it has.
+    if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        add_custom_command(
+            TARGET eluvian
+            PRE_LINK
+            COMMAND ${CMAKE_COMMAND} -E rm -f $<TARGET_PDB_FILE:eluvian>
+            VERBATIM
+        )
+    endif()
+endif()
 
 # eluvian_describe: every tool and topic Eluvian serves, as JSON, without
 # the game: what the docs site's reference is built from (#109).

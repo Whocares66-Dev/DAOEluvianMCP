@@ -5,9 +5,9 @@
 
 .DESCRIPTION
     After `.\tools\build.ps1 -Preset <preset>`, puts the folder build\<preset>\daolib\plugins\
-    eluvian\ (eluvian.dll and its .pdb, so a crash log names our frames) at
-    bin_ship\daolib\plugins\eluvian\, where a loader of DAOLib #26 on looks for it. The game
-    must not be running: it holds the file open.
+    eluvian\ (eluvian.dll, its .pdb, so a crash log names our frames, and the bridge, as a
+    release's zip has them, #115) at bin_ship\daolib\plugins\eluvian\, where a loader of
+    DAOLib #26 on looks for it. The game must not be running: it holds the file open.
 
     DAOLib's loader (version.dll) is copied only if the game has none, or with -Loader: the
     turn-based mod deploys one too, and a loader loads every plugin of its own plugin API, so
