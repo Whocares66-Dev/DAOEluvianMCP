@@ -303,6 +303,10 @@ ToolResult KindGame(Bench &bench, const Watch &watch, const Json & /*args*/)
     const ObjectId hero = api::GetHero();
     answer["hero"] = Brief(hero);
     answer["controlled"] = Brief(api::GetMainControlled());
+    // Who leads the party, which a follower given control does not become: a
+    // driver took the one controlled for the leader (turn-based-agent,
+    // 2026-10-04, #60).
+    answer["leader"] = Brief(api::GetPartyLeader());
     answer["area"] = hero == kInvalidObject ? Json(nullptr) : Brief(api::GetArea(hero));
     Json party = Json::array();
     for (const ObjectId member : PartyOf(hero))
@@ -1038,7 +1042,8 @@ void AddInspect(Bench &bench, const Watch &watch)
     bench.Tools().Add(
         Read("state",
              "Returns the game's current state: the `mode`, whether it is `paused`, the `area`, the `hero`, "
-             "the creature you control (`controlled`), the `party` and which members are `selected` in the "
+             "the creature you control (`controlled`), the party's `leader` (not always the one you control: a "
+             "follower given control does not lead), the `party` and which members are `selected` in the "
              "party bar, the game's message box if one is open (`popup`: its text and buttons), and the "
              "event `cursor` to pass as `since` to `events` or `wait_for`.\n\n"
              "In combat with no hostile in sight, `combatHold` says why the game stays in combat: it leaves "

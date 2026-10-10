@@ -185,10 +185,20 @@ Json ToolControl(Bench &bench, const Watch &watch, const Json &raw)
     }
     api::SetPrimaryControlled(member);
     const ObjectId now = api::GetMainControlled();
-    return Json{{"before", Brief(controlled)},
-                {"controlled", Brief(now)},
-                {"taken", now == member},
-                {"cursor", bench.Events().Next()}};
+    Json answer = {{"before", Brief(controlled)},
+                   {"controlled", Brief(now)},
+                   {"taken", now == member},
+                   {"cursor", bench.Events().Next()}};
+    // At the party camp the game kept the hero controlled, and the answer
+    // said only `taken` false (turn-based-agent, 2026-10-05, #60).
+    if (now != member)
+    {
+        const std::string kept = now == kInvalidObject ? "no one" : Narrow(api::GetName(now));
+        answer["note"] = "The game kept " + kept +
+                         " controlled. At the party camp, in a conversation or in a cutscene it may not hand "
+                         "control over; tools that act for the creature you control act for " + kept + ".";
+    }
+    return answer;
 }
 
 // Control handed to a party member before its move, as a click on its
@@ -404,8 +414,9 @@ void AddOrder(Bench &bench, const Watch &watch)
     bench.Tools().Add(
         Spec("control",
              "Gives control to a party member, like clicking its portrait. Returns who was controlled `before`, "
-             "who is `controlled` now, whether the change worked (`taken`), and a `cursor`. `order` hands control "
-             "over by itself when another party member has to move or use something.",
+             "who is `controlled` now, whether the change worked (`taken`), and a `cursor`. When the game keeps "
+             "control where it was (at the party camp, in a conversation or a cutscene), `note` says so. `order` "
+             "hands control over by itself when another party member has to move or use something.",
              Json{{"id", {{"type", "string"}, {"description", "The party member, by id; `state` lists the party."}}}},
              {"id"}),
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolControl(bench, watch, raw); });
