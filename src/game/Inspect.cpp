@@ -292,6 +292,19 @@ Json CombatHold(const std::set<ObjectId> &party)
                         "within 7.5 meters of each fallen one: walk one there (travel to the fallen member's id)."}};
 }
 
+// How many inactive ones a list left out, said when any were: the hole in a
+// sliding puzzle's grid was an inactive placeable, and nothing said one had
+// been left out (turn-based-agent, 2026-10-05, #65).
+void SayLeftOut(Json &answer, int leftOut, const char *what)
+{
+    if (leftOut > 0)
+    {
+        answer["inactiveLeftOut"] = leftOut;
+        answer["note"] = std::to_string(leftOut) + " inactive " + what +
+                         " left out (the area keeps them hidden); pass includeInactive: true to list them too.";
+    }
+}
+
 // The game kind's handler, registered by AddInspect.
 ToolResult KindGame(Bench &bench, const Watch &watch, const Json & /*args*/)
 {
@@ -570,6 +583,7 @@ ToolResult KindPlaceables(const Watch &watch, const Json &raw)
     const bool includeInactive = args.Bool("includeInactive", false);
     const auto interactive = args.Has("interactive") ? std::optional{args.Bool("interactive", true)} : std::nullopt;
     std::vector<std::pair<float, Json>> found;
+    int leftOut = 0; // inactive ones within the other filters (#65)
     for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
     {
         if (api::GetObjectType(id) != k::OBJECT_TYPE_PLACEABLE ||
@@ -580,8 +594,13 @@ ToolResult KindPlaceables(const Watch &watch, const Json &raw)
         const bool active = api::GetObjectActive(id) != 0;
         const auto position = api::GetPosition(id);
         const float distance = Distance(from, position);
-        if ((!includeInactive && !active) || (radius >= 0 && distance > radius))
+        if (radius >= 0 && distance > radius)
         {
+            continue;
+        }
+        if (!includeInactive && !active)
+        {
+            ++leftOut;
             continue;
         }
         Json placeable = Brief(id);
@@ -609,11 +628,17 @@ ToolResult KindPlaceables(const Watch &watch, const Json &raw)
     {
         placeables.push_back(std::move(placeable));
     }
+    Json answer = {{"near", Brief(around)}, {"count", placeables.size()}};
     if (args.Bool("brief", false))
     {
-        return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"lines", Lines(placeables, PlaceableLine)}};
+        answer["lines"] = Lines(placeables, PlaceableLine);
     }
-    return Json{{"near", Brief(around)}, {"count", placeables.size()}, {"placeables", std::move(placeables)}};
+    else
+    {
+        answer["placeables"] = std::move(placeables);
+    }
+    SayLeftOut(answer, leftOut, "placeables");
+    return answer;
 }
 
 // The surroundings kind's handler, registered by AddInspect.
@@ -834,15 +859,21 @@ ToolResult KindCreatures(const Watch &watch, const Json &raw)
     const auto party = PartyOf(hero);
 
     std::vector<std::pair<float, Json>> found;
+    int leftOut = 0; // inactive ones within the other filters (#65)
     for (const ObjectId id : Objects(api::GetObjectsInArea(api::GetArea(around))))
     {
-        if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE || (!includeInactive && api::GetObjectActive(id) == 0))
+        if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
         {
             continue;
         }
         const float distance = Distance(from, api::GetPosition(id));
         if (radius >= 0 && distance > radius)
         {
+            continue;
+        }
+        if (!includeInactive && api::GetObjectActive(id) == 0)
+        {
+            ++leftOut;
             continue;
         }
         Json creature = Summary(id, hero, party);
@@ -859,11 +890,17 @@ ToolResult KindCreatures(const Watch &watch, const Json &raw)
     {
         creatures.push_back(std::move(creature));
     }
+    Json answer = {{"near", Brief(around)}, {"count", creatures.size()}};
     if (args.Bool("brief", false))
     {
-        return Json{{"near", Brief(around)}, {"count", creatures.size()}, {"lines", Lines(creatures, CreatureLine)}};
+        answer["lines"] = Lines(creatures, CreatureLine);
     }
-    return Json{{"near", Brief(around)}, {"count", creatures.size()}, {"creatures", std::move(creatures)}};
+    else
+    {
+        answer["creatures"] = std::move(creatures);
+    }
+    SayLeftOut(answer, leftOut, "creatures");
+    return answer;
 }
 
 // The creature kind's handler, registered by AddInspect.
@@ -1153,7 +1190,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                    {"description", "Only those within this many meters of `near`. Default: "
                                    "the whole area."}}},
                  {"includeInactive",
-                  {{"type", "boolean"}, {"description", "Also list placeables the area keeps hidden. Default false."}}},
+                  {{"type", "boolean"}, {"description", "Also list placeables the area keeps hidden. Default false; then `inactiveLeftOut` says how many were left out."}}},
                  {"interactive",
                   {{"type", "boolean"},
                    {"description", "true: only those that can be used; false: only those that cannot. "
@@ -1273,7 +1310,7 @@ void AddInspect(Bench &bench, const Watch &watch)
                     {"description", "Only creatures on this side. Default: all sides."}}},
                   {"includeDead", {{"type", "boolean"}, {"description", "Include dead creatures. Default true."}}},
                   {"includeInactive",
-                   {{"type", "boolean"}, {"description", "Also list creatures the area keeps hidden. Default false."}}},
+                   {{"type", "boolean"}, {"description", "Also list creatures the area keeps hidden. Default false; then `inactiveLeftOut` says how many were left out."}}},
                   {"brief",
                    {{"type", "boolean"},
                     {"description", "Return one line per creature (`lines`: id, name, tag, side, health, dead, "
