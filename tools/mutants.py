@@ -1997,8 +1997,8 @@ MUTANTS = [
     Mutant(
         "loot leaves a full pack's panel up",
         LOOT,
-        'Json{{"action", "press"}, {"button", "Close"}}',
-        'Json{{"action", "press"}, {"button", "Nothing"}}',
+        'Ask("press", Json{{"button", "Close"}})',
+        'Ask("press", Json{{"button", "Nothing"}})',
     ),
     Mutant(
         "loot says a full pack's panel stays up when it closed",
@@ -2539,7 +2539,7 @@ MUTANTS = [
         "travel refuses a door at the cannot-pick level whose key is held",
         TRAVEL,
         "        if (!blocker.empty() && locked && !keyHeld &&\n",
-        "        if (!blocker.empty() && locked &&\n",
+        "        if (!blocker.empty() && locked && (keyHeld || !keyHeld) &&\n",
     ),
     Mutant(
         "travel takes any blocker with a leadsTo for an exit",

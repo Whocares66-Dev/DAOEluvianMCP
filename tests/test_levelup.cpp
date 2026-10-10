@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -49,8 +50,10 @@ struct Rogue
     };
     std::vector<Special> specials;
     int specialPoints = 0;
-    bool foundUnread = false;       // the screen's count of them reads nothing, its icons there all the same (#106)
-    mutable int specialsLate = 0;   // reads of the first icon before the screen has made its icons
+    bool foundUnread = false;     // the screen's count of them reads nothing, its icons there all the same (#106)
+    mutable int specialsLate = 0; // reads of the first icon before the screen has made its icons
+    int opensWith = 0;            // a specialization that, once had, makes `chainOpened` learnable
+    int chainOpened = 0;
     std::vector<int> specialStored; // picks its icons stored, which an unfinished end reverts
     std::vector<std::string> sent;  // input's messages, in order
     std::vector<Json> movie;        // input's calls into the screen's movie, in order
@@ -265,6 +268,13 @@ struct Rogue
                 special.selected = true;
                 specialPoints -= 1;
                 specialStored.push_back(special.id);
+                for (auto &[id, state] : chain)
+                {
+                    if (special.id == opensWith && id == chainOpened)
+                    {
+                        state = "learnable"; // its own chain opens
+                    }
+                }
                 sent.push_back("GUILevelUp.CharGenAssignAbility 130 " + std::to_string(special.id) + " 1");
             }
         }
@@ -817,6 +827,21 @@ TEST_CASE("a specialization is taken once the screen has made its icons, with no
     CHECK(answer["levelled"] == true);
     CHECK(answer["specialization"] == Json{{"id", 4029}, {"name", "Ranger"}});
     CHECK(rogue.specials[2].selected);
+}
+
+TEST_CASE("a specialization is taken before the abilities, so its own chain is learnable in the same call", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    rogue.levels = 1; // a talent point for the chain's ability
+    rogue.chain.emplace_back(70, "not yet");
+    rogue.opensWith = 4029; // Ranger
+    rogue.chainOpened = 70;
+    const auto answer =
+        rogue.LevelUp(Json{{"specialization", "Ranger"}, {"abilities", Json::array({70})}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    CHECK(rogue.specials[2].selected);
+    CHECK(std::ranges::find(rogue.abilities, 70) != rogue.abilities.end());
 }
 
 TEST_CASE("a specialization the screen does not list is refused, naming those it does", "[levelup]")
