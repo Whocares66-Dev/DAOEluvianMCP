@@ -236,45 +236,68 @@ include("${EL_DAOLIB}/cmake/Quality.cmake")
 # eluvian.dll -- the plugin. src/game is every call into the engine, through
 # DAOLib; it is verified by playing.
 # ---------------------------------------------------------------------------
-add_daolib_plugin(
-    eluvian
-    SOURCES
-        src/game/Camera.cpp
-        src/game/Capture.cpp
-        src/game/Board.cpp
-        src/game/Character.cpp
-        src/game/Convert.cpp
-        src/game/Dialogue.cpp
-        src/game/Game.cpp
-        src/game/GameTools.cpp
-        src/game/Gui.cpp
-        src/game/Health.cpp
-        src/game/Input.cpp
-        src/game/Inspect.cpp
-        src/game/Order.cpp
-        src/game/Resources.cpp
-        src/game/Screen.cpp
-        src/game/Screenshot.cpp
-        src/game/Script.cpp
-        src/game/Shared.cpp
-        src/game/Stage.cpp
-        src/game/Tactics.cpp
-        src/game/Store.cpp
-        src/game/WorldMap.cpp
-        src/plugin/HostApi.cpp
-        src/plugin/Plugin.cpp
+# el_game: the game's tools and their registration, built once for the
+# plugin and for eluvian_describe, which prints them for the docs without the
+# game (#109).
+add_library(
+    el_game
+    OBJECT
+    src/game/Camera.cpp
+    src/game/Capture.cpp
+    src/game/Board.cpp
+    src/game/Character.cpp
+    src/game/Convert.cpp
+    src/game/Dialogue.cpp
+    src/game/Game.cpp
+    src/game/GameTools.cpp
+    src/game/Gui.cpp
+    src/game/Health.cpp
+    src/game/Input.cpp
+    src/game/Inspect.cpp
+    src/game/Order.cpp
+    src/game/Resources.cpp
+    src/game/Screen.cpp
+    src/game/Screenshot.cpp
+    src/game/Script.cpp
+    src/game/Shared.cpp
+    src/game/Stage.cpp
+    src/game/Tactics.cpp
+    src/game/Store.cpp
+    src/game/WorldMap.cpp
+    src/plugin/Tools.cpp
 )
-el_apply_warnings(eluvian)
+el_apply_warnings(el_game)
 # windowscodecs: the screenshot's JPEG (game/Capture.cpp).
-target_link_libraries(eluvian PRIVATE el_server windowscodecs)
+target_link_libraries(el_game PUBLIC el_server DAOLib::daolib windowscodecs)
 target_compile_definitions(
-    eluvian
-    PRIVATE
-        EL_VERSION_STRING="${PROJECT_VERSION}"
-        EL_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-        EL_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-        EL_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+    el_game
+    PUBLIC EL_VERSION_STRING="${PROJECT_VERSION}"
 )
+
+add_daolib_plugin(eluvian SOURCES src/plugin/HostApi.cpp src/plugin/Plugin.cpp)
+el_apply_warnings(eluvian)
+target_link_libraries(eluvian PRIVATE el_game)
+
+# eluvian_describe: every tool and topic Eluvian serves, as JSON, without
+# the game: what the docs site's reference is built from (#109).
+add_executable(eluvian_describe src/plugin/Describe.cpp)
+el_apply_warnings(eluvian_describe)
+target_link_libraries(eluvian_describe PRIVATE el_game)
+# The site's reference is what eluvian_describe prints, kept in
+# docs/_data/eluvian.json for the Linux build that cannot run it: this fails
+# when the two differ, or a page will not render, saying how to refresh it.
+if(EL_BUILD_TESTS)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME docs.reference_current
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tools/build_docs.py" --check --exe
+                $<TARGET_FILE:eluvian_describe>
+        )
+    endif()
+endif()
 
 # `cmake --build --preset debug` builds the loader too, so build\<preset>\
 # is a game folder's worth of files: version.dll, daolib\plugins\<name>\ (a

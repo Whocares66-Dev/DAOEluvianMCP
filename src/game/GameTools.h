@@ -16,6 +16,11 @@ namespace eluvian::game
 
 void AddGameTools(Bench &bench, const Watch &watch);
 
+// What each of Eluvian's own topics means, into the catalogue a mod's go
+// into too (`events describe=true`). AddEngineEvents calls it; so does
+// eluvian_describe, for the docs, without the hooks (#109).
+void DescribeTopics(EventCatalog &topics);
+
 // Subscribes to DAOLib's engine events and emits them as eluvian.*. At
 // plugin load.
 void AddEngineEvents(Bench &bench);

@@ -27,6 +27,7 @@
 #include "game/GameTools.h"
 #include "game/Health.h"
 #include "plugin/HostApi.h"
+#include "plugin/Tools.h"
 #include "server/HttpServer.h"
 
 #include "dao/Frame.h"
@@ -241,28 +242,14 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
                                                  "action=unpause, then wait again"}}
                                  : Json::object();
     };
-    AddEventTools(g->bench, whyNothing);
-    AddLogTool(g->bench, dao::LogDirectory());
-    AddScenarioTool(g->bench, whyNothing);
-    AddWaitUntilTool(g->bench);
-    AddWaitReadyTool(g->bench);
-    AddGiftTool(g->bench);
-    AddTravelTool(g->bench);
-    AddDialogueTool(g->bench);
-    // A second on each screen a tool opens and closes in one call, so that
-    // whoever watches sees it (the user, 2026-10-03, #14).
-    AddLootTool(g->bench, std::chrono::seconds(1));
-    AddLevelUpTool(g->bench, std::chrono::seconds(1));
-    AddCraftTool(g->bench, std::chrono::seconds(1));
-    AddPartyTool(g->bench);
-    game::AddHealthTool(g->bench, g->watch, [] {
+    const auto health = [] {
         static const std::string owner = OwnerSetting();
         return Json{{"port", g->port},
                     {"version", EL_VERSION_STRING},
                     {"owner", owner.empty() ? Json(nullptr) : Json(owner)},
                     {"plugins", plugin::RegisteredByPlugins()}};
-    });
-    game::AddGameTools(g->bench, g->watch);
+    };
+    plugin::RegisterTools(g->bench, g->watch, plugin::ToolSetup{whyNothing, health, dao::LogDirectory()});
     game::AddEngineEvents(g->bench);
     plugin::BindHostApi(g->bench);
 

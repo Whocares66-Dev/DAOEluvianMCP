@@ -1,0 +1,61 @@
+name: Documentation
+
+# The docs site (#109): built from main on every push and from every release tag,
+# published to GitHub Pages. Its tool and event reference is docs/_data/eluvian.json,
+# which eluvian_describe writes on Windows and ctest keeps current; this job only
+# renders it, on Linux.
+on:
+  push:
+    branches: [main]
+    # A release tag adds its version to the selector.
+    tags: ['v*']
+  pull_request:
+    paths: ['src/api/EluvianAPI.h', 'docs/**', 'tools/build_docs.py', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Every tag, for each release's docs; a tag push builds the whole site from main.
+          fetch-depth: 0
+          ref: ${{ startsWith(github.ref, 'refs/tags/') && 'main' || github.ref }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: docs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python tools/build_docs.py
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/docs-site/DAOEluvianMCP
+
+  deploy:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

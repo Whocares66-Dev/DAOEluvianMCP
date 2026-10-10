@@ -27,7 +27,9 @@ src/game/     the tools that read and drive the game, through DAOLib, a file eac
               what they share;
               GameTools.cpp registers them and puts the engine's events on the bus), and health.
               Verified by playing.
-src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_GetInterface)
+src/plugin/   DAOLib_Load, the frame pump, the host side of the C ABI (Eluvian_GetInterface); Tools.cpp
+              registers every tool, for the plugin and for eluvian_describe (Describe.cpp), which prints
+              them and the topics without the game, for the docs site
 src/api/      EluvianAPI.h: the C ABI other plugins include. MIT, unlike the rest (GPLv3).
 tests/        Catch2 over src/core; tests/server over src/server
 tools/        build.ps1, deploy.ps1, console.ps1, check-powershell.ps1 (DAOTurnBased's, for this tree);
@@ -36,6 +38,10 @@ tools/        build.ps1, deploy.ps1, console.ps1, check-powershell.ps1 (DAOTurnB
               test_bridge.py, run by ctest, and smoke.py, every tool once in the game (not
               in ctest: it needs the game and a save); mutants.py (DAOTurnBased's), which
               breaks src/core on purpose, one promise at a time, and wants each caught
+docs/         the docs site (Just the Docs): its own short front page and Getting started; tools/
+              build_docs.py makes the rest from src/api/EluvianAPI.h and _data/eluvian.json (eluvian_describe's output,
+              kept current by ctest's docs.reference_current: `python tools/build_docs.py --update`);
+              .github/workflows/docs.yml publishes it from main
 dev/          the design
 extern/DAOLib the submodule
 ```

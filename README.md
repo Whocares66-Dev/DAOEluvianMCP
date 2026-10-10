@@ -1,12 +1,14 @@
 # Eluvian MCP
 
-A test bench inside **Dragon Age: Origins** for AI agents and scripts: a [DAOLib](https://github.com/Whocares66-Dev/DAOLib) plugin that serves the running game over [MCP](https://modelcontextprotocol.io) and plain HTTP on `127.0.0.1`. What [devbench](https://github.com/alandtse/devbench) is for Skyrim.
+A test bench inside **Dragon Age: Origins** for AI agents and scripts: a [DAOLib](https://github.com/Whocares66-Dev/DAOLib) plugin that serves the running game over [MCP](https://modelcontextprotocol.io) and plain HTTP on `127.0.0.1`. Inspired by Skyrim's [devbench](https://github.com/alandtse/devbench).
 
 An agent asks the game what it wants to know (the creatures around, their health and effects, the quests, what the interface has up) and gives it orders by id, then waits for the event it expects instead of sleeping and reading logs. It can stage a test's case, walk the party across the world, loot, level up, talk, and play a whole campaign with no screen at all. Other DAOLib plugins add tools and events of their own through a small C interface, [`src/api/EluvianAPI.h`](src/api/EluvianAPI.h) (MIT).
 
 It is tested on the GOG build of the game, version 1.05.13263.0 (DAOLib's address library maps EA's and Steam's too), and answers on `127.0.0.1` only with no authentication: a development bench, not something to ship to players.
 
 ## Docs
+
+**[whocares66-dev.github.io/DAOEluvianMCP](https://whocares66-dev.github.io/DAOEluvianMCP/)**: every tool with its arguments, the events, and the C interface, generated from the code (`python tools/build_docs.py --serve` builds it locally).
 
 - [dev/PLAYBOOK.md](dev/PLAYBOOK.md): how an agent drives a test, with the calls for each job.
 - [dev/DESIGN.md](dev/DESIGN.md): what it does and why, every tool and event, and the C interface for other plugins.
@@ -39,7 +41,8 @@ curl -X POST http://127.0.0.1:8930/api/tool/creatures -d '{"side":"hostile"}'
 - `src/core`: the bench without the game (HTTP, MCP, the tool registry, the event bus, and the tools that decide over other tools' answers), tested.
 - `src/game`: the tools that read and drive the game, through DAOLib.
 - `src/plugin`, `src/api`: the plugin itself, and the C interface other plugins include.
-- `tools/`: building, deploying, the bridge, and `smoke.py`, every tool once in the game.
+- `tools/`: building, deploying, the bridge, `smoke.py` (every tool once in the game) and `build_docs.py` (the docs site).
+- `docs/`: the docs site's theme and the reference it is built from (`_data/eluvian.json`, what `eluvian_describe` prints).
 - `dev/`: the docs above.
 
 ## Building
@@ -62,10 +65,14 @@ Logs are written to `Documents\BioWare\Dragon Age\daolib\`; `eluvian.log` has ev
 
 ## License
 
-GPLv3 ([LICENSE](LICENSE)), as DAOLib. `src/api/EluvianAPI.h` alone is MIT, so a plugin under any licence can include it.
+GPLv3 ([LICENSE](LICENSE)), as DAOLib. `src/api/EluvianAPI.h` alone is MIT, so a plugin under any license can include it.
 
 ## Thanks
 
-- [alandtse](https://github.com/alandtse) for [devbench](https://github.com/alandtse/devbench), the bench for Skyrim that Eluvian follows: its tools, its scenarios, and its rule that a tool is named for its job.
-- [DAOLib](https://github.com/Whocares66-Dev/DAOLib) and its [address library](https://github.com/Whocares66-Dev/DAOAddressLibrary), which give it the game.
-- The libraries it builds on: [nlohmann/json](https://github.com/nlohmann/json), [spdlog](https://github.com/gabime/spdlog), [Microsoft Detours](https://github.com/microsoft/Detours) and [Catch2](https://github.com/catchorg/Catch2).
+- [alandtse](https://github.com/alandtse) for [devbench](https://github.com/alandtse/devbench)
+- [DAOLib](https://github.com/Whocares66-Dev/DAOLib)
+- [DAOAddressLibrary](https://github.com/Whocares66-Dev/DAOAddressLibrary)
+- [nlohmann](https://github.com/nlohmann) for [JSON for Modern C++](https://github.com/nlohmann/json)
+- [gabime](https://github.com/gabime) for [spdlog](https://github.com/gabime/spdlog)
+- [Microsoft](https://github.com/microsoft) for [Detours](https://github.com/microsoft/Detours)
+- [Catch2](https://github.com/catchorg/Catch2)

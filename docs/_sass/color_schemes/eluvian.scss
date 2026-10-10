@@ -1,0 +1,26 @@
+// The eluvian's colours, as a Just the Docs colour scheme: the night-blue hall it
+// stands in for the page, the silver-blue stone of its frame for the text, the pale
+// glow of its glass for links, and the violet its surface turns when it opens for
+// what is current. Dark, since a white page was too bright beside the night (the
+// user, 2026-10-09). The rules that are not colours are in _sass/custom/custom.scss,
+// which uses these names too.
+
+@import "eluvian_palette";
+
+$color-scheme: dark;
+$body-background-color: $dusk;
+$body-heading-color: $lavender-pale;
+$body-text-color: $stone-pale;
+$link-color: $glow;
+$nav-child-link-color: $stone;
+$sidebar-color: $night;
+$base-button-color: $night-light;
+$btn-primary-color: $violet;
+$code-background-color: $night-deep;
+$code-linenumber-color: $stone;
+$feedback-color: $night-deep;
+$table-background-color: $dusk-light;
+$search-background-color: $night-deep;
+$search-foreground-color: $stone-pale;
+$search-result-preview-color: $stone;
+$border-color: rgba(154, 166, 196, 0.22);

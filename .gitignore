@@ -27,3 +27,8 @@ __pycache__/
 
 # A local scratchpad for review notes, not part of the tree (as DAOLib's).
 dev/REVIEW.md
+
+# The docs site: what a local Jekyll leaves in docs/ (tools/build_docs.py builds into build/)
+/docs/_site/
+/docs/.jekyll-cache/
+/docs/.bundle/

@@ -1,0 +1,46 @@
+# The docs site (#109): Just the Docs, as SkyrimFollowerTactics' is, in the eluvian's
+# colors (_sass), with DAOLib's typefaces. Its pages are
+# made by tools/build_docs.py from README.md, dev/PLAYBOOK.md, the header of the C
+# interface and _data/eluvian.json (what eluvian_describe prints); this folder holds
+# only what they are dressed in.
+title: Eluvian
+description: A test bench inside Dragon Age Origins for AI agents and scripts, served over MCP and HTTP.
+url: https://whocares66-dev.github.io
+baseurl: /DAOEluvianMCP
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+color_scheme: eluvian
+# The eluvian (assets/eluvian.png, the full image) beside the title and as the icon,
+# made from it with ImageMagick: its visible part cropped (663x1137+295+27), then
+#   magick eluvian.png -crop 663x1137+295+27 +repage -resize x96 -strip eluvian-icon.png
+#   magick eluvian.png -crop 663x1137+295+27 +repage -background none -gravity center
+#          -extent 1137x1137 -define icon:auto-resize=64,48,32,16 favicon.ico
+favicon_ico: /assets/favicon.ico
+permalink: pretty
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-include-cache
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+  button: false
+heading_anchors: true
+back_to_top: true
+back_to_top_text: Back to top
+aux_links:
+  GitHub: https://github.com/Whocares66-Dev/DAOEluvianMCP
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+exclude:
+  - assets/eluvian.png
+  - Gemfile
+  - Gemfile.lock
+  - _data/eluvian.json

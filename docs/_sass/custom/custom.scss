@@ -1,0 +1,420 @@
+// What the site does beyond its colours (_sass/color_schemes/eluvian.scss):
+// DAOLib's typefaces (Cinzel for titles and the navigation's carved capitals,
+// EB Garamond for the text, as DAOLib's docs set them), the night-blue of the
+// sidebar and title bar with the eluvian's glow on it, and violet for what is
+// current. An identifier keeps its case and its monospace.
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap");
+
+@import "eluvian_palette";
+
+$border-color: rgba(154, 166, 196, 0.22);
+$serif-title: "Cinzel", "Trajan Pro", "Times New Roman", serif;
+$serif-text: "EB Garamond", Garamond, Georgia, "Times New Roman", serif;
+$mono: Consolas, "Cascadia Mono", "Courier New", monospace;
+
+// The night: the sidebar and the title bar, with the mirror's light on them.
+$night-glow:
+  radial-gradient(ellipse at 30% 0%, rgba(188, 212, 255, 0.14), transparent 60%),
+  radial-gradient(ellipse at 80% 100%, rgba(106, 63, 181, 0.22), transparent 65%);
+
+body {
+  font-family: $serif-text;
+  font-size: 18px;
+}
+
+h1,
+h2,
+h3,
+.site-title,
+.site-title:hover,
+.nav-list .nav-list-item > .nav-list-link {
+  font-family: $serif-title;
+}
+
+h1,
+h2 {
+  border-bottom: 1px solid $border-color;
+}
+
+code,
+pre,
+.highlight {
+  font-family: $mono;
+  font-size: 16px;
+}
+
+// Just the Docs colours the header with the page's own, through
+// `.side-bar + .main .main-header` on wide screens: this outranks it.
+.side-bar,
+body .side-bar + .main .main-header {
+  background-color: $night;
+  background-image: $night-glow;
+  border-color: $night-light;
+}
+
+.site-title,
+.site-title:hover {
+  color: $glow-bright;
+}
+
+.nav-list .nav-list-item .nav-list-link {
+  color: $stone-light;
+
+  &:hover,
+  &.active {
+    color: $glow-bright;
+    background-image: linear-gradient(90deg, $violet, transparent);
+  }
+}
+
+.nav-list .nav-list-item .nav-list-expander {
+  color: $lavender;
+}
+
+.aux-nav .aux-nav-list-link {
+  color: $glow;
+}
+
+// The search box on the night strap, its glass lit faintly.
+body .main-header .search,
+body .main-header .search-input {
+  background-color: transparent;
+}
+
+body .main-header .search-input {
+  color: $glow-bright;
+
+  &:focus {
+    background-color: rgba(188, 212, 255, 0.06);
+  }
+
+  &::placeholder {
+    color: $stone;
+  }
+}
+
+body .main-header .search-label {
+  color: $lavender;
+}
+
+// Tables: a night-blue head, rows of mist.
+.main-content th {
+  background-color: $night-deep;
+  color: $glow-bright;
+  font-family: $serif-title;
+}
+
+.main-content td,
+.main-content th {
+  border-color: $border-color;
+}
+
+// An identifier keeps its case: Cinzel is all capitals, so the tools' names
+// (the sidebar's children, a tool page's title) are set in the text's and the
+// code's faces.
+.nav-list .nav-list .nav-list-item .nav-list-link {
+  font-family: $serif-text;
+}
+
+h1.identifier {
+  font-family: $mono;
+  font-weight: 600;
+}
+
+// The eluvian after the site's name, top left (the user, 2026-10-09: to the
+// right, and smaller).
+.site-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.site-icon {
+  order: 1;
+  height: 32px;
+  width: auto;
+  filter: drop-shadow(0 0 6px rgba(188, 212, 255, 0.45));
+}
+
+// Inline code keeps a faint violet tint in the text; blocks sit on the night.
+:not(pre) > code {
+  background-color: rgba(138, 92, 196, 0.22);
+  color: $stone-pale;
+}
+
+div.highlighter-rouge,
+.highlight,
+pre.highlight,
+figure.highlight {
+  background-color: $night-deep;
+  border: none;
+  box-shadow: none;
+}
+
+// No frame around code (the user, 2026-10-09: "no border around code").
+.main-content pre,
+.main-content div.highlighter-rouge,
+.main-content figure.highlight,
+:not(pre) > code {
+  border: none;
+}
+
+// Code's colours, for a dark page: the light theme's dark blues and greens
+// vanished here (the user, 2026-10-09). Rouge's token classes, in the eluvian's
+// light: names and text pale, keywords lavender, strings green, numbers amber,
+// comments the stone's grey. An escape in a shell line (a Windows path's
+// backslash) is not picked out.
+.highlight {
+  color: $stone-pale;
+
+  .c, .c1, .cm, .cs, .cp, .ch, .cd { color: #7d86a8; font-style: italic; }
+  .k, .kd, .kn, .kp, .kr, .kt, .kc, .ow { color: $lavender; }
+  .s, .s1, .s2, .sb, .sc, .sd, .sh, .sx, .sr, .ss, .dl { color: #a8d8a0; }
+  .se, .si { color: #a8d8a0; }
+  .m, .mi, .mf, .mh, .mo, .il { color: #f0c27a; }
+  .nb, .bp, .nf, .fm { color: $glow; }
+  .na, .nt, .nv, .vg, .vi, .vc { color: #9fc5ff; }
+  .o, .p, .n, .nx, .w, .err, .g, .gp, .go { color: $stone-pale; background: none; }
+}
+
+// Scrollbars in the night, not the browser's grey and white.
+* {
+  scrollbar-color: $stone $night-deep;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background-color: $night-deep;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: $night-light;
+  border: 2px solid $night-deep;
+  border-radius: 6px;
+
+  &:hover {
+    background-color: $stone;
+  }
+}
+
+// The GitHub mark in the title bar, in the mirror's light.
+.aux-nav .github-mark {
+  display: flex;
+  align-items: center;
+  color: $glow;
+
+  &:hover {
+    color: $glow-bright;
+  }
+}
+
+// Tables' rows alternate, as the eluvian's light on the night (the user,
+// 2026-10-09).
+.main-content tbody tr:nth-child(odd) td {
+  background-color: $dusk;
+}
+
+.main-content tbody tr:nth-child(even) td {
+  background-color: $dusk-light;
+}
+
+// Larger type (the user, 2026-10-09: "font size too small"). EB Garamond sets
+// small for its size, and Just the Docs sizes each element in rem, so the text
+// is sized where it is, not on body.
+.main-content p,
+.main-content li,
+.main-content td,
+.main-content th,
+.main-content blockquote {
+  font-size: 20px;
+  line-height: 1.55;
+}
+
+.main-content h1 {
+  font-size: 40px;
+}
+
+.main-content h2 {
+  font-size: 30px;
+}
+
+.main-content h3 {
+  font-size: 24px;
+}
+
+.nav-list .nav-list-item,
+.nav-list .nav-list-item .nav-list-link {
+  font-size: 17px;
+}
+
+.search-input,
+.search-label {
+  font-size: 17px;
+}
+
+// The copy button on a code block: a hand over it, the icon in the stone's
+// light, brighter on hover.
+div.highlighter-rouge > button,
+div.listingblock > div.content > button,
+figure.highlight > button {
+  cursor: pointer;
+  color: $glow;
+  background: none;
+
+  &:hover {
+    color: $glow-bright;
+    background: none;
+  }
+
+  // A hand over every part of it, the icon's drawing included.
+  &,
+  svg,
+  svg * {
+    cursor: pointer;
+  }
+
+  // Lucide's icons are drawn by stroke, not fill: without these the copy
+  // icon resolved to no stroke and showed nothing.
+  svg.copy-icon {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+// The breadcrumbs above a page's title, readable (the user, 2026-10-09).
+// The theme sizes them with !important, so only !important outranks it.
+nav.breadcrumb-nav ol.breadcrumb-nav-list li.breadcrumb-nav-list-item,
+nav.breadcrumb-nav ol.breadcrumb-nav-list li.breadcrumb-nav-list-item a {
+  font-size: 17px !important;
+}
+
+// Just the Docs frames a block's inner `div.highlight` in a rule of its own:
+// none, here (the user, 2026-10-09: "no border around code").
+.main-content div.highlighter-rouge div.highlight,
+.main-content figure.highlight pre,
+.main-content div.listingblock div.content {
+  border: none;
+}
+
+// Just the Docs sets `cursor: copy` (an arrow with a plus) on the button while
+// the block is hovered, in a rule more specific than a plain one, and pads it
+// to a box far larger than its icon. The same hover selector, later, gives the
+// hand; the button is the icon and a little room, in the corner.
+div.highlighter-rouge:hover > button,
+div.listingblock > div.content:hover > button,
+figure.highlight:hover > button {
+  cursor: pointer;
+}
+
+div.highlighter-rouge > button,
+div.listingblock > div.content > button,
+figure.highlight > button {
+  width: auto;
+  height: auto;
+  padding: 0.3rem;
+  top: 0.35rem;
+  right: 0.35rem;
+  line-height: 0;
+}
+
+// The version selector in the title bar, as SkyrimFollowerTactics' and DAOLib's
+// docs have one, in the eluvian's colours: Current, then each release.
+// The selector and the GitHub mark centred in the title bar's height: the
+// list and its items stretch to it and centre what they hold.
+.aux-nav,
+.aux-nav .aux-nav-list,
+.aux-nav .aux-nav-list .aux-nav-list-item {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.docs-version,
+.docs-versions {
+  position: relative;
+  margin-right: 0.75rem;
+  font-size: 16px;
+  color: $stone-pale;
+  white-space: nowrap;
+}
+
+.docs-versions summary,
+.docs-version {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid $border-color;
+  border-radius: 6px;
+  cursor: pointer;
+  list-style: none;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &::marker {
+    content: "";
+  }
+
+  svg {
+    color: $stone;
+  }
+}
+
+.docs-versions summary:hover,
+.docs-versions[open] summary {
+  color: $glow-bright;
+  border-color: $stone;
+}
+
+.docs-versions[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.docs-versions ul {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 40;
+  min-width: 100%;
+  margin: 0.4rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  background-color: $night-deep;
+  border: 1px solid $border-color;
+  border-radius: 6px;
+
+  a {
+    display: block;
+    padding: 0.25rem 0.6rem;
+    color: $stone-pale;
+    border-radius: 4px;
+
+    &:hover,
+    &[aria-current="true"] {
+      color: $glow-bright;
+      background-image: linear-gradient(90deg, $violet, transparent);
+    }
+  }
+}
+
+// The header's links scroll sideways in Just the Docs, which clipped the
+// version list to a box with a scrollbar: let it drop over the page.
+.main-header,
+.aux-nav,
+.aux-nav-list {
+  overflow: visible;
+}
+
+.main-header {
+  position: relative;
+  z-index: 30;
+}

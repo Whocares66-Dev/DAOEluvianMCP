@@ -159,11 +159,6 @@ Json CommandPayload(ObjectId id, const dao::Command &command)
 
 } // namespace
 
-namespace
-{
-
-// What each of Eluvian's own topics means, in the catalogue a mod's go into
-// too (`events describe=true`).
 void DescribeTopics(EventCatalog &topics)
 {
     const auto describe = [&topics](std::string topic, std::string description, Json fields) {
@@ -272,8 +267,6 @@ void DescribeTopics(EventCatalog &topics)
         describe(std::format("eluvian.script.{}", name), std::move(description), std::move(fields));
     }
 }
-
-} // namespace
 
 void AddEngineEvents(Bench &bench)
 {

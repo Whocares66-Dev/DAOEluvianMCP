@@ -1,0 +1,10 @@
+# The docs site's Jekyll, for tools/build_docs.py locally and in GitHub Actions:
+#
+#   bundle install
+#   python tools/build_docs.py --serve
+#
+# The github-pages gem keeps the dependency set GitHub Pages builds with, as
+# SkyrimFollowerTactics' does.
+source "https://rubygems.org"
+gem "github-pages", group: :jekyll_plugins
+gem "webrick"
