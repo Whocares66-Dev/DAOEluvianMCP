@@ -2554,6 +2554,25 @@ MUTANTS = [
         "distance - kCutShortGain",
         "distance + kCutShortGain",
     ),
+    # #41: a second use that succeeds and leads nowhere ends the crossing after a quiet spell.
+    Mutant(
+        "travel waits out its budget after a use that leads nowhere",
+        TRAVEL,
+        "                crossing.quietSince = crossing.succeeded;\n",
+        "",
+    ),
+    Mutant(
+        "travel gives up on a crossing at once after its second use",
+        TRAVEL,
+        "Clock::now() - *crossing.quietSince >= kQuietAfterUse",
+        "Clock::now() - *crossing.quietSince >= milliseconds(0)",
+    ),
+    Mutant(
+        "travel gives up on a crossing whose slow load is under way",
+        TRAVEL,
+        'crossing.loadSeen = crossing.loadSeen || answer_.value("mode", std::string()) == "loading";',
+        "crossing.loadSeen = false;",
+    ),
     # #72: what to do when the budget runs out.
     Mutant(
         "travel says nothing of its budget when its time runs out",

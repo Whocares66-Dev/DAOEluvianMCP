@@ -49,6 +49,10 @@ constexpr double kUseReach = 5.0;
 // the second goes through (den300ip_to_hospice_side, turn-based-agent,
 // 2026-10-06, #96).
 constexpr milliseconds kUnlockGrace{1500};
+// How long a crossing waits, once that second use has succeeded too, for
+// anything to follow: a load, the map, a box, another mode, each of which
+// begins within a frame or two (#41).
+constexpr milliseconds kQuietAfterUse{6000};
 // Where the search finds no walk and names nothing, steps this long toward
 // the goal, at most this many, each at least kStraightGain nearer (#53).
 constexpr double kStraightStep = 0.5;
@@ -619,41 +623,91 @@ class Journey
         // fails is tried once more from a step back, then said.
         const auto useEnded = EventFilter::FromArgs(
             Json{{"topic", "eluvian.command.ended"}, {"match", {{"id", who_}, {"type", "UseObject"}}}});
-        auto useSince = since;
-        bool steppedBack = false;
-        bool usedAgain = false;
-        std::optional<Clock::time_point> succeeded;
+        Crossing crossing;
+        crossing.since = since;
+        crossing.useSince = since;
         while (Left().count() > 0)
         {
-            const auto event = bench_.Events().WaitFor(since, loaded, std::min(Left(), milliseconds(500)));
+            const auto event = bench_.Events().WaitFor(crossing.since, loaded, std::min(Left(), milliseconds(500)));
             if (event)
             {
-                since = event->seq + 1;
+                crossing.since = event->seq + 1;
             }
-            if (const auto ended = bench_.Events().WaitFor(useSince, useEnded, milliseconds(0)))
+            bool usedAgain = false;
+            if (auto failed = UseEnd(exit, useEnded, crossing, usedAgain))
             {
-                useSince = ended->seq + 1;
-                const std::string result = ended->payload.value("result", std::string());
-                if (result.starts_with("COMMAND_FAILED") && result != kCleared)
-                {
-                    if (auto failed = UseAgain(exit, result, steppedBack, since, useSince))
-                    {
-                        return std::move(*failed);
-                    }
-                    continue;
-                }
-                if (result == "success")
-                {
-                    succeeded = Clock::now();
-                }
+                return std::move(*failed);
+            }
+            if (usedAgain)
+            {
+                continue;
             }
             if (auto end = Crossed(to))
             {
                 return std::move(*end);
             }
-            UseOnceMore(exit, succeeded, usedAgain);
+            crossing.loadSeen = crossing.loadSeen || answer_.value("mode", std::string()) == "loading";
+            if (crossing.quietSince && !crossing.loadSeen && Clock::now() - *crossing.quietSince >= kQuietAfterUse)
+            {
+                return NothingFollowed(exit);
+            }
+            UseOnceMore(exit, crossing.succeeded, crossing.usedAgain);
         }
         return End(false, "the party did not leave in the time given; the exit was used");
+    }
+
+    // What a crossing has seen so far, between its waits.
+    struct Crossing
+    {
+        std::uint64_t since = 0;    // the area-loaded events' cursor
+        std::uint64_t useSince = 0; // the use's end's cursor
+        bool steppedBack = false;
+        bool usedAgain = false; // the second use (#96), or a load that made it needless
+        std::optional<Clock::time_point> succeeded;
+        // A second use that succeeds and is followed by nothing: an exit
+        // that takes no one now. Denerim's 0x25e9b ended its use in success
+        // at once, four times, and each crossing waited out its budget, 9
+        // minutes in all (turn-based-agent, 2026-10-04, #41). Never once a
+        // load was seen: a slow one is the crossing under way (#99).
+        std::optional<Clock::time_point> quietSince;
+        bool loadSeen = false;
+    };
+
+    // The use's end, if one came: a failure is tried again from a step back
+    // (`usedAgain`, or the end if it cannot be), a success timed.
+    std::optional<Json> UseEnd(const std::string &exit, const EventFilter &useEnded, Crossing &crossing,
+                               bool &usedAgain)
+    {
+        const auto ended = bench_.Events().WaitFor(crossing.useSince, useEnded, milliseconds(0));
+        if (!ended)
+        {
+            return std::nullopt;
+        }
+        crossing.useSince = ended->seq + 1;
+        const std::string result = ended->payload.value("result", std::string());
+        if (result.starts_with("COMMAND_FAILED") && result != kCleared)
+        {
+            usedAgain = true;
+            return UseAgain(exit, result, crossing.steppedBack, crossing.since, crossing.useSince);
+        }
+        if (result == "success")
+        {
+            crossing.succeeded = Clock::now();
+            if (crossing.usedAgain && !crossing.loadSeen)
+            {
+                crossing.quietSince = crossing.succeeded;
+            }
+        }
+        return std::nullopt;
+    }
+
+    // The end of a crossing whose uses succeeded and led nowhere (#41).
+    Json NothingFollowed(const std::string &exit)
+    {
+        steps_.push_back(Json{{"did", "use " + exit + " again"}, {"result", "success, and nothing followed"}});
+        std::string why = "the use of " + exit + " succeeded and nothing followed: the exit takes no one now";
+        why += exitAt_.value("active", true) ? " (the story may keep it closed)" : " (exits says it is not active)";
+        return End(false, why + "; exits lists the others");
     }
 
     // A key-locked exit's second use (#96): once its first use ended in

@@ -1550,17 +1550,31 @@ TEST_CASE("an exit whose first use only unlocks it is used once more, and goes t
                         [](const Json &order) { return order["action"] == "use"; }) == 2);
 }
 
-TEST_CASE("an exit used twice to no end is not used a third time", "[travel]")
+TEST_CASE("an exit used twice to no end is not used a third time, and ends once nothing follows", "[travel]")
 {
     World world;
     world.shut = false;
     world.at = 1;
     world.exitUnlocks = 5; // never goes through
-    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 7000}}).data;
+    const auto started = std::chrono::steady_clock::now();
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 60000}}).data;
     CHECK(answer["arrived"] == false);
-    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not leave"));
+    // Not the whole budget: Denerim's exit took four of them, 9 minutes (#41).
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("nothing followed"));
+    CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(20));
     CHECK(std::count_if(world.orders.begin(), world.orders.end(),
                         [](const Json &order) { return order["action"] == "use"; }) == 2);
+}
+
+TEST_CASE("an exit whose use leads nowhere, given a short budget, says the budget ran out", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1;
+    world.crosses = false;
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("did not leave")); // before the quiet spell's end
 }
 
 TEST_CASE("upTo walks that far along the way to the target, and no further", "[travel]")
@@ -1827,4 +1841,19 @@ TEST_CASE("a move that fails a little nearer, short of reach, is not paused for"
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
     CHECK(world.orders.size() == 1);
+}
+
+TEST_CASE("a key-locked exit whose second use loads slowly is waited for past the quiet spell", "[travel]")
+{
+    World world; // the second use goes through, and its load outlasts the quiet spell (#41, #99)
+    world.shut = false;
+    world.at = 1;
+    world.crosses = false;
+    world.loads = true;
+    world.exitUnlocks = 1;
+    world.slowLoad = 16; // eight seconds of loading, at a health call each half second
+    const auto answer = world.bench.Invoke("travel", Json{{"exit", "0x1f5"}, {"budgetMs", 30000}}).data;
+    CHECK(answer["arrived"] == true);
+    CHECK(std::count_if(world.orders.begin(), world.orders.end(),
+                        [](const Json &order) { return order["action"] == "use"; }) == 2);
 }
