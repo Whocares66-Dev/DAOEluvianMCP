@@ -132,11 +132,11 @@ The turn bar's look and portraits, floating text actually drawn, selection circl
 
 ## The C ABI
 
-`src/api/EluvianAPI.h`, MIT so any plugin can include it whatever its own licence. A plugin finds it with `EluvianFind()` (`GetModuleHandleW(L"eluvian.dll")`, then `GetProcAddress("Eluvian_GetInterface")`) on its first frame, since the loader loads plugins sorted by name and has no registry. `EluvianInterface2` is versioned like devbench's `IDevBenchInterface001`; a build grows it only by appending, and a version drops what it must (2 dropped 1's inspect kinds and tool extensions, #110):
+`src/api/EluvianAPI.h`, MIT so any plugin can include it whatever its own licence. A plugin finds it with `EluvianFind()` (`GetModuleHandleW(L"eluvian.dll")`, then `GetProcAddress("Eluvian_GetInterface")`) on its first frame, since the loader loads plugins sorted by name and has no registry. `EluvianInterface` keeps nothing for an older build, nothing being released: a plugin is built against the header of the Eluvian it runs with and deployed with it. `ELUVIAN_INTERFACE_VERSION`, which `EluvianFind()` passes, changes with the layout, so a mismatched pair refuse each other rather than a plugin calling through the wrong table (2 when #110 dropped inspect kinds and tool extensions, 3 when it dropped the size, build and `ELUVIAN_HAS` kept for older builds):
 
 - `RegisterTool(name, descriptorJson, handler, context, flags)`: a tool of the plugin's own, one concept as the bench's are (its state a read-only `mymod_state`). The handler gets the arguments as JSON and answers once through an `EluvianReply`, `ok(json)` or `error(sentence)`. It is called on the frame thread unless `ELUVIAN_ON_LISTENER`; `ELUVIAN_READ_ONLY` is MCP's read-only hint. The bench's own tool names are refused.
 - `EmitEvent(topic, payloadJson)`, from any thread.
-- `DescribeEvent(topic, descriptorJson)`, what a topic means and what its payload holds, listed with Eluvian's own by `events describe=true`. A plugin checks `ELUVIAN_HAS(eluvian, member)` before a member a later build appends.
+- `DescribeEvent(topic, descriptorJson)`, what a topic means and what its payload holds, listed with Eluvian's own by `events describe=true`.
 
 JSON strings cross the boundary, never C++ objects.
 

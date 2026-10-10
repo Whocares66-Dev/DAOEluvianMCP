@@ -238,9 +238,7 @@ void EmitEvent(const char *topic, const char *payloadJson) noexcept
     }
 }
 
-constexpr EluvianInterface2 kInterface{
-    sizeof(EluvianInterface2),
-    (EL_VERSION_MAJOR * 10000) + (EL_VERSION_MINOR * 100) + EL_VERSION_PATCH,
+constexpr EluvianInterface kInterface{
     &RegisterTool,
     &EmitEvent,
     &DescribeEvent,
@@ -266,9 +264,9 @@ std::vector<std::string> RegisteredByPlugins()
 
 } // namespace eluvian::plugin
 
-// Version 1's plugins (inspect kinds, tool extensions) get nothing: they
-// are rebuilt against version 2, nothing being released (#110).
-extern "C" __declspec(dllexport) const EluvianInterface2 *Eluvian_GetInterface(std::uint32_t version)
+// A plugin built against another layout gets nothing, and carries on
+// without Eluvian, as where it is absent.
+extern "C" __declspec(dllexport) const EluvianInterface *Eluvian_GetInterface(std::uint32_t version)
 {
     return version == ELUVIAN_INTERFACE_VERSION ? &eluvian::plugin::kInterface : nullptr;
 }

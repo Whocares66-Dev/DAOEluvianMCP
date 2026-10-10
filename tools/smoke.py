@@ -73,20 +73,20 @@ def checks(run: Run, owner: str) -> None:
     check("health names this run as the owner", health, lambda a: a["owner"] == owner)
 
     game = tool("state")
-    check("inspect game", game, lambda a: a["hero"]["id"] and "popup" in a)
+    check("state", game, lambda a: a["hero"]["id"] and "popup" in a)
     hero = (game.get("hero") or {}).get("id")
     creatures = tool("creatures", {"radius": 60})
     check(
-        "inspect creatures",
+        "creatures",
         creatures,
         lambda a: (
             a["count"] >= 1 and {"room", "group", "side"} <= set(a["creatures"][0])
         ),
     )
     me = tool("creature", {"id": hero})
-    check("inspect creature", me, lambda a: "effects" in a and "abilities" in a)
+    check("creature", me, lambda a: "effects" in a and "abilities" in a)
     check(
-        "inspect character",
+        "character",
         tool("character", {"id": hero}),
         lambda a: (
             a["level"] >= 1
@@ -95,13 +95,13 @@ def checks(run: Run, owner: str) -> None:
         ),
     )
     check(
-        "game save refuses the player's quicksave",
+        "saves save refuses the player's quicksave",
         tool("saves", {"action": "save", "kind": "quick"}),
         lambda a: "quicksave is the player's" in a.get("error", ""),
     )
     check(
         "pointer holds the game's cursor at a creature, no click",
-        tool("pointer", {"target": "0x10d", "seconds": 5}),
+        tool("pointer", {"target": hero, "seconds": 5}),
         lambda a: "x" in a["pointed"] and a["holds"] == 5,
     )
     check(
@@ -110,67 +110,67 @@ def checks(run: Run, owner: str) -> None:
         lambda a: a["released"] is True,
     )
     check(
-        "inspect journal, the quests under way",
+        "journal, the quests under way",
         tool("journal"),
         lambda a: (
             len(a["quests"]) > 0 and all(q["plot"] and q["name"] for q in a["quests"])
         ),
     )
     check(
-        "inspect exits, the ways out of the area",
+        "exits, the ways out of the area",
         tool("exits"),
         lambda a: a["count"] > 0 and all(e["leadsTo"]["area"] for e in a["exits"]),
     )
     check(
-        "inspect plot, a story's flags",
+        "plot, a story's flags",
         tool("plot", {"plot": "gen00pt_backgrounds"}),
         lambda a: len(a["set"]) == 1 and len(a["flags"]) > 5,
     )
     check(
-        "inspect plot refuses a plot the game has not",
+        "plot refuses a plot the game has not",
         tool("plot", {"plot": "no_such_plot"}),
         lambda a: "no plot" in a.get("error", ""),
     )
     check(
-        "inspect tactics, a creature's slots",
-        tool("tactics", {"id": hero}),
+        "tactics look, a creature's slots",
+        tool("tactics", {"action": "look", "id": hero}),
         lambda a: (
             a["slots"] == len(a["tactics"])
             and all("empty" in t or "command" in t for t in a["tactics"])
         ),
     )
     check(
-        "inspect abilities, all a creature knows",
+        "abilities, all a creature knows",
         tool("abilities", {"id": hero}),
         lambda a: (
             a["count"] >= len(a["talents"]) + len(a["spells"]) > 0 or a["count"] == 0
         ),
     )
     check(
-        "inspect equipment",
+        "equipment",
         tool("equipment", {"id": hero}),
         lambda a: isinstance(a["slots"], dict) and "weaponSet" in a,
     )
     pack = tool("inventory")
-    check("inspect inventory", pack, lambda a: a["count"] == len(a["items"]))
+    check("inventory", pack, lambda a: a["count"] == len(a["items"]))
     if pack.get("items"):
         check(
-            "inspect item",
+            "item",
             tool("item", {"id": pack["items"][0]["id"]}),
             lambda a: a["baseType"]["label"] and "properties" in a,
         )
     check(
-        "inspect placeables",
+        "placeables",
         tool("placeables"),
         lambda a: "placeables" in a,
     )
     check(
-        "inspect dialogue",
-        tool("dialogue"),
+        "dialogue look",
+        tool("dialogue", {"action": "look"}),
         lambda a: a["active"] is False,
     )
     check(
-        "inspect gui",
+        "gui",
         tool("gui"),
         lambda a: (
             a["popup"] is None and a["loot"] is None and isinstance(a["screens"], list)
@@ -192,17 +192,17 @@ def checks(run: Run, owner: str) -> None:
         lambda a: a["hits"][0]["object"]["id"] == hero,
     )
     check(
-        "inspect data, a path the tree has not",
+        "data, a path the tree has not",
         tool("data", {"path": "Nothing.AtAll"}),
         lambda a: "found" in a,
     )
     check(
-        "inspect cursor",
+        "cursor",
         tool("cursor"),
         lambda a: "hits" in a and "object" in a,
     )
     check(
-        "inspect window",
+        "window",
         tool("window"),
         lambda a: a["client"]["width"] > 100 and a["client"]["height"] > 100,
     )
@@ -267,20 +267,20 @@ def checks(run: Run, owner: str) -> None:
             "point": [here["x"] - 12, here["y"], here["z"]],
         },
     )
-    check("stage spawn", spawn, lambda a: a["creature"]["id"] and "moved" in a)
+    check("stage_spawn", spawn, lambda a: a["creature"]["id"] and "moved" in a)
     wolf = (spawn.get("creature") or {}).get("id")
     check(
-        "inspect geometry with the walk",
+        "geometry with the walk",
         tool("geometry", {"id": hero, "target": wolf, "walk": True}),
         lambda a: "lineOfSight" in a and "found" in a["walk"],
     )
     check(
-        "stage group",
+        "stage_group",
         tool("stage_group", {"id": wolf, "group": 2}),
         lambda a: a["creature"]["group"] == 2,
     )
     check(
-        "stage effect",
+        "stage_effect apply",
         tool(
             "stage_effect",
             {"action": "apply", "id": wolf, "effect": "stun", "seconds": 3},
@@ -288,14 +288,14 @@ def checks(run: Run, owner: str) -> None:
         lambda a: "error" not in a,
     )
     check(
-        "stage health",
+        "stage_health",
         tool("stage_health", {"id": wolf, "value": 10}),
         lambda a: "error" not in a,
     )
     abilities = me.get("abilities") or []
     if abilities:
         check(
-            "stage cooldown",
+            "stage_cooldown",
             tool(
                 "stage_cooldown",
                 {
@@ -326,7 +326,7 @@ def checks(run: Run, owner: str) -> None:
         died = wait(
             "eluvian.creature.died", kill.get("cursor", 0), {"id": wolf}, ms=3000
         )
-    check("stage kill, and the death on the bus", died, lambda a: a["found"])
+    check("stage_kill, and the death on the bus", died, lambda a: a["found"])
 
     check(
         "screenshot of the window",
@@ -338,25 +338,25 @@ def checks(run: Run, owner: str) -> None:
         tool("screenshot", {"source": "game", "image": False}),
         lambda a: a["bytes"] > 10000,
     )
-    check("game pause", tool("pause", {"paused": True}), lambda a: a["paused"] is True)
+    check("pause", tool("pause", {"paused": True}), lambda a: a["paused"] is True)
     check(
-        "game unpause",
+        "pause off",
         tool("pause", {"paused": False}),
         lambda a: a["paused"] is False,
     )
-    check("game saves", tool("saves", {"action": "list"}), lambda a: "error" not in a)
+    check("saves list", tool("saves", {"action": "list"}), lambda a: "error" not in a)
 
     # A message box of the scripts' own, read and answered. 379897 is an ability's name: any
     # string will do for a box's text.
     tool("script", {"action": "call", "command": "ShowPopup", "args": [379897, 1]})
     time.sleep(1.0)
     check(
-        "inspect gui with a box up",
+        "gui with a box up",
         tool("gui"),
         lambda a: len(a["popup"]["buttons"]) == 2,
     )
     check(
-        "game press",
+        "press",
         tool("press", {"button": 1}),
         lambda a: a["popup"] is None and a["pressed"]["label"],
     )
@@ -379,7 +379,7 @@ def checks(run: Run, owner: str) -> None:
     # skips it.
     played = tool("stage_cutscene", {"resource": "bed110cs_tainted_mirror.cut"})
     check(
-        "stage cutscene puts the game in a cutscene",
+        "stage_cutscene puts the game in a cutscene",
         wait(
             "eluvian.mode.changed", played.get("cursor", 0), {"to": "cutscene"}, ms=5000
         ),
@@ -409,8 +409,8 @@ def checks(run: Run, owner: str) -> None:
         lambda a: a["found"],
     )
     check(
-        "inspect dialogue says a movie plays",
-        tool("dialogue"),
+        "dialogue look says a movie plays",
+        tool("dialogue", {"action": "look"}),
         lambda a: a["movie"] is True and a["cutscene"] is False,
     )
     skipped = tool("dialogue", {"action": "skip_cutscene"})

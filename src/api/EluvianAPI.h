@@ -10,7 +10,7 @@
 // may load after yours. Look it up on your first frame (dao::OnFrame), not
 // in DAOLib_Load:
 //
-//   if (const EluvianInterface2 *eluvian = EluvianFind()) {
+//   if (const EluvianInterface *eluvian = EluvianFind()) {
 //       eluvian->RegisterTool("mymod_reset", R"({"description": "Put mymod back as it starts."})",
 //                             &EndTurn, &state, 0);
 //       eluvian->EmitEvent("mymod.thing_happened", R"({"id": "0x82", "detail": "what it was"})");
@@ -27,12 +27,15 @@
 //
 // A tool is one concept: its own arguments, those it needs required in its
 // schema. A plugin's state is a read-only tool of its own ("mymod_state",
-// ELUVIAN_READ_ONLY), not a kind of another's. Version 2 (#110) dropped
-// version 1's inspect kinds and tool extensions, which made one tool of
-// many concepts and one schema of all their arguments.
+// ELUVIAN_READ_ONLY), not a kind of another's (#110).
+//
+// Nothing is released, so nothing is kept for an older build: a plugin is
+// built against the header of the Eluvian it runs with, and the two are
+// deployed together. ELUVIAN_INTERFACE_VERSION changes with the
+// interface's layout, so a mismatched pair refuse each other instead of a
+// plugin calling through the wrong table.
 #pragma once
 
-#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -64,11 +67,8 @@ extern "C"
         ELUVIAN_READ_ONLY = 2,
     };
 
-    typedef struct EluvianInterface2
+    typedef struct EluvianInterface
     {
-        uint32_t size;  // sizeof(EluvianInterface2) as the host built it; later builds only append
-        uint32_t build; // MAJOR * 10000 + MINOR * 100 + PATCH
-
         // descriptorJson: {"description": "...", "inputSchema": {...}}; the
         // schema may be left out. Returns 1 if added, 0 if it replaced one of
         // the same name, -1 if refused (the reason is in eluvian.log).
@@ -82,21 +82,18 @@ extern "C"
         // descriptorJson: {"description": "...", "fields": {"id": "the
         // creature", ...}}. Returns 1 if new, 0 if it replaced, -1 if refused.
         int (*DescribeEvent)(const char *topic, const char *descriptorJson);
-    } EluvianInterface2;
+    } EluvianInterface;
 
-    typedef const EluvianInterface2 *(*EluvianGetInterfaceFn)(uint32_t version);
+    typedef const EluvianInterface *(*EluvianGetInterfaceFn)(uint32_t version);
 
     // NOLINTEND(modernize-use-using)
 
 #define ELUVIAN_GET_INTERFACE "Eluvian_GetInterface"
 
-// The interface's version: Eluvian_GetInterface answers only this one.
-#define ELUVIAN_INTERFACE_VERSION 2
-
-// Whether the interface a plugin got has `member`: those a later build
-// appends are past the end of an earlier one.
-#define ELUVIAN_HAS(eluvian, member)                                                                                   \
-    ((eluvian)->size >= offsetof(EluvianInterface2, member) + sizeof((eluvian)->member))
+// The interface's layout: Eluvian_GetInterface answers only a plugin built
+// against the same: 2 when #110 dropped inspect kinds and tool extensions, 3
+// when it dropped the size and build kept for older builds.
+#define ELUVIAN_INTERFACE_VERSION 3
 
 #ifdef __cplusplus
 }
@@ -111,7 +108,7 @@ extern "C"
 // Eluvian's interface if eluvian.dll is loaded, else null: Eluvian is a
 // development bench, absent from a player's install, and a plugin carries on
 // without it.
-inline const EluvianInterface2 *EluvianFind()
+inline const EluvianInterface *EluvianFind()
 {
     const HMODULE eluvian = GetModuleHandleW(L"eluvian.dll");
     if (eluvian == nullptr)
