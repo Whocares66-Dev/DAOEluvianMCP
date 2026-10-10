@@ -2554,6 +2554,25 @@ MUTANTS = [
         "distance - kCutShortGain",
         "distance + kCutShortGain",
     ),
+    # #56: a move that fails where it began is tried once more after a pause.
+    Mutant(
+        "travel ends at a first move that fails where it began",
+        TRAVEL,
+        'if (*result == "COMMAND_FAILED_INVALID_PATH" && !settled_ &&',
+        'if (*result == "never" && !settled_ &&',
+    ),
+    Mutant(
+        "travel tries a move that fails where it began for ever",
+        TRAVEL,
+        "                    settled_ = true;\n",
+        "                    settled_ = false;\n",
+    ),
+    Mutant(
+        "travel pauses again on a move that got nearer",
+        TRAVEL,
+        'after->value("distance", distance) > distance - kNoNearer)',
+        'after->value("distance", distance) > -1)',
+    ),
     Mutant(
         "travel takes any blocker with a leadsTo for an exit",
         TRAVEL,

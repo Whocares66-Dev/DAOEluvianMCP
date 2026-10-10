@@ -31,6 +31,9 @@ constexpr double kNoNearer = 0.25;
 // from where it stopped, this many times: a crowd crossing its path (#43).
 constexpr double kCutShortGain = 1.0;
 constexpr int kCutShortRetries = 3;
+// A move that fails where it began, as the first after a load did with the
+// party still settling, is tried once more after this pause (#56).
+constexpr milliseconds kSettle{1000};
 // How near the walker must be for the target named in its own way to count
 // as reached (#46): a thing is used from a few metres.
 constexpr double kNearOwnWay = 4.0;
@@ -1004,6 +1007,19 @@ class Journey
                     ++cutShort_;
                     return std::nullopt;
                 }
+                // Where it began: straight after a load, with two of the party
+                // still sheathing, the first move failed INVALID_PATH at once
+                // and the same travel two seconds later walked
+                // (turn-based-agent, 2026-10-04, #56). Once more after a
+                // pause; a dead end is still said.
+                if (*result == "COMMAND_FAILED_INVALID_PATH" && !settled_ &&
+                    after->value("distance", distance) > distance - kNoNearer)
+                {
+                    settled_ = true;
+                    lastWalk_.reset(); // a move not made: no measure of nearer
+                    std::this_thread::sleep_for(std::min(Left(), kSettle));
+                    return std::nullopt;
+                }
             }
             return End(false, "the walk ended " + *result);
         }
@@ -1629,6 +1645,7 @@ class Journey
     std::string lastBlocker_;        // the door used last, to tell one that did not open
     std::optional<double> lastWalk_; // the walk's length when the last move along it was given
     int cutShort_ = 0;               // moves that failed part way, nearer, and were asked again (#43)
+    bool settled_ = false;           // whether a move that failed where it began was tried again (#56)
     bool straightTried_ = false;     // whether straight steps were tried where the walk found none (#53)
     bool engineTried_ = false;       // whether the engine's own move was tried where the walk found none (#67)
     bool measured_ = false;          // whether `distance` was measured after the last order

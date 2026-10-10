@@ -631,7 +631,7 @@ TEST_CASE("a move the game refuses ends the journey with the game's word for it"
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
-    CHECK(world.orders.size() == 1);
+    CHECK(world.orders.size() == 2); // tried once more after a pause, as a settling party's first move (#56)
 }
 
 TEST_CASE("where the search finds none, the engine's own move goes through", "[travel]")
@@ -1773,14 +1773,15 @@ TEST_CASE("a move a crowd cuts short part way is asked again from there", "[trav
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == true);
     CHECK(world.orders.size() == 2);
-    World stuck; // every move cut short at the same place: asked again once, then said
+    World stuck; // every move cut short at the same place: asked again, then said
     stuck.shut = false;
     stuck.moveFails = "COMMAND_FAILED_INVALID_PATH";
     stuck.failsAt = 12;
     const auto again = stuck.Travel();
     CHECK(again["arrived"] == false);
     CHECK_THAT(again["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
-    CHECK(stuck.orders.size() == 2);
+    // Asked again once (#43); that one fails where it began, so once more after a pause (#56).
+    CHECK(stuck.orders.size() == 3);
 }
 
 TEST_CASE("a move that fails within reach, a little nearer, is there at once", "[travel]")
@@ -1790,8 +1791,36 @@ TEST_CASE("a move that fails within reach, a little nearer, is there at once", "
     world.at = 1.6; // just beyond reach
     world.moveFails = "COMMAND_FAILED_INVALID_PATH";
     world.failsAt = 0.9; // 0.7 m nearer: not enough to be asked again, but within reach
-    const auto answer = world.Travel();
+    // A budget no longer than the pause before a move is tried again (#56): at
+    // once, not after it.
+    const auto answer = world.bench.Invoke("travel", Json{{"target", "0x2ec"}, {"budgetMs", 1000}}).data;
     CHECK(answer["arrived"] == true);
     CHECK(answer["reason"] == "there");
+    CHECK(world.orders.size() == 1);
+}
+
+TEST_CASE("a move that fails where it began is tried once more after a pause", "[travel]")
+{
+    World world; // the first move after a load, the party still settling (#56)
+    world.shut = false;
+    world.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    world.failsFor = 1;
+    const auto started = std::chrono::steady_clock::now();
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(world.orders.size() == 2);
+    CHECK(std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(900)); // after the pause
+}
+
+TEST_CASE("a move that fails a little nearer, short of reach, is not paused for", "[travel]")
+{
+    World world; // not where it began, so not a settling party (#56); too little nearer to ask again (#43)
+    world.shut = false;
+    world.at = 5;
+    world.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    world.failsAt = 4.5;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
     CHECK(world.orders.size() == 1);
 }
