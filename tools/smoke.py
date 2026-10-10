@@ -49,6 +49,9 @@ class Run:
                 return json.load(error)
             except ValueError:
                 return {"error": f"HTTP {error.code}"}
+        except (TimeoutError, urllib.error.URLError) as error:
+            # A call that never answers fails its check; the run goes on (#113).
+            return {"error": f"no answer in {timeout} s: {error}"}
 
     def check(self, name: str, answer: object, good) -> None:
         try:
@@ -153,6 +156,64 @@ def checks(run: Run, owner: str) -> None:
     )
     pack = tool("inventory")
     check("inventory", pack, lambda a: a["count"] == len(a["items"]))
+    # The tools no one had called since #110 split them (#113). Those that need a place the
+    # save may not have (a quest board, a crafting skill, a follower with a gift) pass when
+    # they refuse with their own clear message: their arguments and first reads still run.
+    # The first call reads every archive's index from disk: a minute or more.
+    found = tool(
+        "resources", {"type": "uti", "match": "dagger", "most": 3}, timeout=180
+    )
+    check(
+        "resources, item templates by a word",
+        found,
+        lambda a: a["count"] >= 1 and len(a["resources"]) >= 1,
+    )
+    check(
+        "controls, the key bindings",
+        tool("controls", {"match": "pause"}),
+        lambda a: a["count"] == len(a["controls"]),
+    )
+    check(
+        "surroundings, one look around",
+        tool("surroundings", {"radius": 30}),
+        lambda a: "creatures" in a and "usable" in a and "exits" in a,
+    )
+    check(
+        "board refuses with no quest board up",
+        tool("board", {"action": "look"}),
+        lambda a: "quest board is not up" in a.get("error", "") or "entries" in a,
+    )
+    check(
+        "craft lists poisons, or says the maker has not the skill",
+        tool("craft", {"kind": "poison", "showMs": 0}, timeout=40),
+        lambda a: "recipes" in a or a.get("error", "").startswith("craft:"),
+    )
+    check(
+        "gift refuses a gift no follower can take",
+        tool("gift", {"to": hero, "item": "0x0", "budgetMs": 1000}),
+        lambda a: a.get("error", "").startswith("gift:"),
+    )
+    party = [m.get("id") for m in game.get("party") or [] if m.get("id")]
+    other = next((m for m in party if m != hero), hero)
+    check(
+        "control, to a party member",
+        tool("control", {"id": other}),
+        lambda a: a["taken"] is True and a["controlled"]["id"] == other,
+    )
+    check(
+        "control, back to the hero",
+        tool("control", {"id": hero}),
+        lambda a: a["taken"] is True and a["controlled"]["id"] == hero,
+    )
+    check(
+        "wait_until, a condition on a tool's answer",
+        tool(
+            "wait_until",
+            {"tool": "state", "pointer": "/hero/id", "equals": hero, "timeoutMs": 5000},
+            timeout=20,
+        ),
+        lambda a: a["held"] is True,
+    )
     if pack.get("items"):
         check(
             "item",
@@ -306,6 +367,14 @@ def checks(run: Run, owner: str) -> None:
             ),
             lambda a: a["cooldown"]["remaining"] == 0,
         )
+    templates = found.get("resources") or []
+    if templates:
+        template = templates[0]["name"]
+        check(
+            "stage_equip, an item made into the hero's pack",
+            tool("stage_equip", {"id": hero, "template": template, "equip": False}),
+            lambda a: a["item"]["id"] and a["equipped"] is False,
+        )
     check("camera read", tool("camera", {}), lambda a: a["following"]["id"])
     check(
         "camera face",
@@ -327,6 +396,13 @@ def checks(run: Run, owner: str) -> None:
             "eluvian.creature.died", kill.get("cursor", 0), {"id": wolf}, ms=3000
         )
     check("stage_kill, and the death on the bus", died, lambda a: a["found"])
+    check(
+        "stage_reset, the party back to full and the wolf's body taken away",
+        tool("stage_reset", {}),
+        lambda a: (
+            len(a["reset"]) >= 1 and any(r.get("id") == wolf for r in a["removed"])
+        ),
+    )
 
     check(
         "screenshot of the window",

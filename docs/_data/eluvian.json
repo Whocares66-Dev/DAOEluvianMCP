@@ -926,7 +926,7 @@
   },
   {
    "name": "resources",
-   "description": "Searches the game's resources by name, across every archive in the game's folder. Use it to find the name to pass to another tool:\n\n- `utc`: creature templates, for `stage_spawn`.\n- `uti`: item templates, for `stage_equip`.\n- `plo`: plots, for `plot`.\n- `cut`: cutscenes, for `stage_cutscene`.\n\nReturns the matching names, sorted, each without its extension and with the archive it is in, up to `most`, and the `count` of all matches. The core and campaign archives are in every game; an add-in's resources only load where that add-in runs. The first call reads the archives from disk (a few seconds); later calls are fast.",
+   "description": "Searches the game's resources by name, across every archive in the game's folder. Use it to find the name to pass to another tool:\n\n- `utc`: creature templates, for `stage_spawn`.\n- `uti`: item templates, for `stage_equip`.\n- `plo`: plots, for `plot`.\n- `cut`: cutscenes, for `stage_cutscene`.\n\nReturns the matching names, sorted, each without its extension and with the archive it is in, up to `most`, and the `count` of all matches. The core and campaign archives are in every game; an add-in's resources only load where that add-in runs. The first call in a game reads every archive's index from disk and can take a minute or more, so give it a long timeout; later calls are fast.",
    "inputSchema": {
     "type": "object",
     "properties": {

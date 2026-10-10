@@ -165,8 +165,9 @@ void AddResources(Bench &bench)
              "- `cut`: cutscenes, for `stage_cutscene`.\n\n"
              "Returns the matching names, sorted, each without its extension and with the archive it is in, up "
              "to `most`, and the `count` of all matches. The core and campaign archives are in every game; an "
-             "add-in's resources only load where that add-in runs. The first call reads the archives from disk "
-             "(a few seconds); later calls are fast.",
+             "add-in's resources only load where that add-in runs. The first call in a game reads every "
+             "archive's index from disk and can take a minute or more, so give it a long timeout; later calls "
+             "are fast.",
              Json{{"type",
                    {{"type", "string"},
                     {"description", "The file extension to list: utc, uti, plo or cut. Default: all types."}}},
