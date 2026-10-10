@@ -50,6 +50,7 @@ struct Rogue
     std::vector<Special> specials;
     int specialPoints = 0;
     bool foundUnread = false;       // the screen's count of them reads nothing, its icons there all the same (#106)
+    mutable int specialsLate = 0;   // reads of the first icon before the screen has made its icons
     std::vector<int> specialStored; // picks its icons stored, which an unfinished end reverts
     std::vector<std::string> sent;  // input's messages, in order
     std::vector<Json> movie;        // input's calls into the screen's movie, in order
@@ -159,6 +160,11 @@ struct Rogue
     // another path.
     std::optional<Json> SpecialGet(const std::string &path) const
     {
+        if (path == "specializations_mc.Scrollable_mc.icon0.nSpecializationAbilityID" && specialsLate > 0)
+        {
+            --specialsLate;
+            return std::nullopt;
+        }
         for (std::size_t n = 0; n < specials.size(); ++n)
         {
             const std::string icon = "specializations_mc.Scrollable_mc.icon" + std::to_string(n);
@@ -800,6 +806,17 @@ TEST_CASE("a specialization is taken by name, its icon clicked, alone or with at
     both.LevelUp(Json{{"specialization", 4014}, {"attributes", {{"strength", 3}}}, {"showMs", 0}});
     CHECK(both.specials[0].selected);
     CHECK(both.strength == 13);
+}
+
+TEST_CASE("a specialization is taken once the screen has made its icons, with no pause asked", "[levelup]")
+{
+    Rogue rogue;
+    Specials(rogue);
+    rogue.specialsLate = 3; // the icons made a few frames after the screen opened
+    const auto answer = rogue.LevelUp(Json{{"specialization", "Ranger"}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    CHECK(answer["specialization"] == Json{{"id", 4029}, {"name", "Ranger"}});
+    CHECK(rogue.specials[2].selected);
 }
 
 TEST_CASE("a specialization the screen does not list is refused, naming those it does", "[levelup]")

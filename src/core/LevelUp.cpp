@@ -549,7 +549,7 @@ class Levelling
         {
             return std::nullopt;
         }
-        const auto listed = Specializations().value_or(std::vector<Special>{});
+        const auto listed = SpecializationsMade().value_or(std::vector<Special>{});
         const auto lower = [](std::string text) {
             std::ranges::transform(text, text.begin(),
                                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -576,8 +576,27 @@ class Levelling
                               " on the screen; it lists: " + (names.empty() ? std::string("none") : names));
     }
 
-    // The specializations the screen lists for the creature; nothing with
-    // `refused_` said.
+    // The specializations the screen lists once it has made their icons,
+    // which it does over its first frames, as a page's: a take with
+    // `showMs` 0 read them at once, found none, and refused Sigrun's Bard
+    // that offers had just listed (turn-based-agent, 2026-10-09). Read until
+    // there are some, or the screen's wait is out.
+    std::optional<std::vector<Special>> SpecializationsMade()
+    {
+        const auto deadline = Clock::now() + kScreenWait;
+        while (true)
+        {
+            auto read = Specializations();
+            if (!read || !read->empty() || Clock::now() >= deadline)
+            {
+                return read;
+            }
+            std::this_thread::sleep_for(milliseconds(100));
+        }
+    }
+
+    // The specializations the screen lists for the creature as its icons
+    // stand now; nothing with `refused_` said.
     std::optional<std::vector<Special>> Specializations()
     {
         // Counted by the icons themselves, read until one is missing: in

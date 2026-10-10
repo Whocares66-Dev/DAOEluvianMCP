@@ -1079,6 +1079,12 @@ MUTANTS = [
     # creature named in decimal; refused without auto or points; rounds
     # while points are left and fewer; what was raised and gained.
     Mutant(
+        "levelup reads the specialization icons before the screen has made them",
+        LEVELUP,
+        "if (!read || !read->empty() || Clock::now() >= deadline)",
+        "if (true)",
+    ),
+    Mutant(
         "levelup reads a creature's id in decimal, not hex",
         LEVELUP,
         "value, 16);",
