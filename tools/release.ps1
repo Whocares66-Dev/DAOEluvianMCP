@@ -101,6 +101,20 @@ if ($ghProblem) {
     if (-not $DryRun) { throw $ghProblem }
     Show-Warn $ghProblem
 }
+else {
+    # The tag's push builds the site's pages for the version, and that run's deploy is
+    # refused unless the github-pages environment lets v* tags deploy. DAOLib's v0.1.0
+    # was: 'Tag "v0.1.0" is not allowed to deploy to github-pages due to environment
+    # protection rules' (2026-10-10). The rule is a setting of the repository on GitHub,
+    # not a file here, so it is read before there is a tag.
+    $policies = gh api "repos/$github/environments/github-pages/deployment-branch-policies" | ConvertFrom-Json
+    $tagRules = @($policies.branch_policies | Where-Object type -EQ 'tag' | ForEach-Object name)
+    if ($LASTEXITCODE -ne 0 -or $tagRules -notcontains 'v*') {
+        $pagesProblem = "The github-pages environment of $github does not let v* tags deploy, so the tag's Documentation run would build the site and be refused its deploy. Add the rule first (dev/RELEASING.md)."
+        if (-not $DryRun) { throw $pagesProblem }
+        Show-Warn $pagesProblem
+    }
+}
 
 # --- the version ------------------------------------------------------------
 

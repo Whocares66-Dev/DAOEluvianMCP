@@ -31,6 +31,14 @@ All of it is the plugin's folder, `bin_ship\daolib\plugins\eluvian\`, which is t
 - **Nothing that says who built it.** A PDB holds the paths of its sources (`C:\project\DAOEluvianMCP`, `C:\vcpkg`, Visual Studio's), and the linker adds the folder of its temporary files, which is under the user's name. `tools\build.ps1` gives a build a temporary folder in its own tree, and `package.ps1` refuses a DLL or PDB that holds the path of the user's folder. A build made any other way (the IDE's, `cmake --build` by hand) is not one to package.
 - Not `src/api/EluvianAPI.h`: a plugin's author takes it from the tag.
 
+## The site's versions
+
+Each release is selectable on the documentation site (the user, 2026-10-10: "the tags should produce docs. we want to select release versions from docs"). Three things make it so:
+
+- `.github\workflows\docs.yml` runs on a push of a `v*` tag as on one of `main`.
+- `tools\build_docs.py` builds the working tree at the site's root and each `vX.Y.Z` tag, from that tag's own `docs\` and header, into `X.Y.Z\`, with the list of versions the selector shows (`docs\_includes\components\aux_nav.html`).
+- The repository's `github-pages` environment lets `v*` tags deploy, beside the branch `main`. Without that rule the tag's run builds the site and its deploy job is refused, as DAOLib's `v0.1.0` was at first. It is a setting on GitHub and not a file here: `gh api -X POST repos/Whocares66-Dev/DAOEluvianMCP/environments/github-pages/deployment-branch-policies -f name='v*' -f type=tag`, by the user or with their word, since it changes what may deploy. `release.ps1` reads the rules and refuses before it tags when the rule is not there.
+
 ## Cutting one
 
 1. On a work branch (`gh-<N>-...`): set the version if it changes, with `python tools\build_docs.py --update` and the bridge's `VERSION`, and add `## x.y.z` at the top of `CHANGELOG.md`: about five entries, the most important first, in the words of someone driving a test or writing a plugin. The section is the GitHub release's notes, word for word, so no link in it is relative. Move the submodule to DAOLib's tag if it is not at one.
