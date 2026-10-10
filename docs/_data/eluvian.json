@@ -85,7 +85,7 @@
   },
   {
    "name": "control",
-   "description": "Gives control to a party member, like clicking its portrait. Returns who was controlled `before`, who is `controlled` now, whether the change worked (`taken`), and a `cursor`. `order` hands control over by itself when another party member has to move or use something.",
+   "description": "Gives control to a party member, like clicking its portrait. Returns who was controlled `before`, who is `controlled` now, whether the change worked (`taken`), and a `cursor`. When the game keeps control where it was (at the party camp, in a conversation or a cutscene), `note` says so. `order` hands control over by itself when another party member has to move or use something.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -200,7 +200,7 @@
      },
      "includeInactive": {
       "type": "boolean",
-      "description": "Also list creatures the area keeps hidden. Default false."
+      "description": "Also list creatures the area keeps hidden. Default false; then `inactiveLeftOut` says how many were left out."
      },
      "brief": {
       "type": "boolean",
@@ -842,7 +842,7 @@
      },
      "includeInactive": {
       "type": "boolean",
-      "description": "Also list placeables the area keeps hidden. Default false."
+      "description": "Also list placeables the area keeps hidden. Default false; then `inactiveLeftOut` says how many were left out."
      },
      "interactive": {
       "type": "boolean",
@@ -911,12 +911,20 @@
   },
   {
    "name": "press",
-   "description": "Presses a button, just as a click would. If a message box is up, the button is one of its own; otherwise it is one of the loot panel a container opens: Take All or Close. `gui` shows both.\n\nFor a message box, the answer includes the button `pressed` and the `box` text. Take All returns what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel unless it was full.",
+   "description": "Presses a button, just as a click would. If a message box is up, the button is one of its own; otherwise it is one of the loot panel a container opens: Take All or Close. `gui` shows both.\n\nA box that asks for text (its `input` in `gui`, such as a name) takes `text` to type into it before the button; an empty field is refused unless `allowEmpty` is true. For a message box, the answer includes the button `pressed`, the `box` text and any `text` sent. Take All returns what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel unless it was full.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "button": {
       "description": "The button's label (such as \"Take All\") or its position, counting from 0."
+     },
+     "text": {
+      "type": "string",
+      "description": "For a box with a text field: what to type into it before the button."
+     },
+     "allowEmpty": {
+      "type": "boolean",
+      "description": "Send a box's text field empty. Default false (refused)."
      }
     },
     "required": [
@@ -1338,7 +1346,7 @@
   },
   {
    "name": "state",
-   "description": "Returns the game's current state: the `mode`, whether it is `paused`, the `area`, the `hero`, the creature you control (`controlled`), the `party` and which members are `selected` in the party bar, the game's message box if one is open (`popup`: its text and buttons), and the event `cursor` to pass as `since` to `events` or `wait_for`.",
+   "description": "Returns the game's current state: the `mode`, whether it is `paused`, the `area`, the `hero`, the creature you control (`controlled`), the party's `leader` (not always the one you control: a follower given control does not lead), the `party` and which members are `selected` in the party bar, the game's message box if one is open (`popup`: its text and buttons), and the event `cursor` to pass as `since` to `events` or `wait_for`.\n\nIn combat with no hostile in sight, `combatHold` says why the game stays in combat: it leaves combat only once a living party member stands within 7.5 meters of each fallen one. It lists each fallen member with the nearest living one and how far away it is; walk one there.",
    "inputSchema": {
     "type": "object",
     "properties": {}

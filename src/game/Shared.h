@@ -118,6 +118,9 @@ bool IsMove(dao::core::CommandType type);
 Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints);
 
 Json PopupJson();
+
+// The text in the message box's field, if the box up has one.
+std::optional<std::wstring> PopupField();
 // An item in brief (name, tag, template, base type, stack, value, plot), or
 // in full as item gives it (Character.cpp).
 Json ItemJson(ObjectId item, bool full);

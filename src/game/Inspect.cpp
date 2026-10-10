@@ -1169,37 +1169,38 @@ void AddInspect(Bench &bench, const Watch &watch)
         [&watch](const Json &args) -> ToolResult { return KindDialogue(watch, args); });
 
     bench.Tools().Add(
-        Read(
-            "placeables",
-            "Lists the doors, chests, levers and other placeables in the area, nearest first. Each has its "
-            "`id`, `name`, `tag`, `template`, `position` and `distance`, and:\n\n"
-            "- `state`, the placeable's own state number (it changes when a door or chest opens), and "
-            "`stateName`: shut, locked, open or destroyed.\n"
-            "- `action` and `actionName`: what using it does now (loot, unlock, open, use, ...).\n"
-            "- `active`, `interactive` (whether it can be used) and `popup`, its tooltip text.\n"
-            "- `lock`: whether it needs a key (`keyRequired`), the key's tag (`keyTag`), whether the party "
-            "has it (`keyHeld`), and the lock-picking level needed (`pickLevel`).\n"
-            "- `leadsTo`, for a way out of the area: the destination area's tag and waypoint.\n\n"
-            "Use one with `order` action=use.",
-            Json{{"near",
-                  {{"type", "string"},
-                   {"description", "Measure distances from this creature, by id. Default: the creature you "
-                                   "control."}}},
-                 {"radius",
-                  {{"type", "number"},
-                   {"description", "Only those within this many meters of `near`. Default: "
-                                   "the whole area."}}},
-                 {"includeInactive",
-                  {{"type", "boolean"}, {"description", "Also list placeables the area keeps hidden. Default false; then `inactiveLeftOut` says how many were left out."}}},
-                 {"interactive",
-                  {{"type", "boolean"},
-                   {"description", "true: only those that can be used; false: only those that cannot. "
-                                   "Default: both."}}},
-                 {"brief",
-                  {{"type", "boolean"},
-                   {"description", "Return one line per placeable (`lines`) instead of full detail. "
-                                   "Default false."}}}},
-            {}),
+        Read("placeables",
+             "Lists the doors, chests, levers and other placeables in the area, nearest first. Each has its "
+             "`id`, `name`, `tag`, `template`, `position` and `distance`, and:\n\n"
+             "- `state`, the placeable's own state number (it changes when a door or chest opens), and "
+             "`stateName`: shut, locked, open or destroyed.\n"
+             "- `action` and `actionName`: what using it does now (loot, unlock, open, use, ...).\n"
+             "- `active`, `interactive` (whether it can be used) and `popup`, its tooltip text.\n"
+             "- `lock`: whether it needs a key (`keyRequired`), the key's tag (`keyTag`), whether the party "
+             "has it (`keyHeld`), and the lock-picking level needed (`pickLevel`).\n"
+             "- `leadsTo`, for a way out of the area: the destination area's tag and waypoint.\n\n"
+             "Use one with `order` action=use.",
+             Json{{"near",
+                   {{"type", "string"},
+                    {"description", "Measure distances from this creature, by id. Default: the creature you "
+                                    "control."}}},
+                  {"radius",
+                   {{"type", "number"},
+                    {"description", "Only those within this many meters of `near`. Default: "
+                                    "the whole area."}}},
+                  {"includeInactive",
+                   {{"type", "boolean"},
+                    {"description", "Also list placeables the area keeps hidden. Default false; then `inactiveLeftOut` "
+                                    "says how many were left out."}}},
+                  {"interactive",
+                   {{"type", "boolean"},
+                    {"description", "true: only those that can be used; false: only those that cannot. "
+                                    "Default: both."}}},
+                  {"brief",
+                   {{"type", "boolean"},
+                    {"description", "Return one line per placeable (`lines`) instead of full detail. "
+                                    "Default false."}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindPlaceables(watch, raw); });
 
     bench.Tools().Add(
@@ -1310,7 +1311,9 @@ void AddInspect(Bench &bench, const Watch &watch)
                     {"description", "Only creatures on this side. Default: all sides."}}},
                   {"includeDead", {{"type", "boolean"}, {"description", "Include dead creatures. Default true."}}},
                   {"includeInactive",
-                   {{"type", "boolean"}, {"description", "Also list creatures the area keeps hidden. Default false; then `inactiveLeftOut` says how many were left out."}}},
+                   {{"type", "boolean"},
+                    {"description", "Also list creatures the area keeps hidden. Default false; then `inactiveLeftOut` "
+                                    "says how many were left out."}}},
                   {"brief",
                    {{"type", "boolean"},
                     {"description", "Return one line per creature (`lines`: id, name, tag, side, health, dead, "

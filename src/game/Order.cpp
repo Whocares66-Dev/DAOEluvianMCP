@@ -196,7 +196,8 @@ Json ToolControl(Bench &bench, const Watch &watch, const Json &raw)
         const std::string kept = now == kInvalidObject ? "no one" : Narrow(api::GetName(now));
         answer["note"] = "The game kept " + kept +
                          " controlled. At the party camp, in a conversation or in a cutscene it may not hand "
-                         "control over; tools that act for the creature you control act for " + kept + ".";
+                         "control over; tools that act for the creature you control act for " +
+                         kept + ".";
     }
     return answer;
 }

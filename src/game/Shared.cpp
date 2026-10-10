@@ -200,7 +200,30 @@ Json PopupJson()
     {
         buttons.push_back(Json{{"label", Narrow(button.label)}, {"sends", Narrow(button.callback)}});
     }
-    return Json{{"text", Narrow(popup->text)}, {"buttons", std::move(buttons)}};
+    Json answer = {{"text", Narrow(popup->text)}, {"buttons", std::move(buttons)}};
+    if (const auto field = PopupField())
+    {
+        answer["input"] = Json{{"text", Narrow(*field)}};
+    }
+    return answer;
+}
+
+// The text in the box's field, if the box has one. A box that asks for text
+// (the mabari's name) is shown with GUIPopupLayer.InputBox set and its field
+// started from GUIPopupLayer.InputText; on a button, popuplayer.gfx's
+// OnButtonAction writes the field's text back there (SetValueUnicode) and
+// then sends the button's message, whose handler reads the name from it
+// (disassembled 2026-10-03, #26). A press from here sends the message
+// without the movie, so what is in InputText is what the game reads: a press
+// of Confirm named the dog with nothing (turn-based-agent, that day).
+std::optional<std::wstring> PopupField()
+{
+    const auto *box = dao::data::Find(L"GUIPopupLayer.InputBox");
+    if (box == nullptr || box->Number() == 0)
+    {
+        return std::nullopt;
+    }
+    return dao::data::Text(L"GUIPopupLayer.InputText").value_or(L"");
 }
 
 namespace

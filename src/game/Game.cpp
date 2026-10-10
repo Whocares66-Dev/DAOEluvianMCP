@@ -3,6 +3,8 @@
 // held all three until #110.
 #include "game/Shared.h"
 
+#include "dao/Data.h"
+
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -124,6 +126,30 @@ Json GamePress(Bench &bench, const Args &args)
          {{"label", Narrow(popup->buttons[index].label)}, {"sends", Narrow(popup->buttons[index].callback)}}},
         {"box", Narrow(popup->text)},
         {"cursor", bench.Events().Next()}};
+    // A box with a field: the text goes in first, as the movie writes it
+    // before the button's message (#26); a field left empty is sent only when
+    // asked, not by a press that forgot it.
+    const auto field = PopupField();
+    const bool sends = !popup->buttons[index].callback.empty();
+    if (args.Has("text"))
+    {
+        auto *input = dao::data::Find(L"GUIPopupLayer.InputText");
+        if (!field || input == nullptr)
+        {
+            throw ToolError(std::format("press: the box \"{}\" has no text field for `text`", Narrow(popup->text)));
+        }
+        input->SetText(Wide(args.String("text")));
+    }
+    else if (field && field->empty() && sends && !args.Bool("allowEmpty", false))
+    {
+        throw ToolError(std::format("press: the box \"{}\" asks for text and its field is empty; pass `text` with "
+                                    "the button, or `allowEmpty`: true to send it empty",
+                                    Narrow(popup->text)));
+    }
+    if (const auto sent = PopupField())
+    {
+        answer["text"] = Narrow(*sent);
+    }
     if (!dao::gui::PressPopupButton(index))
     {
         throw ToolError("press: the game took no press of that button (the engine made no message of "
@@ -394,11 +420,19 @@ void AddGame(Bench &bench, const Watch &watch)
         Spec("press",
              "Presses a button, just as a click would. If a message box is up, the button is one of its own; "
              "otherwise it is one of the loot panel a container opens: Take All or Close. `gui` shows both.\n\n"
-             "For a message box, the answer includes the button `pressed` and the `box` text. Take All returns "
+             "A box that asks for text (its `input` in `gui`, such as a name) takes `text` to type into it before "
+             "the button; an empty field is refused unless `allowEmpty` is true. "
+             "For a message box, the answer includes the button `pressed`, the `box` text and any `text` sent. "
+             "Take All returns "
              "what was `taken`, what is `left` and whether the backpack was `full`, and closes the panel unless "
              "it was full.",
              Json{{"button",
-                   {{"description", "The button's label (such as \"Take All\") or its position, counting from 0."}}}},
+                   {{"description", "The button's label (such as \"Take All\") or its position, counting from 0."}}},
+                  {"text",
+                   {{"type", "string"},
+                    {"description", "For a box with a text field: what to type into it before the button."}}},
+                  {"allowEmpty",
+                   {{"type", "boolean"}, {"description", "Send a box's text field empty. Default false (refused)."}}}},
              {"button"}),
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "press");
