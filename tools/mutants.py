@@ -2541,6 +2541,19 @@ MUTANTS = [
         "        if (!blocker.empty() && locked && !keyHeld &&\n",
         "        if (!blocker.empty() && locked && (keyHeld || !keyHeld) &&\n",
     ),
+    # #43: a move cut short part way, nearer, is asked again a few times.
+    Mutant(
+        "travel ends a walk a crowd cut short",
+        TRAVEL,
+        "cutShort_ < kCutShortRetries",
+        "cutShort_ < 0",
+    ),
+    Mutant(
+        "travel asks again a move that got no nearer",
+        TRAVEL,
+        "distance - kCutShortGain",
+        "distance + kCutShortGain",
+    ),
     Mutant(
         "travel takes any blocker with a leadsTo for an exit",
         TRAVEL,

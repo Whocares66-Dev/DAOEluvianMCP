@@ -35,6 +35,7 @@ struct World
     double reach = 1;          // how far short of the door a search that cannot name it gets
     std::string moveFails;     // the result every move ends with instead of success, if any
     double failsAt = -1;       // where a failing move leaves the walker, from the goal; -1 where it stood
+    int failsFor = -1;         // how many moves fail before one goes; -1 every one (#43)
     bool silent = false;       // whether a move's end never comes: a fight takes the command with it
     bool unseen = false;       // whether the walker is left with no command when a move's end never comes
     bool chatter = false;      // whether others' commands end around each order, and the walker's last is cleared
@@ -260,8 +261,12 @@ struct World
     std::string FakeMove(const Json &args)
     {
         const double to = args.at("point").at(0).get<double>();
-        if (!moveFails.empty())
+        if (!moveFails.empty() && failsFor != 0)
         {
+            if (failsFor > 0)
+            {
+                --failsFor;
+            }
             // And the walker stays where it is, or where it got.
             if (failsAt >= 0)
             {
@@ -1756,4 +1761,37 @@ TEST_CASE("a blocker whose use is the area transition, or says no action, is sti
     World unread; // no action read: its leadsTo taken at its word
     unread.doorLeadsOut = true;
     CHECK(unread.Travel()["arrived"] == false);
+}
+
+TEST_CASE("a move a crowd cuts short part way is asked again from there", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    world.failsAt = 12; // part way, 18 m nearer
+    world.failsFor = 1;
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(world.orders.size() == 2);
+    World stuck; // every move cut short at the same place: asked again once, then said
+    stuck.shut = false;
+    stuck.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    stuck.failsAt = 12;
+    const auto again = stuck.Travel();
+    CHECK(again["arrived"] == false);
+    CHECK_THAT(again["reason"].get<std::string>(), ContainsSubstring("COMMAND_FAILED_INVALID_PATH"));
+    CHECK(stuck.orders.size() == 2);
+}
+
+TEST_CASE("a move that fails within reach, a little nearer, is there at once", "[travel]")
+{
+    World world;
+    world.shut = false;
+    world.at = 1.6; // just beyond reach
+    world.moveFails = "COMMAND_FAILED_INVALID_PATH";
+    world.failsAt = 0.9; // 0.7 m nearer: not enough to be asked again, but within reach
+    const auto answer = world.Travel();
+    CHECK(answer["arrived"] == true);
+    CHECK(answer["reason"] == "there");
+    CHECK(world.orders.size() == 1);
 }

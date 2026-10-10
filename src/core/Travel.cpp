@@ -27,6 +27,10 @@ using std::chrono::milliseconds;
 // How much shorter a move must leave the walk to have brought its walker
 // nearer, in metres.
 constexpr double kNoNearer = 0.25;
+// A move that fails part way, at least this much nearer, is asked again
+// from where it stopped, this many times: a crowd crossing its path (#43).
+constexpr double kCutShortGain = 1.0;
+constexpr int kCutShortRetries = 3;
 // How near the walker must be for the target named in its own way to count
 // as reached (#46): a thing is used from a few metres.
 constexpr double kNearOwnWay = 4.0;
@@ -990,6 +994,16 @@ class Journey
                 {
                     return End(true, "there");
                 }
+                // Cut short part way, nearer: people crossing the path in
+                // Denerim's market ended a walk twice with
+                // COMMAND_FAILED_INVALID_PATH, and the same travel asked
+                // again went through (turn-based-agent, 2026-10-04, #43).
+                // Asked again from where it stopped.
+                if (after->value("distance", distance) <= distance - kCutShortGain && cutShort_ < kCutShortRetries)
+                {
+                    ++cutShort_;
+                    return std::nullopt;
+                }
             }
             return End(false, "the walk ended " + *result);
         }
@@ -1614,6 +1628,7 @@ class Journey
     bool wentToReached_ = false;
     std::string lastBlocker_;        // the door used last, to tell one that did not open
     std::optional<double> lastWalk_; // the walk's length when the last move along it was given
+    int cutShort_ = 0;               // moves that failed part way, nearer, and were asked again (#43)
     bool straightTried_ = false;     // whether straight steps were tried where the walk found none (#53)
     bool engineTried_ = false;       // whether the engine's own move was tried where the walk found none (#67)
     bool measured_ = false;          // whether `distance` was measured after the last order
