@@ -40,6 +40,7 @@ STAGE = ROOT / "build" / "docs-src"
 SITE = ROOT / "build" / "docs-site"
 BASEURL = "/DAOEluvianMCP"
 
+
 def describe(exe: Path) -> dict:
     out = subprocess.run(
         [str(exe)], capture_output=True, text=True, encoding="utf-8", check=True
@@ -208,7 +209,9 @@ CHROME = ("_includes", "_sass", "Gemfile", "Gemfile.lock")
 LOCAL_OUTPUT = shutil.ignore_patterns("_site", ".jekyll-cache", ".bundle", "vendor")
 
 
-def stage(data: dict, docs: Path = DOCS, header: str | None = None, target: Path = STAGE) -> None:
+def stage(
+    data: dict, docs: Path = DOCS, header: str | None = None, target: Path = STAGE
+) -> None:
     """A docs folder with every generated page beside it, in `target`."""
     if target.exists():
         shutil.rmtree(target)
@@ -223,9 +226,15 @@ def stage(data: dict, docs: Path = DOCS, header: str | None = None, target: Path
     folder.mkdir(exist_ok=True)
     (folder / "index.md").write_text(tools_index(tools), encoding="utf-8", newline="\n")
     for order, tool in enumerate(tools, 1):
-        (folder / f"{tool['name']}.md").write_text(tool_page(tool, order), encoding="utf-8", newline="\n")
-    (target / "events.md").write_text(events_page(data["topics"]), encoding="utf-8", newline="\n")
-    (target / "c-interface.md").write_text(c_interface_page(header), encoding="utf-8", newline="\n")
+        (folder / f"{tool['name']}.md").write_text(
+            tool_page(tool, order), encoding="utf-8", newline="\n"
+        )
+    (target / "events.md").write_text(
+        events_page(data["topics"]), encoding="utf-8", newline="\n"
+    )
+    (target / "c-interface.md").write_text(
+        c_interface_page(header), encoding="utf-8", newline="\n"
+    )
 
 
 def git(*args: str) -> bytes:
@@ -245,7 +254,11 @@ def release_tags() -> list[str]:
 def from_tag(tag: str, into: Path) -> Path | None:
     """The tag's docs folder and C header, staged with today's theme; nothing for a
     tag from before the docs site."""
-    archive = git("archive", "--format=zip", tag, "docs", "src/api/EluvianAPI.h") if has_docs(tag) else None
+    archive = (
+        git("archive", "--format=zip", tag, "docs", "src/api/EluvianAPI.h")
+        if has_docs(tag)
+        else None
+    )
     if archive is None:
         return None
     raw_dir = into / f"{tag}-raw"
@@ -276,16 +289,24 @@ def from_tag(tag: str, into: Path) -> Path | None:
 
 
 def has_docs(tag: str) -> bool:
-    return subprocess.run(
-        ["git", "cat-file", "-e", f"{tag}:docs/_data/eluvian.json"], cwd=ROOT, capture_output=True, check=False
-    ).returncode == 0
+    return (
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{tag}:docs/_data/eluvian.json"],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def permalinks(source: Path) -> list[str]:
     """The pages a version has, so the selector keeps you on the same page where it exists."""
     found = set()
     for path in source.rglob("*.md"):
-        match = re.search(r"^permalink:\s*[\"']?(/[^\"'\s]*)", path.read_text(encoding="utf-8"), re.M)
+        match = re.search(
+            r"^permalink:\s*[\"']?(/[^\"'\s]*)", path.read_text(encoding="utf-8"), re.M
+        )
         if match:
             found.add(match.group(1))
     return sorted(found)
@@ -298,7 +319,9 @@ def build_site() -> int:
     if SITE.exists():
         shutil.rmtree(SITE)
     out.mkdir(parents=True)
-    with tempfile.TemporaryDirectory(prefix="docs-versions-", dir=ROOT / "build") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix="docs-versions-", dir=ROOT / "build"
+    ) as temporary:
         staging = Path(temporary)
         stage(json.loads(DATA.read_text(encoding="utf-8")), target=STAGE)
         sources = [("Current", STAGE, BASEURL)]
@@ -306,21 +329,35 @@ def build_site() -> int:
             source = from_tag(tag, staging)
             if source is not None:
                 sources.append((tag[1:], source, f"{BASEURL}/{tag[1:]}"))
-        versions = [{"label": label, "baseurl": url, "pages": permalinks(source)} for label, source, url in sources]
+        versions = [
+            {"label": label, "baseurl": url, "pages": permalinks(source)}
+            for label, source, url in sources
+        ]
         env = {**os.environ, "BUNDLE_GEMFILE": str(DOCS / "Gemfile")}
         for index, (label, source, url) in enumerate(sources):
             # JSON is YAML: Jekyll merges this after the version's own config.
             config = staging / f"config-{index}.yml"
             config.write_text(
-                json.dumps({"baseurl": url, "docs_version": label, "docs_versions": versions}), encoding="utf-8"
+                json.dumps(
+                    {"baseurl": url, "docs_version": label, "docs_versions": versions}
+                ),
+                encoding="utf-8",
             )
             command = [
-                "bundle", "exec", "jekyll", "build",
-                "--source", str(source),
-                "--destination", str(out if index == 0 else out / label),
-                "--config", f"{source / '_config.yml'},{config}",
+                "bundle",
+                "exec",
+                "jekyll",
+                "build",
+                "--source",
+                str(source),
+                "--destination",
+                str(out if index == 0 else out / label),
+                "--config",
+                f"{source / '_config.yml'},{config}",
             ]
-            done = subprocess.run(command, cwd=DOCS, env=env, shell=sys.platform == "win32", check=False)
+            done = subprocess.run(
+                command, cwd=DOCS, env=env, shell=sys.platform == "win32", check=False
+            )
             if done.returncode != 0:
                 return done.returncode
     (out / ".nojekyll").touch()
@@ -330,7 +367,9 @@ def build_site() -> int:
 
 def serve() -> int:
     """The built site at http://127.0.0.1:4000/DAOEluvianMCP/, every version in it."""
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(SITE))
+    handler = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=str(SITE)
+    )
     with http.server.ThreadingHTTPServer(("127.0.0.1", 4000), handler) as server:
         print(f"serving http://127.0.0.1:4000{BASEURL}/ (Ctrl+C stops)", flush=True)
         server.serve_forever()
@@ -338,11 +377,24 @@ def serve() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--update", action="store_true", help="refresh docs/_data/eluvian.json")
-    parser.add_argument("--check", action="store_true", help="fail if it is stale or a page will not render")
-    parser.add_argument("--serve", action="store_true", help="build every version and serve the site")
-    parser.add_argument("--exe", help="eluvian_describe.exe; default build\\debug's, else build\\release's")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--update", action="store_true", help="refresh docs/_data/eluvian.json"
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail if it is stale or a page will not render",
+    )
+    parser.add_argument(
+        "--serve", action="store_true", help="build every version and serve the site"
+    )
+    parser.add_argument(
+        "--exe",
+        help="eluvian_describe.exe; default build\\debug's, else build\\release's",
+    )
     options = parser.parse_args()
 
     if options.update or options.check:
@@ -350,7 +402,9 @@ def main() -> int:
         if options.update:
             DATA.parent.mkdir(parents=True, exist_ok=True)
             DATA.write_text(written(fresh), encoding="utf-8", newline="\n")
-            print(f"{DATA.relative_to(ROOT)}: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics")
+            print(
+                f"{DATA.relative_to(ROOT)}: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics"
+            )
             return 0
         kept = DATA.read_text(encoding="utf-8") if DATA.exists() else ""
         if kept != written(fresh):
@@ -360,7 +414,9 @@ def main() -> int:
             )
             return 1
         stage(fresh)
-        print(f"current: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics; pages staged")
+        print(
+            f"current: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics; pages staged"
+        )
         return 0
 
     built = build_site()
