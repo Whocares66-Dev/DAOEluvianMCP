@@ -1,5 +1,7 @@
 #include "core/Loot.h"
 
+#include "Reads.h"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -16,7 +18,7 @@ namespace
 
 // A chest and the tools around it, answering as the game's do: travel the
 // walk, order the use (which opens the panel and ends on the bus), inspect
-// kind=gui the panel, and game action=press its Take All.
+// kind=gui the panel, and press its Take All.
 struct Chest
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
@@ -54,10 +56,19 @@ struct Chest
                           [this](const Json &args) -> ToolResult { return FakeTravel(args); });
         bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeOrder(args); });
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
-        bench.Tools().Add(ToolSpec{"game", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakeGame(args); });
+        AddReads(bench, [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        // control, recorded as order's control was.
+        bench.Tools().Add(ToolSpec{"control", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
+            Json control = args;
+            control["action"] = "control";
+            return FakeOrder(control);
+        });
+        // press, recorded as game's press was.
+        bench.Tools().Add(ToolSpec{"press", "", {}, Thread::Listener}, [this](const Json &args) -> ToolResult {
+            Json pressed = args;
+            pressed["action"] = "press";
+            return FakeGame(pressed);
+        });
         AddLootTool(bench);
     }
 
@@ -308,7 +319,7 @@ TEST_CASE("another container's panel up is in the way, and it says whose", "[loo
 TEST_CASE("no target and no panel up is refused, saying where containers are listed", "[loot]")
 {
     Chest chest;
-    CHECK_THROWS_WITH(chest.Loot(Json::object()), ContainsSubstring("kind=placeables"));
+    CHECK_THROWS_WITH(chest.Loot(Json::object()), ContainsSubstring("placeables lists chests"));
 }
 
 TEST_CASE("a walk that stops says why, and nothing is used", "[loot]")
@@ -389,7 +400,7 @@ TEST_CASE("a message box instead of the panel is said, with how to answer it", "
     const auto answer = chest.Loot(Json{{"target", "0x3ec"}});
     CHECK(answer["looted"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("It is locked."));
-    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("game action=press"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("press"));
 }
 
 TEST_CASE("another container's panel opening instead is said, and whose", "[loot]")

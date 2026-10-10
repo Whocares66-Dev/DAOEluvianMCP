@@ -1,7 +1,7 @@
 // `dialogue.step`: one answer to the conversation on the screen, or a
 // cutscene skipped, on the game's thread. Unlisted: the `dialogue` tool
 // (core/Conversation.h) calls it, once or until the next choice (#17).
-// inspect kind=dialogue (Inspect.cpp) reads the conversation.
+// dialogue action=look (Inspect.cpp) reads the conversation.
 #include "game/Shared.h"
 
 namespace eluvian::game
@@ -21,7 +21,7 @@ void AddDialogue(Bench &bench, const Watch &watch)
                          {"place",
                           {{"type", "integer"},
                            {"minimum", 0},
-                           {"description", "action=choose: which reply, from 0, as inspect kind=dialogue lists"}}}}},
+                           {"description", "action=choose: which reply, from 0, as dialogue action=look lists"}}}}},
                        {"required", {"action"}}},
                   Thread::Frame};
     step.listed = false;
@@ -61,7 +61,7 @@ void AddDialogue(Bench &bench, const Watch &watch)
         {
             if (!dao::dialogue::Continue())
             {
-                throw ToolError("dialogue: the game took no continue; inspect kind=dialogue says where "
+                throw ToolError("dialogue: the game took no continue; dialogue action=look says where "
                                 "the conversation is");
             }
             return answer;
@@ -74,7 +74,7 @@ void AddDialogue(Bench &bench, const Watch &watch)
         }
         if (!args.Has("place"))
         {
-            throw ToolError(std::format("dialogue: choose needs `place`, 0 to {}; inspect kind=dialogue "
+            throw ToolError(std::format("dialogue: choose needs `place`, 0 to {}; dialogue action=look "
                                         "lists the replies",
                                         replies.size() - 1));
         }
@@ -89,7 +89,7 @@ void AddDialogue(Bench &bench, const Watch &watch)
         answer["reply"] = LineJson(replies[place], female);
         if (!dao::dialogue::Choose(place))
         {
-            throw ToolError("dialogue: the game took no choice; inspect kind=dialogue says where the "
+            throw ToolError("dialogue: the game took no choice; dialogue action=look says where the "
                             "conversation is");
         }
         return answer;

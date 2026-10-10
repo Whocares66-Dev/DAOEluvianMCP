@@ -1,5 +1,5 @@
-// The names in one of the game's resource archives: what `inspect
-// kind=resources` lists, so a test can find a creature's template, an
+// The names in one of the game's resource archives: what `resources`
+// lists, so a test can find a creature's template, an
 // item's or a plot's by a word ("ogre_default.utc") instead of guessing
 // (a tester tried "ogre", "hurlock" and "bandit" for spawn and got none,
 // 2026-10-02). The game's own .erf and .rim files are ERF V2.0 (266 .erf

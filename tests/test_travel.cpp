@@ -1,5 +1,7 @@
 #include "core/Travel.h"
 
+#include "Reads.h"
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -105,11 +107,12 @@ struct World
         // Every tool here answers on the caller's thread: no frame is pumped.
         bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeHealth(args); });
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        AddReads(bench, [this](const Json &args) -> ToolResult { return FakeInspect(args); });
         bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeOrder(args); });
         bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult { return FakeInput(args); });
+        bench.Tools().Add(ToolSpec{"movie", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeInput(args); });
         AddTravelTool(bench);
     }
@@ -804,7 +807,7 @@ TEST_CASE("a message box that pauses the game is said, with what it asks", "[tra
     const auto answer = world.Travel();
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Gather your party"));
-    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("game action=press"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("press"));
     CHECK(world.orders.empty());
 }
 
@@ -1397,7 +1400,7 @@ TEST_CASE("a message box before leaving stops the crossing and says what it asks
     const auto answer = world.bench.Invoke("travel", Json{{"area", "forest"}, {"budgetMs", 5000}}).data;
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("Leave the area?"));
-    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("game action=press"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("press"));
 }
 
 TEST_CASE("an exit that does not take the party out ends when the time does", "[travel]")

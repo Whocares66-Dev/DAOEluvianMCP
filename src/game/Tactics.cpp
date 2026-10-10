@@ -85,8 +85,8 @@ void WriteField(std::int32_t row, std::wstring_view field, std::wstring_view val
     auto *attribute = dao::data::Find(path);
     if (attribute == nullptr)
     {
-        throw ToolError(std::format("tactics: the tree has no {}; the screen's list is shorter (inspect "
-                                    "kind=tactics says how many slots the follower has)",
+        throw ToolError(std::format("tactics: the tree has no {}; the screen's list is shorter ("
+                                    "tactics action=look says how many slots the follower has)",
                                     Narrow(path)));
     }
     attribute->SetText(value);
@@ -241,13 +241,13 @@ Json Set(const Args &args, ObjectId who)
                 {"took", took},
                 {"note", took ? "the slot reads back as set"
                               : "the tree's row was set but the slot does not read back so yet: the game may apply "
-                                "it when the tactics screen closes (inspect kind=tactics reads it again)"}};
+                                "it when the tactics screen closes (tactics action=look reads it again)"}};
 }
 
 // A slot emptied as the screen's row would be: every field none, then
 // DirtyPreset. A script that saved a follower's slots could put back a set
 // one but not an empty one (turn-based-agent, 2026-10-09). Read back as
-// inspect kind=tactics reads an empty slot: no command.
+// tactics action=look reads an empty slot: no command.
 Json Clear(const Args &args, ObjectId who)
 {
     const auto slot = static_cast<std::int32_t>(args.Integer("slot", 1, 1, kMostSlots));
@@ -265,15 +265,20 @@ Json Clear(const Args &args, ObjectId who)
                 {"slot", slot},
                 {"cleared", cleared},
                 {"note", cleared ? "the slot reads back empty"
-                                 : "the tree's row was emptied but the slot does not read back so: inspect "
-                                   "kind=tactics reads it"}};
+                                 : "the tree's row was emptied but the slot does not read back so: "
+                                   "tactics action=look reads it"}};
 }
 
 ToolResult ToolTactics(const Watch &watch, const Json &raw)
 {
     RequireWorld(watch, "tactics");
     const Args args(raw, "tactics");
-    const auto action = args.Choice("action", {"choices", "set", "clear", "preset"});
+    const auto action = args.Choice("action", {"look", "choices", "set", "clear", "preset"});
+    // The slots read, as tactics action=look read them (#110).
+    if (action == "look")
+    {
+        return ReadTactics(watch, raw);
+    }
     const ObjectId selected = SelectedCharacter();
     const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
     const SelectedFor selection(who, selected, "tactics");
@@ -320,10 +325,10 @@ void AddTactics(Bench &bench, const Watch &watch)
                  "`ability` (an id) or `item` (an id) for the action, `enabled` (default true), answering the slot "
                  "as the scripts read it back and whether it `took`; clear, slot `slot` emptied (`cleared`), "
                  "to leave a follower as it was found; preset, load preset `preset` "
-                 "(`presetType`), answering the slots. inspect kind=tactics reads them.",
+                 "(`presetType`), answering the slots. tactics action=look reads them.",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"choices", "set", "clear", "preset"}}}},
+                       {{"action", {{"type", "string"}, {"enum", {"look", "choices", "set", "clear", "preset"}}}},
                         {"id", {{"type", "string"}, {"description", "The follower (default: the one selected)"}}},
                         {"slot", {{"type", "integer"}, {"minimum", 1}}},
                         {"target", {{"description", "A target type, by number or label or name"}}},

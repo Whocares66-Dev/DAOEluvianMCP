@@ -1,5 +1,5 @@
 // The host side of src/api/EluvianAPI.h: what other plugins call to add
-// tools, inspect kinds and events to the bench, exported as
+// tools and events to the bench, exported as
 // Eluvian_GetInterface.
 #pragma once
 

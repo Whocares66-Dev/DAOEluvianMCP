@@ -89,8 +89,8 @@ class Journey
         if (!fits)
         {
             throw ToolError("travel: give one of `target` (a creature or object id), `point`, `exit` (an id "
-                            "from inspect kind=exits) or `area` (an area's tag); or `to`, a pin of the world map "
-                            "(inspect kind=worldmap), with `exit` (the area's way to the map) if the map is not up");
+                            "from exits) or `area` (an area's tag); or `to`, a pin of the world map "
+                            "(worldmap), with `exit` (the area's way to the map) if the map is not up");
         }
         if (args.Has("target"))
         {
@@ -128,7 +128,7 @@ class Journey
 
     Json Run()
     {
-        const Json game = bench_.Invoke("inspect", Json{{"kind", "game"}}).data;
+        const Json game = bench_.Invoke("state", Json::object()).data;
         const std::string controlled = game.value(Json::json_pointer("/controlled/id"), std::string());
         if (who_.empty())
         {
@@ -224,14 +224,14 @@ class Journey
     // is in place; an encounter's area is said as such.
     Json Map(bool opening)
     {
-        auto map = Ask("inspect", Json{{"kind", "worldmap"}});
+        auto map = Ask("worldmap", Json::object());
         // After its exit the map is waited for a little: it opens a moment
         // after the exit is used.
         const auto until = Clock::now() + std::min(Left(), milliseconds(5000));
         while (opening && map && !map->value("up", false) && Clock::now() < until)
         {
             std::this_thread::sleep_for(milliseconds(250));
-            map = Ask("inspect", Json{{"kind", "worldmap"}});
+            map = Ask("worldmap", Json::object());
         }
         if (opening && (!map || !map->value("up", false)))
         {
@@ -244,7 +244,7 @@ class Journey
         if (!map->value("up", false))
         {
             return End(false, "no map is up, the world's or the Fade's: travel with `exit` (the area's way to "
-                              "the world map, inspect kind=exits) and `to` goes there and on; in the Fade, a "
+                              "the world map, exits) and `to` goes there and on; in the Fade, a "
                               "Fade Pedestal's use opens its map");
         }
         std::string others;
@@ -296,7 +296,7 @@ class Journey
             const auto swapUntil = Clock::now() + std::min(Left(), milliseconds(3000));
             while (Clock::now() < swapUntil)
             {
-                const auto again = Ask("inspect", Json{{"kind", "worldmap"}});
+                const auto again = Ask("worldmap", Json::object());
                 if (again && again->value("shown", Json()) != map.value("shown", Json()))
                 {
                     break;
@@ -318,11 +318,11 @@ class Journey
         return End(false, "no pin " + to_.dump() + " on " + where + "; the active ones: " + others);
     }
 
-    // The map of the designer maps (inspect kind=maps) that holds the pin
+    // The map of the designer maps (worldmap all: true) that holds the pin
     // `to` names: its tag and the areas its pins lead to. Nothing if none.
     std::optional<std::pair<std::string, std::set<std::string>>> MapHolding()
     {
-        const auto maps = Ask("inspect", Json{{"kind", "maps"}});
+        const auto maps = Ask("worldmap", Json{{"all", true}});
         if (!maps)
         {
             return std::nullopt;
@@ -389,7 +389,7 @@ class Journey
     // city's, and the pin `to` names taken there.
     Json OpenCityMap()
     {
-        const auto listed = Ask("inspect", Json{{"kind", "exits"}, {"near", who_}});
+        const auto listed = Ask("exits", Json{{"near", who_}});
         const Json exits = listed ? listed->value("exits", Json::array()) : Json::array();
         const auto way = std::ranges::find_if(exits, [](const Json &exit) {
             return exit.value("active", true) && !exit.value("blocker", false) &&
@@ -466,12 +466,12 @@ class Journey
         if (map.value("map", std::string("world")) != "fade")
         {
             const auto marked =
-                Ask("input", Json{{"screen", screen}, {"set", "WorldMap.m_bClosedByTravel"}, {"value", true}});
+                Ask("movie", Json{{"screen", screen}, {"set", "WorldMap.m_bClosedByTravel"}, {"value", true}});
             steps_.push_back(
                 Json{{"did", "mark the map closed by travel"},
                      {"result", marked && marked->value("done", false) ? "done" : stopped_.value_or("not done")}});
         }
-        Ask("input", Json{{"screen", screen},
+        Ask("movie", Json{{"screen", screen},
                           {"call", "ExternalCommands.SetValue"},
                           {"args", Json::array({"WorldMap.LastClickedPinIndex", index})}});
         const std::string click =
@@ -501,7 +501,7 @@ class Journey
             {
                 continue;
             }
-            const auto read = Ask("inspect", Json{{"kind", "game"}});
+            const auto read = Ask("state", Json::object());
             if (!read)
             {
                 continue;
@@ -549,11 +549,10 @@ class Journey
     }
 
     // The exit to go by: the one named, or the nearest active one that
-    // leads to the area named and was not tried yet, from inspect
-    // kind=exits. False if no other is left, after the first.
+    // leads to the area named and was not tried yet, from exits. False if no other is left, after the first.
     bool ChooseExit()
     {
-        const Json listed = bench_.Invoke("inspect", Json{{"kind", "exits"}, {"near", who_}}).data;
+        const Json listed = bench_.Invoke("exits", Json{{"near", who_}}).data;
         const Json exits = listed.value("exits", Json::array());
         std::string places;
         for (const auto &exit : exits)
@@ -567,7 +566,7 @@ class Journey
             {
                 throw ToolError("travel: " + exit_ +
                                 " is a text blocker: its use shows a line and leaves nothing; "
-                                "inspect kind=exits lists the ways out");
+                                "exits lists the ways out");
             }
             if ((!exit_.empty() && id == exit_) ||
                 (exit_.empty() && area == area_ && exit.value("active", true) && !blocker && !tried_.contains(id)))
@@ -585,7 +584,7 @@ class Journey
         }
         if (!exit_.empty())
         {
-            throw ToolError("travel: " + exit_ + " is not one of this area's exits; inspect kind=exits lists them");
+            throw ToolError("travel: " + exit_ + " is not one of this area's exits; exits lists them");
         }
         throw ToolError("travel: no active exit here leads to " + area_ + "; this area's lead to " +
                         (places.empty() ? std::string("nowhere") : places));
@@ -714,7 +713,7 @@ class Journey
             return std::nullopt;
         }
         // Refused as the other area comes in: asked again.
-        const auto read = Ask("inspect", Json{{"kind", "game"}});
+        const auto read = Ask("state", Json::object());
         if (!read)
         {
             return std::nullopt;
@@ -731,7 +730,7 @@ class Journey
         if (game.contains("popup") && !game.at("popup").is_null())
         {
             return End(false, "the game asks before leaving: " + game.at("popup").dump() +
-                                  "; inspect kind=gui reads it and game action=press answers it");
+                                  "; gui reads it and press answers it");
         }
         if (mode == "combat")
         {
@@ -756,7 +755,7 @@ class Journey
     // (#29). False if the walker's place could not be read or the move failed.
     bool StepBack(const std::string &exit)
     {
-        const auto read = Ask("inspect", Json{{"kind", "geometry"}, {"id", who_}, {"target", exit}});
+        const auto read = Ask("geometry", Json{{"id", who_}, {"target", exit}});
         if (!read)
         {
             return false;
@@ -824,7 +823,7 @@ class Journey
     }
 
     // A walk of at most `upTo` metres: the game's own path cut that far
-    // along, where the driver cut inspect geometry's waypoints itself to
+    // along, where the driver cut geometry's waypoints itself to
     // test movement by steps (turn-based-agent's survey, 2026-10-06,
     // #90). The goal becomes that point; a walk no longer goes all the
     // way. True if the goal moved.
@@ -860,8 +859,8 @@ class Journey
                 return End(false, *reason);
             }
             Json ask = where_;
-            ask.update(Json{{"kind", "geometry"}, {"id", who_}, {"walk", true}, {"waypoints", true}});
-            const auto measured = Ask("inspect", ask);
+            ask.update(Json{{"id", who_}, {"walk", true}, {"waypoints", true}});
+            const auto measured = Ask("geometry", ask);
             if (!measured)
             {
                 return End(false, *stopped_);
@@ -982,8 +981,8 @@ class Journey
             // beside it, where the creature stands: there, then. A
             // walk to Master Ilen ended so 0.45 m from him (#12).
             Json again = where_;
-            again.update(Json{{"kind", "geometry"}, {"id", who_}});
-            if (const auto after = Ask("inspect", again))
+            again.update(Json{{"id", who_}});
+            if (const auto after = Ask("geometry", again))
             {
                 answer_["distance"] = after->value("distance", 0.0);
                 measured_ = true;
@@ -1069,7 +1068,7 @@ class Journey
             std::string why = "the way is shut by a door whose key the party does not carry (" +
                               walk.value(Json::json_pointer("/blocker/lock/keyTag"), std::string()) + "): " + blocker;
             why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
-            why += " (the story opens it, or its key; inspect kind=placeables says more)";
+            why += " (the story opens it, or its key; placeables says more)";
             return End(false, std::move(why));
         }
         // Its key held, it opens all the same: Kristoff's room door in the
@@ -1083,7 +1082,7 @@ class Journey
             answer_["shutBy"] = walk.at("blocker");
             std::string why = "the way is shut by a door that cannot be opened: " + blocker;
             why += " " + walk.value(Json::json_pointer("/blocker/name"), std::string());
-            why += " (the story opens it, or its key; inspect kind=placeables says more)";
+            why += " (the story opens it, or its key; placeables says more)";
             return End(false, std::move(why));
         }
         return std::nullopt;
@@ -1187,7 +1186,7 @@ class Journey
             answer_["inertAhead"] = walk.at("blocker");
             std::string why = blocker + " " + walk.value(Json::json_pointer("/blocker/name"), std::string()) +
                               " stands in the way and is not interactive, so no use opens it: the story removes "
-                              "it, a trigger near it perhaps (inspect kind=triggers)";
+                              "it, a trigger near it perhaps (triggers)";
             if (where_.contains("target"))
             {
                 return AsNear("as near as the walk goes: " + why);
@@ -1241,11 +1240,8 @@ class Journey
         {
             return "a fight began";
         }
-        const auto read = Ask("inspect", Json{{"kind", "creatures"},
-                                              {"side", "hostile"},
-                                              {"near", who_},
-                                              {"radius", fightNear_},
-                                              {"includeDead", false}});
+        const auto read =
+            Ask("creatures", Json{{"side", "hostile"}, {"near", who_}, {"radius", fightNear_}, {"includeDead", false}});
         if (!read)
         {
             return "a fight began";
@@ -1268,8 +1264,8 @@ class Journey
     bool EngineMove(const std::string &step)
     {
         Json ask = where_;
-        ask.update(Json{{"kind", "geometry"}, {"id", who_}});
-        const auto read = Ask("inspect", ask);
+        ask.update(Json{{"id", who_}});
+        const auto read = Ask("geometry", ask);
         if (!read)
         {
             return false;
@@ -1292,10 +1288,10 @@ class Journey
     std::optional<std::string> StraightSteps()
     {
         Json ask = where_;
-        ask.update(Json{{"kind", "geometry"}, {"id", who_}, {"walk", true}});
+        ask.update(Json{{"id", who_}, {"walk", true}});
         for (int step = 0; step < kStraightSteps; ++step)
         {
-            const auto read = Ask("inspect", ask);
+            const auto read = Ask("geometry", ask);
             if (!read)
             {
                 return stopped_.value_or("the walk could not be measured");
@@ -1324,8 +1320,8 @@ class Journey
                 return stopped_.value_or("the time ran out stepping straight on");
             }
             Json again = where_;
-            again.update(Json{{"kind", "geometry"}, {"id", who_}});
-            const auto after = Ask("inspect", again);
+            again.update(Json{{"id", who_}});
+            const auto after = Ask("geometry", again);
             if (!after || after->value("distance", before) > before - kStraightGain)
             {
                 return "no walk there: none, and a straight step toward it got no nearer";
@@ -1339,7 +1335,7 @@ class Journey
     // could not be read, so that a read refused is no reason to stop waiting.
     bool StillCommanded()
     {
-        const auto read = Ask("inspect", Json{{"kind", "creature"}, {"id", who_}});
+        const auto read = Ask("creature", Json{{"id", who_}});
         if (!read)
         {
             return true;
@@ -1368,7 +1364,7 @@ class Journey
         {
             return "an area is loading";
         }
-        const auto game = Ask("inspect", Json{{"kind", "game"}});
+        const auto game = Ask("state", Json::object());
         if (!game)
         {
             return "an area is loading";
@@ -1387,7 +1383,7 @@ class Journey
     {
         try
         {
-            const Json gui = bench_.Invoke("inspect", Json{{"kind", "gui"}}).data;
+            const Json gui = bench_.Invoke("gui", Json::object()).data;
             if (gui.contains("popup") && !gui.at("popup").is_null())
             {
                 return gui.at("popup").value("text", std::string());
@@ -1441,7 +1437,7 @@ class Journey
             // as the game paused (turn-based-agent, 2026-10-03, #19).
             if (const auto box = Box())
             {
-                return "the game asks: " + *box + "; game action=press answers it (inspect kind=gui reads its buttons)";
+                return "the game asks: " + *box + "; press answers it (gui reads its buttons)";
             }
             return "the game is paused";
         }
@@ -1551,8 +1547,8 @@ class Journey
         try
         {
             Json ask = where_;
-            ask.update(Json{{"kind", "geometry"}, {"id", who_}});
-            answer_["distance"] = bench_.Invoke("inspect", ask).data.at("distance");
+            ask.update(Json{{"id", who_}});
+            answer_["distance"] = bench_.Invoke("geometry", ask).data.at("distance");
         }
         catch (const std::exception &)
         {
@@ -1601,7 +1597,7 @@ class Journey
     Json where_ = Json::object();
     std::string exit_;      // `exit`: the exit's id
     std::string area_;      // `area`: the area to reach, by an exit that leads there
-    Json exitAt_;           // the exit chosen, as inspect kind=exits gave it
+    Json exitAt_;           // the exit chosen, as exits gave it
     std::string keyTurned_; // the door used a second time, its key's first use having unlocked it
     bool swapped_ = false;  // whether the map up was swapped for the other once, looking for the pin
     std::string fromArea_;  // the area's tag before the crossing
@@ -1649,14 +1645,14 @@ void AddTravelTool(Bench &bench)
                 "cutscene took the screen, the game is paused. "
                 "Opening a door may start a fight or a plot's step; the events from `cursor`, taken as it began, say "
                 "what came of the journey. "
-                "To another area: `exit` (an id from inspect kind=exits) or `area` (an area's tag: the nearest "
+                "To another area: `exit` (an id from exits) or `area` (an area's tag: the nearest "
                 "active exit that leads there). The creature controlled walks to it, uses it, and the answer "
                 "comes once the other `area` is in place; it stops and says so if the game asks first (a "
                 "message box), opens the world map, or starts a fight or a conversation. Answering the box "
-                "(game action=press) lets the game go on by that exit to where it leads, a random "
+                "(press) lets the game go on by that exit to where it leads, a random "
                 "encounter's exit to its journey's first destination: travel again from where it arrives. "
                 "The game may autosave on the way. "
-                "Across the world map: `to`, a pin's name, tag or index (inspect kind=worldmap lists them), "
+                "Across the world map: `to`, a pin's name, tag or index (worldmap lists them), "
                 "alone with the map up, or with the `exit` that opens it; the pin is clicked and the answer "
                 "comes once its area is in place. A random encounter on the way is said (`encounter`, the "
                 "`area` it is in) and is not arrival: fight or talk it out, then travel `to` again.",
@@ -1665,7 +1661,7 @@ void AddTravelTool(Bench &bench)
                       {{"id", {{"description", "Who walks: a creature id; default the one controlled"}}},
                        {"target", {{"description", "A creature or object id to walk to"}}},
                        {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
-                       {"exit", {{"type", "string"}, {"description", "An exit's id, from inspect kind=exits"}}},
+                       {"exit", {{"type", "string"}, {"description", "An exit's id, from exits"}}},
                        {"area",
                         {{"type", "string"},
                          {"description", "An area's tag, to go to by the nearest exit that leads there"}}},

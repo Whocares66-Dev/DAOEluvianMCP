@@ -1,6 +1,6 @@
 // The tools that read and drive the game, through DAOLib, on the frame
-// thread, each in its own file (game/Shared.h lists them): `inspect`,
-// `script`, `order`, `stage`, `screenshot`, `game`, `input`, `camera` and
+// thread, each in its own file (game/Shared.h lists them): the reads,
+// `script`, `order`, `control`, the stage tools, `screenshot`, `saves`, `pause`, `press`, `input`, `camera` and
 // `dialogue`. This file registers them, and puts the engine's events on the
 // bus: loads, saves, commands, conversations, and the script events a test
 // waits on.

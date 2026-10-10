@@ -177,57 +177,6 @@ int RegisterTool(const char *name, const char *descriptorJson, EluvianToolFn han
     }
 }
 
-// The tools a plugin may add choices to: those made of choices, whose
-// argument picks one (inspect's `kind`, stage's `action`).
-bool Extensible(std::string_view tool)
-{
-    return tool == "inspect" || tool == "stage";
-}
-
-int RegisterToolExtension(const char *baseTool, const char *key, const char *descriptorJson, EluvianToolFn handler,
-                          void *context, std::uint32_t flags) noexcept
-{
-    try
-    {
-        const std::string_view base = baseTool != nullptr ? baseTool : "";
-        const std::string_view name = key != nullptr ? key : "";
-        if (g_bench == nullptr || handler == nullptr || !Extensible(base) || !NameIs(name, "."))
-        {
-            spdlog::error("a plugin's extension \"{}\" of \"{}\" refused: the tools extended are inspect and "
-                          "stage, a key is letters, digits, '_', '-' and '.', up to 64, and a handler is needed",
-                          name, base);
-            return -1;
-        }
-        auto descriptor = ReadDescriptor(key, descriptorJson);
-        if (!descriptor)
-        {
-            return -1;
-        }
-        const std::lock_guard lock(g_mutex);
-        const bool added =
-            g_bench->Tools().AddKind(base,
-                                     KindSpec{std::string(name), std::move(descriptor->description),
-                                              (flags & ELUVIAN_ON_LISTENER) != 0 ? Thread::Listener : Thread::Frame},
-                                     Wrap(std::string(base) + " " + std::string(name), handler, context));
-        if (added)
-        {
-            g_registered.push_back(std::string(base) + " " + std::string(name));
-        }
-        spdlog::info("a plugin {} {} {}", added ? "registered" : "replaced", base, name);
-        return added ? 1 : 0;
-    }
-    catch (...)
-    {
-        return -1;
-    }
-}
-
-int RegisterInspectKind(const char *kind, const char *descriptorJson, EluvianToolFn handler, void *context,
-                        std::uint32_t flags) noexcept
-{
-    return RegisterToolExtension("inspect", kind, descriptorJson, handler, context, flags);
-}
-
 int DescribeEvent(const char *topic, const char *descriptorJson) noexcept
 {
     try
@@ -289,13 +238,11 @@ void EmitEvent(const char *topic, const char *payloadJson) noexcept
     }
 }
 
-constexpr EluvianInterface1 kInterface{
-    sizeof(EluvianInterface1),
+constexpr EluvianInterface2 kInterface{
+    sizeof(EluvianInterface2),
     (EL_VERSION_MAJOR * 10000) + (EL_VERSION_MINOR * 100) + EL_VERSION_PATCH,
     &RegisterTool,
-    &RegisterInspectKind,
     &EmitEvent,
-    &RegisterToolExtension,
     &DescribeEvent,
 };
 
@@ -319,7 +266,9 @@ std::vector<std::string> RegisteredByPlugins()
 
 } // namespace eluvian::plugin
 
-extern "C" __declspec(dllexport) const EluvianInterface1 *Eluvian_GetInterface(std::uint32_t version)
+// Version 1's plugins (inspect kinds, tool extensions) get nothing: they
+// are rebuilt against version 2, nothing being released (#110).
+extern "C" __declspec(dllexport) const EluvianInterface2 *Eluvian_GetInterface(std::uint32_t version)
 {
-    return version == 1 ? &eluvian::plugin::kInterface : nullptr;
+    return version == ELUVIAN_INTERFACE_VERSION ? &eluvian::plugin::kInterface : nullptr;
 }

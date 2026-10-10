@@ -1,7 +1,7 @@
-// `inspect kind=resources`: the game's resources by name, read from the
+// `resources`: the game's resources by name, read from the
 // index of every archive in the game's folder (core/Erf.h): creature
-// templates for `stage spawn`, items for `stage equip`, plots for `inspect
-// kind=plot`, cutscenes for `stage cutscene`. Files only, never game
+// templates for `stage_spawn`, items for `stage_equip`, plots for
+// `plot`, cutscenes for `stage_cutscene`. Files only, never game
 // memory, so it answers on the listener's thread; the index is read once,
 // on the first call (some ten thousand archives), and kept.
 #include "game/Shared.h"
@@ -106,7 +106,7 @@ namespace
 // The resources kind's handler, registered by AddResources.
 ToolResult KindResources(const Json &raw)
 {
-    const Args args(raw, "inspect");
+    const Args args(raw, "resources");
     const std::string type = Lower(args.String("type", ""));
     std::vector<std::string> words;
     {
@@ -155,17 +155,25 @@ ToolResult KindResources(const Json &raw)
 
 void AddResources(Bench &bench)
 {
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"resources",
-                 "The game's resources by name, from every archive in its folder: `type`, an extension (utc a "
-                 "creature's template, for stage action=spawn; uti an item's, for stage action=equip; plo a plot, "
-                 "for inspect kind=plot; cut a cutscene), and `match`, words the name must hold (\"ogre\", "
-                 "\"hurlock archer\"). Answers each name without its extension and the archive it is in, sorted, at "
-                 "most `most` (default 100) and `count` of all that match. The core's and the campaign's archives "
-                 "are loaded in any game; an add-in's only where it runs. Read from disk on the first call (a "
-                 "few seconds), then kept.",
-                 Thread::Listener},
+    bench.Tools().Add(
+        Read(
+            "resources",
+            "The game's resources by name, from every archive in its folder: `type`, an extension (utc a "
+            "creature's template, for stage_spawn; uti an item's, for stage_equip; plo a plot, "
+            "for plot; cut a cutscene), and `match`, words the name must hold (\"ogre\", "
+            "\"hurlock archer\"). Answers each name without its extension and the archive it is in, sorted, at "
+            "most `most` (default 100) and `count` of all that match. The core's and the campaign's archives "
+            "are loaded in any game; an add-in's only where it runs. Read from disk on the first call (a "
+            "few seconds), then kept.",
+            Json{
+                {"type",
+                 {{"type", "string"},
+                  {"description",
+                   "An extension: utc a creature's template, uti an item's, plo a plot, cut a cutscene"}}},
+                {"match", {{"type", "string"}, {"description", "Words the name must hold"}}},
+                {"most",
+                 {{"type", "integer"}, {"minimum", 1}, {"maximum", 2000}, {"description", "At most this many (100)"}}}},
+            {}, true, Thread::Listener),
         [](const Json &raw) -> ToolResult { return KindResources(raw); });
 }
 

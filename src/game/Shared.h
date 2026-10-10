@@ -3,7 +3,7 @@
 // the checks before any of them touches the game, the watch on deaths, and
 // each tool's own registration, which GameTools.cpp calls. One file per
 // tool: Inspect, Script, Order, Stage, Screenshot, Game, Input, Camera, Dialogue
-// and Screen; Character and Gui hold inspect kinds of their own. Everything
+// and Screen; Character and Gui hold reads of their own. Everything
 // here is on the game's thread.
 #pragma once
 
@@ -89,7 +89,7 @@ namespace k = dao::script::constants;
 using dao::kInvalidObject;
 using dao::ObjectId;
 
-inline constexpr std::string_view kCreatureHint = "a creature, as inspect kind=creatures lists them";
+inline constexpr std::string_view kCreatureHint = "a creature, as creatures lists them";
 
 // Refuses while the game is starting or an area loads.
 void RequireWorld(const Watch &watch, std::string_view tool);
@@ -107,7 +107,7 @@ Json Depletable(ObjectId id, std::int32_t property);
 std::string Side(ObjectId id, ObjectId hero, const std::set<ObjectId> &party);
 std::set<ObjectId> PartyOf(ObjectId hero);
 
-// An equipment slot's name (INVENTORY_SLOT_*), as kind=inventory names it:
+// An equipment slot's name (INVENTORY_SLOT_*), as inventory names it:
 // "main_hand", "chest", ...; empty for none.
 std::string_view EquipSlotName(std::int32_t slot);
 
@@ -119,11 +119,11 @@ Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints);
 
 Json PopupJson();
 // An item in brief (name, tag, template, base type, stack, value, plot), or
-// in full as inspect kind=item gives it (Character.cpp).
+// in full as item gives it (Character.cpp).
 Json ItemJson(ObjectId item, bool full);
 
 // The game's loot panel (Gui.cpp): the container whose panel is up, if one
-// is; the panel as inspect kind=gui gives it, null with none; and a press
+// is; the panel as gui gives it, null with none; and a press
 // of one of its buttons by its place in kLootButtons, answering what came
 // of it. Throws ToolError when no panel is up.
 inline constexpr std::array<std::string_view, 2> kLootButtons = {"Take All", "Close"};
@@ -139,7 +139,7 @@ ObjectId Selected();
 std::vector<ObjectId> ItemsIn(ObjectId container);
 
 // The store screen (Store.cpp): its store object if one is up, and the
-// store as inspect kind=gui gives it, null with none.
+// store as gui gives it, null with none.
 std::optional<ObjectId> StoreUp();
 Json StoreJson();
 
@@ -283,6 +283,37 @@ ObjectId SelectedCharacter();
 
 DeathWatch &Deaths();
 
+// A tool on the frame thread with its own arguments, the ones it needs
+// marked required: what Read and the stage tools are built on.
+inline ToolSpec Spec(std::string name, std::string description, Json properties,
+                     const std::vector<std::string> &required)
+{
+    Json schema = {{"type", "object"}, {"properties", std::move(properties)}};
+    if (!required.empty())
+    {
+        schema["required"] = required;
+    }
+    return ToolSpec{std::move(name), std::move(description), std::move(schema), Thread::Frame};
+}
+
+// A read of the game as a tool of its own: read-only, its own arguments, the
+// ones it needs marked required. inspect's 27 kinds shared one tool, its
+// arguments added together, a third of all the tools' listing: a tool is
+// one concept (the user, 2026-10-09, #110). `listed` false for another
+// tool's step (dialogue.read under dialogue).
+inline ToolSpec Read(std::string name, std::string description, Json properties,
+                     const std::vector<std::string> &required, bool listed = true, Thread thread = Thread::Frame)
+{
+    ToolSpec spec = Spec(std::move(name), std::move(description), std::move(properties), required);
+    spec.thread = thread;
+    spec.readOnly = true;
+    spec.listed = listed;
+    return spec;
+}
+
+// A follower's tactic slots, as tactics' look answers them (Character.cpp).
+ToolResult ReadTactics(const Watch &watch, const Json &raw);
+
 // Each tool's registration, in its own file.
 void AddInspect(Bench &bench, const Watch &watch);
 void AddScript(Bench &bench, const Watch &watch);
@@ -295,10 +326,10 @@ void AddCamera(Bench &bench, const Watch &watch);
 void AddDialogue(Bench &bench, const Watch &watch);
 void AddScreen(Bench &bench, const Watch &watch);
 void AddResources(Bench &bench);
-void AddCharacter(Bench &bench, const Watch &watch); // inspect's character, equipment, inventory and item
-void AddGui(Bench &bench, const Watch &watch);       // inspect's gui
+void AddCharacter(Bench &bench, const Watch &watch); // character, abilities, equipment, inventory, item
+void AddGui(Bench &bench, const Watch &watch);       // gui, controls
 void AddStore(Bench &bench, const Watch &watch);
-void AddWorldMap(Bench &bench, const Watch &watch); // inspect's worldmap
+void AddWorldMap(Bench &bench, const Watch &watch); // worldmap
 void AddTactics(Bench &bench, const Watch &watch);
 void AddBoard(Bench &bench, const Watch &watch);
 

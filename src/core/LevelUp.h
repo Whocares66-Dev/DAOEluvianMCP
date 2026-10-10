@@ -9,8 +9,8 @@
 // a creature, "GUILevelUp.AutoLevelUp <id>" spends every point as its Auto
 // Level Up does, "GUILevelUp.CharGenEnd <id> 1 1" ends it complete, and
 // "GUI.HideFullScreenGUI" closes it. It decides over other tools' answers
-// alone (`input` sends those, `inspect` kind=gui says the screen is up,
-// kind=character and kind=abilities read the creature before and after),
+// alone (`input` sends those, `gui` says the screen is up,
+// character and abilities read the creature before and after),
 // so it lives here and is tested with stand-ins, as travel and loot are.
 #pragma once
 

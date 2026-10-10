@@ -77,9 +77,6 @@ struct ToolSpec
     Json inputSchema = Json{{"type", "object"}};
     Thread thread = Thread::Frame;
     bool readOnly = false; // MCP's readOnlyHint: changes nothing in the game
-    // For a tool made of kinds (one without a handler of its own): the
-    // argument that chooses the kind, `kind` for inspect, `action` for stage.
-    std::string kindProperty = "kind";
     // Whether tools/list shows it. An unlisted tool is another's step: a
     // frame thread's single act that a listener tool of the same job calls
     // and waits over (`dialogue.step` under `dialogue`, #17), so that the

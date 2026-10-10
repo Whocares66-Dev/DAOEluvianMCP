@@ -1,6 +1,8 @@
-// `stage`: a test's set-up, where play rarely brings the case: conditions,
-// health, cooldowns, a death, a creature's group, a spawn. Each is a kind
-// of the tool, as a plugin's own actions are.
+// The stage tools: a test's set-up, where play rarely brings the case:
+// conditions, health, cooldowns, a death, a creature's group, a spawn, an
+// item, a cutscene, a reset. One `stage` with an action each shared one
+// schema of 21 arguments; a tool each is one concept (the user, 2026-10-09,
+// #110). Each answers `creature` as the change leaves it and `cursor`.
 #include "game/Shared.h"
 
 namespace eluvian::game
@@ -52,7 +54,7 @@ std::optional<std::int32_t> EffectTypeArg(const Args &args)
         names += names.empty() ? "" : ", ";
         names += condition.name;
     }
-    throw ToolError("stage: `effect` is one of " + names + ", or an EFFECT_TYPE_* number");
+    throw ToolError(args.Tool() + ": `effect` is one of " + names + ", or an EFFECT_TYPE_* number");
 }
 
 ObjectId CreatureArg(const Args &args)
@@ -60,12 +62,12 @@ ObjectId CreatureArg(const Args &args)
     const ObjectId id = args.Id("id", kCreatureHint);
     if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
     {
-        throw ToolError(std::format("stage: {} is not a creature; inspect kind=creatures lists them", FormatId(id)));
+        throw ToolError(std::format("{}: {} is not a creature; creatures lists them", args.Tool(), FormatId(id)));
     }
     return id;
 }
 
-// What a built-in stage action does: reads its arguments, changes the game,
+// What a stage tool does: reads its arguments, changes the game,
 // fills its answer, and names the creature it changed.
 using StageAction = std::function<ObjectId(const Args &args, Json &answer)>;
 
@@ -75,19 +77,19 @@ ObjectId StageEffect(const Args &args, Json &answer)
     const auto type = EffectTypeArg(args);
     if (!type)
     {
-        throw ToolError("stage: action effect needs `effect`, a condition's name or a number");
+        throw ToolError(args.Tool() + ": apply needs `effect`, a condition's name or a number");
     }
     const double seconds = args.Number("seconds", 6);
     if (seconds <= 0 || seconds > 600)
     {
-        throw ToolError("stage: `seconds` must be more than 0 and at most 600");
+        throw ToolError(args.Tool() + ": `seconds` must be more than 0 and at most 600");
     }
     const ObjectId creator = args.OptionalId("creator", kCreatureHint).value_or(kInvalidObject);
     const auto ability = static_cast<std::int32_t>(args.Integer("ability", 0, 0, 1 << 30));
     const auto effect = api::Effect(*type);
     if (effect.get() == nullptr)
     {
-        throw ToolError("stage: the engine made no effect of that type");
+        throw ToolError(args.Tool() + ": the engine made no effect of that type");
     }
     api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_TEMPORARY, *effect.get(), id, static_cast<float>(seconds),
                                     creator, ability);
@@ -115,7 +117,7 @@ std::vector<ObjectId> NamedCreatures(const Json &ids)
 {
     if (!ids.is_array())
     {
-        throw ToolError("stage: `ids` is a list of creature ids; leave it out for the party");
+        throw ToolError("stage_reset: `ids` is a list of creature ids; leave it out for the party");
     }
     std::vector<ObjectId> who;
     for (const auto &value : ids)
@@ -123,8 +125,7 @@ std::vector<ObjectId> NamedCreatures(const Json &ids)
         const auto id = ParseId(value);
         if (!id || api::GetObjectType(*id) != k::OBJECT_TYPE_CREATURE)
         {
-            throw ToolError(
-                std::format("stage: {} in `ids` is no creature; inspect kind=creatures lists them", value.dump()));
+            throw ToolError(std::format("stage_reset: {} in `ids` is no creature; creatures lists them", value.dump()));
         }
         who.push_back(*id);
     }
@@ -218,7 +219,7 @@ ObjectId StageReset(const Args &args, Json &answer)
     return hero;
 }
 
-// The slots an item is put in, by the names inspect kind=equipment gives.
+// The slots an item is put in, by the names equipment gives.
 struct EquipSlot
 {
     std::string_view name;
@@ -251,9 +252,9 @@ ObjectId StageEquip(const Args &args, Json &answer)
     const ObjectId item = api::CreateItemOnObject(dao::Resource{Wide(name)}, id);
     if (item == kInvalidObject)
     {
-        throw ToolError(std::format("stage: no item from template \"{}\"; inspect kind=resources with type uti "
+        throw ToolError(std::format("{}: no item from template \"{}\"; resources with type uti "
                                     "and a word finds templates",
-                                    name));
+                                    args.Tool(), name));
     }
     std::int32_t slot = k::INVENTORY_SLOT_INVALID;
     if (args.Has("slot"))
@@ -262,9 +263,9 @@ ObjectId StageEquip(const Args &args, Json &answer)
         const auto found = std::ranges::find(kEquipSlots, wanted, &EquipSlot::name);
         if (found == kEquipSlots.end())
         {
-            throw ToolError(std::format("stage: no slot \"{}\"; main, offhand, ammo, chest, head, boots, gloves, "
+            throw ToolError(std::format("{}: no slot \"{}\"; main, offhand, ammo, chest, head, boots, gloves, "
                                         "cloak, ring1, ring2, neck, belt",
-                                        wanted));
+                                        args.Tool(), wanted));
         }
         slot = found->id;
     }
@@ -274,7 +275,7 @@ ObjectId StageEquip(const Args &args, Json &answer)
     answer["equipped"] = on;
     if (args.Bool("equip", true) && !on)
     {
-        answer["note"] = "made, but not put on: the creature cannot use it there (inspect kind=item says its kind); "
+        answer["note"] = "made, but not put on: the creature cannot use it there (item says its kind); "
                          "it is in the backpack";
     }
     return id;
@@ -286,7 +287,7 @@ ObjectId StageHealth(const Args &args, Json & /*answer*/)
     const double value = args.Number("value");
     if (value < 0)
     {
-        throw ToolError("stage: `value` is the health to set, 0 or more");
+        throw ToolError(args.Tool() + ": `value` is the health to set, 0 or more");
     }
     api::SetCreatureProperty(id, k::PROPERTY_DEPLETABLE_HEALTH, static_cast<float>(value), k::PROPERTY_VALUE_CURRENT);
     return id;
@@ -298,7 +299,7 @@ ObjectId StageCooldown(const Args &args, Json &answer)
     const auto ability = static_cast<std::int32_t>(args.Integer("ability", -1, 0, 1 << 30));
     if (ability < 0)
     {
-        throw ToolError("stage: action cooldown needs `ability`, an ability's id (inspect kind=creature lists them)");
+        throw ToolError(args.Tool() + ": `ability` is needed, an ability's id (creature lists them)");
     }
     const double remaining = args.Number("seconds", 0);
     const auto before = dao::abilities::GetCooldown(id, ability);
@@ -306,13 +307,13 @@ ObjectId StageCooldown(const Args &args, Json &answer)
     const double total = args.Number("total", before && before->total > 0 ? before->total : remaining);
     if (remaining < 0 || total < 0 || remaining > 3600)
     {
-        throw ToolError("stage: `seconds` is the cooldown left, 0 (ready) to 3600");
+        throw ToolError(args.Tool() + ": `seconds` is the cooldown left, 0 (ready) to 3600");
     }
     if (!dao::abilities::SetCooldown(id, ability, static_cast<float>(remaining),
                                      static_cast<float>(std::max(total, remaining))))
     {
         throw ToolError(
-            std::format("stage: {} has no record for ability {}: it does not have it", FormatId(id), ability));
+            std::format("stage_cooldown: {} has no record for ability {}: it does not have it", FormatId(id), ability));
     }
     const auto after = dao::abilities::GetCooldown(id, ability);
     answer["ability"] = AbilityJson(ability);
@@ -327,7 +328,7 @@ ObjectId StageKill(const Args &args, Json &answer)
     const auto damage = api::EffectDamage(health + 1000);
     if (damage.get() == nullptr)
     {
-        throw ToolError("stage: the engine made no damage effect");
+        throw ToolError(args.Tool() + ": the engine made no damage effect");
     }
     api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *damage.get(), id, 0.0F, kInvalidObject, 0);
     Deaths().Note(id, kInvalidObject);
@@ -339,7 +340,7 @@ ObjectId StageKill(const Args &args, Json &answer)
     const auto *app = dao::CClientExoApp::Get();
     const bool paused = app != nullptr && app->IsPaused();
     answer["paused"] = paused;
-    answer["note"] = paused ? "the game is paused, and a death does not come while it is: game action=unpause, then "
+    answer["note"] = paused ? "the game is paused, and a death does not come while it is: pause paused=false, then "
                               "wait_for eluvian.creature.died from `cursor`"
                             : "the death comes a frame or more later, so `creature` still lives here: wait_for "
                               "eluvian.creature.died from `cursor`";
@@ -366,8 +367,9 @@ ObjectId StageGroup(const Args &args, Json &answer)
     const auto group = static_cast<std::int32_t>(args.Integer("group", 0, 0, 255));
     if (!args.Has("group"))
     {
-        throw ToolError("stage: group needs `group`, a number: 0 is the player's, 1 the hostile one, 2 friendly; "
-                        "inspect gives each creature's");
+        throw ToolError(args.Tool() +
+                        ": `group` is needed, a number: 0 is the player's, 1 the hostile one, 2 friendly; "
+                        "creatures gives each creature's");
     }
     answer["was"] = api::GetGroupId(id);
     if (args.Has("toward"))
@@ -391,7 +393,7 @@ ObjectId StageCutscene(const Args &args, Json &answer)
     const ObjectId hero = api::GetHero();
     if (hero == kInvalidObject)
     {
-        throw ToolError("stage: no hero, so nobody to play a cutscene for; is a game loaded?");
+        throw ToolError(args.Tool() + ": no hero, so nobody to play a cutscene for; is a game loaded?");
     }
     // The scripts name a cutscene with its extension: "bed110cs_tainted_mirror"
     // did nothing in play and "bed110cs_tainted_mirror.cut" played (2026-10-01).
@@ -412,11 +414,11 @@ ObjectId StageCutscene(const Args &args, Json &answer)
 ObjectId StageSpawn(const Args &args, Json &answer)
 {
     const auto name = args.String("template");
-    const auto point = VectorOf(args.Raw().value("point", Json()), "stage: `point`");
+    const auto point = VectorOf(args.Raw().value("point", Json()), args.Tool() + ": `point`");
     const ObjectId around = api::GetMainControlled();
     if (around == kInvalidObject)
     {
-        throw ToolError("stage: nobody is controlled, so there is no area to spawn in");
+        throw ToolError(args.Tool() + ": nobody is controlled, so there is no area to spawn in");
     }
     const auto facing = static_cast<float>(args.Number("facing", 0));
     const auto spawn = [&](const std::string &resource) {
@@ -434,11 +436,11 @@ ObjectId StageSpawn(const Args &args, Json &answer)
     {
         // Names that made creatures in play, for a tester guessing at one:
         // "ogre", "hurlock", "genlock" and "bandit" made none (2026-10-02).
-        throw ToolError(std::format("stage: no creature from template \"{}\"; a template is the game's creature "
+        throw ToolError(std::format("{}: no creature from template \"{}\"; a template is the game's creature "
                                     "resource, not a kind's name: wolf, bear_black and skeleton_normal make "
-                                    "creatures, and inspect kind=creatures gives each one's `template` in an "
+                                    "creatures, and creatures gives each one's `template` in an "
                                     "area where its kind lives (its tag names the instance, not this)",
-                                    name));
+                                    args.Tool(), name));
     }
     // The game puts a creature at the nearest place it can stand: a point
     // inside a wall gave one 5 m off in the next room, with no word of it
@@ -458,107 +460,120 @@ ObjectId StageSpawn(const Args &args, Json &answer)
     answer["note"] = moved > 1.0F
                          ? "the point asked for is not a place to stand: the creature was made `moved` metres from "
                            "it, perhaps in another room (see `creature`'s position and room). It is set up over "
-                           "the next frames; inspect it again for its health"
-                         : "a creature spawned is set up over the next frames; inspect it again for its health";
+                           "the next frames; creature reads its health"
+                         : "a creature spawned is set up over the next frames; creature reads its health";
     return id;
+}
+
+// A condition put on or taken off: one concept, two acts.
+ObjectId StageEffects(const Args &args, Json &answer)
+{
+    return args.Choice("action", {"apply", "remove"}) == "apply" ? StageEffect(args, answer)
+                                                                 : StageRemoveEffects(args, answer);
+}
+
+// A creature's `id`, as every stage tool on one takes it.
+Json IdProperty()
+{
+    return Json{{"type", "string"}, {"description", "The creature: an id from creatures"}};
 }
 
 } // namespace
 
 void AddStage(Bench &bench, const Watch &watch)
 {
-    ToolSpec spec{
-        "stage",
-        "Set up a test's case, where play rarely brings it. `action` chooses what; the built-in ones answer "
-        "`creature` as the change leaves it (health, dead, its command) and `cursor`, to wait_for what follows "
-        "from. Mods that register with Eluvian may add actions of their own (an arena, a state only they know). "
-        "The effects are the engine's bare ones, applied as scripts apply them; a death comes a frame or more "
-        "later, as eluvian.creature.died.",
-        Json{
-            {"type", "object"},
-            {"properties",
-             {{"id", {{"description", "The creature"}}},
-              {"effect", {{"description", "A condition's name or an EFFECT_TYPE_* number"}}},
-              {"seconds",
-               {{"type", "number"}, {"description", "action=effect: how long, default 6; action=cooldown: time left"}}},
-              {"total", {{"type", "number"}, {"description", "action=cooldown: the whole it counts down from"}}},
-              {"creator", {{"description", "Whom the effect is from; default none"}}},
-              {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}},
-              {"value", {{"type", "number"}, {"description", "action=health: the current health"}}},
-              {"group",
-               {{"type", "integer"}, {"description", "action=group or spawn: the group to put the creature in"}}},
-              {"toward", {{"type", "integer"}, {"description", "action=group: another group, to set hostility with"}}},
-              {"hostile", {{"type", "boolean"}, {"description", "action=group: with `toward`; default true"}}},
-              {"resource", {{"type", "string"}, {"description", "action=cutscene: the cutscene's name"}}},
-              {"template", {{"type", "string"}, {"description", "action=spawn: the creature's template"}}},
-              {"point", {{"description", "action=spawn: {x, y, z} or [x, y, z]"}}},
-              {"facing", {{"type", "number"}, {"description", "action=spawn: degrees; default 0"}}},
-              {"ids", {{"type", "array"}, {"description", "action=reset: the creatures; default the party"}}},
-              {"effects", {{"type", "boolean"}, {"description", "action=reset: take every effect off too"}}},
-              {"clearDead", {{"type", "boolean"}, {"description", "action=reset: take the dead away; default true"}}},
-              {"slot", {{"type", "string"}, {"description", "action=equip: main, offhand, chest, head ..."}}},
-              {"equip", {{"type", "boolean"}, {"description", "action=equip: put it on; default true"}}}}}},
-        Thread::Frame};
-    spec.kindProperty = "action";
-    bench.Tools().Add(std::move(spec));
-
-    const auto add = [&bench, &watch](std::string name, std::string description, StageAction act) {
-        bench.Tools().AddKind("stage", KindSpec{name, std::move(description), Thread::Frame},
-                              [&bench, &watch, name, act = std::move(act)](const Json &raw) -> ToolResult {
-                                  const Args args(raw, "stage");
-                                  RequireWorld(watch, "stage");
-                                  Json answer = {{"action", name}, {"cursor", bench.Events().Next()}};
-                                  const ObjectId id = act(args, answer);
-                                  // The creature as the change leaves it, in every answer (a
-                                  // tester reading `creature.dead` after a kill found no field,
-                                  // 2026-09-30).
-                                  answer["creature"] = Summary(id, api::GetHero(), PartyOf(api::GetHero()));
-                                  return answer;
-                              });
+    const auto add = [&bench, &watch](std::string name, std::string description, Json properties,
+                                      const std::vector<std::string> &required, StageAction act) {
+        ToolSpec spec = Spec(name, std::move(description), std::move(properties), required);
+        bench.Tools().Add(
+            std::move(spec),
+            [&bench, &watch, name = std::move(name), act = std::move(act)](const Json &raw) -> ToolResult {
+                const Args args(raw, name);
+                RequireWorld(watch, name);
+                Json answer = {{"cursor", bench.Events().Next()}};
+                const ObjectId id = act(args, answer);
+                // The creature as the change leaves it, in every answer (a
+                // tester reading `creature.dead` after a kill found no field,
+                // 2026-09-30).
+                answer["creature"] = Summary(id, api::GetHero(), PartyOf(api::GetHero()));
+                return answer;
+            });
     };
-    add("effect",
-        "puts a condition on creature `id`: `effect` (stun, knockdown, paralyze, root, sleep, daze, slip, fear, "
-        "confusion, grabbed, or an EFFECT_TYPE_* number) for `seconds` (default 6), as from `creator` and "
-        "`ability` if given; answers the effects on it after",
-        StageEffect);
-    add("remove_effects", "takes effects off creature `id`: by `effect`, `ability`, `creator`, or all",
-        StageRemoveEffects);
-    add("health", "sets creature `id`'s current health to `value`", StageHealth);
-    add("cooldown",
-        "sets creature `id`'s cooldown on `ability` to `seconds` left (0 makes it ready), of `total` if given",
-        StageCooldown);
-    add("kill", "deals creature `id` more damage than it has; it dies a frame or more later", StageKill);
-    add("group",
-        "moves creature `id` to `group` (0 the player's, 1 the hostile one, 2 friendly: the game keeps which pairs "
-        "of groups fight), and with `toward` sets whether `group` and that group are `hostile` (default true) "
-        "first; a spawned creature moved to group 2 fights the hostile ones near it, for a fight the party is "
-        "not in",
-        StageGroup);
-    add("cutscene",
-        "plays the cutscene `resource` (its name as the scripts give it, \"bed110cs_tainted_mirror.cut\"), as the "
-        "scripts' "
-        "LoadCutscene does; the game's mode is cutscene until it ends or is skipped",
-        StageCutscene);
-    add("spawn",
-        "makes a creature from `template` (as inspect gives each creature's `template`) at `point`, facing "
-        "`facing` degrees, in the controlled creature's area; `moved` says how far from the point the game "
-        "put it (a point inside a wall is not kept); it is set up over the next frames. `group` puts it in "
-        "that group at once, as action=group does (`group`, `hostileToParty` say where it stands). Templates: "
-        "inspect "
-        "kind=resources with type utc and a word (ogre_default, hurlock_emissary_off, hurlock_epic_archer)",
-        StageSpawn);
-    add("reset",
-        "puts things back as before a fight, for another in the same launch: the party (or `ids`) raised if "
+    add("stage_effect",
+        "Put a condition on a creature, or take its effects off, for a test's case. `action`: apply puts "
+        "`effect` (stun, knockdown, paralyze, root, sleep, daze, slip, fear, confusion, grabbed, or an "
+        "EFFECT_TYPE_* number) on creature `id` for `seconds` (default 6), as from `creator` and `ability` if "
+        "given; remove takes off its effects of `effect`, `ability` or `creator`, or all with none given. "
+        "Answers the `effects` on it after and `creature` as it is. The effects are the engine's bare ones, "
+        "applied as scripts apply them.",
+        Json{{"action", {{"type", "string"}, {"enum", {"apply", "remove"}}}},
+             {"id", IdProperty()},
+             {"effect", {{"description", "A condition's name or an EFFECT_TYPE_* number"}}},
+             {"seconds", {{"type", "number"}, {"description", "apply: how long, default 6"}}},
+             {"creator", {{"type", "string"}, {"description", "Whom the effect is from; default none"}}},
+             {"ability", {{"type", "integer"}, {"description", "The ability it is from; default none"}}}},
+        {"action", "id"}, StageEffects);
+    add("stage_health",
+        "Set creature `id`'s current health to `value`, for a test's case. Answers `creature` as it is after; "
+        "stage_kill for a death.",
+        Json{{"id", IdProperty()}, {"value", {{"type", "number"}, {"description", "The health, 0 or more"}}}},
+        {"id", "value"}, StageHealth);
+    add("stage_cooldown",
+        "Set creature `id`'s cooldown on `ability` to `seconds` left (0 makes it ready), of `total` if given. "
+        "creature lists its abilities.",
+        Json{{"id", IdProperty()},
+             {"ability", {{"type", "integer"}, {"description", "The ability's id"}}},
+             {"seconds", {{"type", "number"}, {"description", "The time left, 0 (ready) to 3600"}}},
+             {"total", {{"type", "number"}, {"description", "The whole it counts down from"}}}},
+        {"id", "ability", "seconds"}, StageCooldown);
+    add("stage_kill",
+        "Deal creature `id` more damage than it has. It dies a frame or more later, as eluvian.creature.died: "
+        "wait_for that from `cursor`.",
+        Json{{"id", IdProperty()}}, {"id"}, StageKill);
+    add("stage_group",
+        "Move creature `id` to `group` (0 the player's, 1 the hostile one, 2 friendly: the game keeps which pairs "
+        "of groups fight), and with `toward` set whether `group` and that group are `hostile` first. A spawned "
+        "creature moved to group 2 fights the hostile ones near it, for a fight the party is not in.",
+        Json{{"id", IdProperty()},
+             {"group", {{"type", "integer"}, {"description", "The group to put it in"}}},
+             {"toward", {{"type", "integer"}, {"description", "Another group, to set hostility with"}}},
+             {"hostile", {{"type", "boolean"}, {"description", "With `toward`; default true"}}}},
+        {"id", "group"}, StageGroup);
+    add("stage_spawn",
+        "Make a creature from `template` (as creatures gives each one's `template`) at `point`, facing `facing` "
+        "degrees, in the controlled creature's area. `moved` says how far from the point the game put it (a point "
+        "inside a wall is not kept); it is set up over the next frames. `group` puts it in that group at once, as "
+        "stage_group does (`group`, `hostileToParty` say where it stands). Templates: resources with type utc "
+        "and a word (ogre_default, hurlock_emissary_off, hurlock_epic_archer).",
+        Json{{"template", {{"type", "string"}, {"description", "The creature's template"}}},
+             {"point", {{"description", "{x, y, z} or [x, y, z]"}}},
+             {"facing", {{"type", "number"}, {"description", "Degrees; default 0"}}},
+             {"group", {{"type", "integer"}, {"description", "The group to put it in"}}}},
+        {"template", "point"}, StageSpawn);
+    add("stage_equip",
+        "Make an item from `template` (an item's resource: resources with type uti) on creature `id` and put it "
+        "on, in its own slot or `slot`; `equip` false leaves it in the backpack. Answers the `item` (item gives "
+        "it in full) and whether it is `equipped`. equip moves what the party already has.",
+        Json{{"id", IdProperty()},
+             {"template", {{"type", "string"}, {"description", "The item's resource"}}},
+             {"slot", {{"type", "string"}, {"description", "main, offhand, chest, head ..."}}},
+             {"equip", {{"type", "boolean"}, {"description", "Put it on; default true"}}}},
+        {"id", "template"}, StageEquip);
+    add("stage_reset",
+        "Put things back as before a fight, for another in the same launch: the party (or `ids`) raised if "
         "fallen, health and mana or stamina full, every cooldown cleared, with `effects` every effect taken off "
         "too; and unless `clearDead` is false, the dead that died since the last reset (not the area's older "
-        "bodies) taken away, if they are not the party's. Answers each "
-        "creature as it is after (`reset`) and what was taken away (`removed`)",
-        StageReset);
-    add("equip",
-        "makes an item from `template` (an item's resource: inspect kind=resources with type uti) on creature "
-        "`id` and puts it on, in its own slot or `slot`; `equip` false leaves it in the backpack. Answers the "
-        "`item` (inspect kind=item gives it in full) and whether it is `equipped`",
-        StageEquip);
+        "bodies) taken away, if they are not the party's. Answers each creature as it is after (`reset`) and "
+        "what was taken away (`removed`).",
+        Json{{"ids", {{"type", "array"}, {"description", "The creatures; default the party"}}},
+             {"effects", {{"type", "boolean"}, {"description", "Take every effect off too"}}},
+             {"clearDead", {{"type", "boolean"}, {"description", "Take the dead away; default true"}}}},
+        {}, StageReset);
+    add("stage_cutscene",
+        "Play the cutscene `resource` (its name as the scripts give it, \"bed110cs_tainted_mirror.cut\"), as the "
+        "scripts' LoadCutscene does. The game's mode is cutscene until it ends or is skipped (dialogue "
+        "action=skip_cutscene).",
+        Json{{"resource", {{"type", "string"}, {"description", "The cutscene's name"}}}}, {"resource"}, StageCutscene);
 }
 
 } // namespace eluvian::game

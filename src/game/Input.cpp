@@ -113,14 +113,14 @@ Json MovieCall(const Args &args)
     auto movie = dao::gui::ScreenMovie(Wide(screen));
     if (!movie)
     {
-        throw ToolError("input: the screen \"" + screen +
-                        "\" is not shown; inspect kind=gui lists the screens shown, by the names to give here");
+        throw ToolError("movie: the screen \"" + screen +
+                        "\" is not shown; gui lists the screens shown, by the names to give here");
     }
     const int forms = (args.Has("call") ? 1 : 0) + (args.Has("set") ? 1 : 0) + (args.Has("get") ? 1 : 0) +
                       (args.Has("children") ? 1 : 0);
     if (forms != 1)
     {
-        throw ToolError("input: with `screen`, give one of `call` (an ActionScript function's path, with "
+        throw ToolError("movie: with `screen`, give one of `call` (an ActionScript function's path, with "
                         "`args`), `set` (a variable's path, with `value`), `get` (a path, answered with its type "
                         "and value) or `children` (a clip's path, answered with its children's)");
     }
@@ -159,7 +159,7 @@ Json MovieCall(const Args &args)
         }
         if (!json.is_string())
         {
-            throw ToolError("input: a movie's values are strings, numbers or bools");
+            throw ToolError("movie: a movie's values are strings, numbers or bools");
         }
         texts.push_back(json.get<std::string>());
         return dao::gui::Value::String(texts.back().c_str());
@@ -169,7 +169,7 @@ Json MovieCall(const Args &args)
         const std::string path = args.String("set");
         if (!args.Has("value"))
         {
-            throw ToolError("input: `set` wants a `value`");
+            throw ToolError("movie: `set` wants a `value`");
         }
         texts.reserve(1);
         // GFx's SetVariable makes a variable where none is, so done says only
@@ -192,7 +192,7 @@ Json MovieCall(const Args &args)
     const Json list = args.Raw().value("args", Json::array());
     if (!list.is_array())
     {
-        throw ToolError("input: `args` is a list of strings, numbers or bools");
+        throw ToolError("movie: `args` is a list of strings, numbers or bools");
     }
     texts.reserve(list.size()); // no reallocation: each Value points into its text
     std::vector<dao::gui::Value> values;
@@ -222,31 +222,53 @@ Json MovieCall(const Args &args)
 void AddInput(Bench &bench, const Watch &watch)
 {
     bench.Tools().Add(
-        ToolSpec{
+        Spec(
             "input",
             "Send the game one of its own messages by its text. `message`: \"Receiver.Message arguments\", what "
-            "the interface's buttons send (\"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; inspect kind=gui shows "
-            "what each button of a box sends). `binding`: \"Message arguments\", what a key's binding names, "
-            "sent as pressing the key sends it (\"UserTogglePauseMessage\", \"SelectPartyMemberIndexMessage 0 "
-            "1\"). The general way in when no tool fits, as `script` is for script commands; the game does "
-            "whatever the message means, so know what it is. One that names a save (the quicksave key's "
-            "\"SaveGameMessage -1 2\" writes over the player's quicksave) is refused unless `confirmSave` is "
-            "true. Answers `sent`: false means the engine knows no such receiver or message. "
-            "`screen` (a screen shown, by its name in inspect kind=gui, \"Options\") drives that screen's own "
-            "script, what no message reaches: `call` an ActionScript function by its path with `args` "
-            "(\"SceneManager.PlayScene\", [\"Controls\"] shows the Options' Controls page), "
-            "`set` a variable to `value`, `get` a path's value, or list a clip's `children` (each's `depth` and "
-            "`path`, to `get` or `call` under; `placed`: true for those placed in the movie's authoring as "
-            "well as those made at run time); a call answers whether it `ran` and what it returned, a get or a "
-            "call the `type` and `value` (an object or a clip as its string, a clip's being its full path), a "
-            "set whether it was `done`.",
-            Json{
-                {"type", "object"},
-                {"properties",
-                 {{"message", {{"type", "string"}, {"description", "Receiver.Message arguments"}}},
-                  {"binding", {{"type", "string"}, {"description", "Message arguments, as a key's binding has it"}}},
-                  {"confirmSave", {{"type", "boolean"}, {"description", "Send a text that names a save all the same"}}},
-                  {"screen", {{"type", "string"}, {"description", "A shown screen's name, for call, set or get"}}},
+            "the interface's buttons send (\"GUIPopupLayer.ScriptDialogResult 1 1 -1\"; gui shows what each "
+            "button of a box sends). `binding`: \"Message arguments\", what a key's binding names, sent as "
+            "pressing the key sends it (\"UserTogglePauseMessage\", \"SelectPartyMemberIndexMessage 0 1\"). The "
+            "general way in when no tool fits, as `script` is for script commands; the game does whatever the "
+            "message means, so know what it is. One that names a save (the quicksave key's \"SaveGameMessage -1 "
+            "2\" writes over the player's quicksave) is refused unless `confirmSave` is true. Answers `sent`: "
+            "false means the engine knows no such receiver or message. movie reaches what no message does.",
+            Json{{"message", {{"type", "string"}, {"description", "Receiver.Message arguments"}}},
+                 {"binding", {{"type", "string"}, {"description", "Message arguments, as a key's binding has it"}}},
+                 {"confirmSave", {{"type", "boolean"}, {"description", "Send a text that names a save all the same"}}}},
+            {}),
+        [&bench, &watch](const Json &raw) -> ToolResult {
+            const Args args(raw, "input");
+            if (watch.Mode() < 0)
+            {
+                throw ToolError("input: the game is still starting; health says when it runs");
+            }
+            const bool binding = args.Has("binding");
+            if (binding == args.Has("message"))
+            {
+                throw ToolError("input: give one of `message` (\"Receiver.Message arguments\", a button's) or "
+                                "`binding` (\"Message arguments\", a key's)");
+            }
+            const auto text = args.String(binding ? "binding" : "message");
+            if (NamesASave(text) && !args.Bool("confirmSave", false))
+            {
+                throw ToolError("input: that text names a save, and the quicksave key's writes over the "
+                                "player's quicksave. saves action=save makes a new manual save that writes over "
+                                "nothing; to send this all the same, pass `confirmSave`: true");
+            }
+            const auto cursor = bench.Events().Next();
+            const bool sent = binding ? dao::messages::SendBinding(Wide(text)) : dao::messages::SendText(Wide(text));
+            return Json{{binding ? "binding" : "message", text}, {"sent", sent}, {"cursor", cursor}};
+        });
+    bench.Tools().Add(
+        Spec("movie",
+             "Drive a shown screen's own script, what no message reaches. `screen`, a screen shown, by its name in "
+             "gui (\"Options\"); then one of: `call` an ActionScript function by its path with `args` "
+             "(\"SceneManager.PlayScene\", [\"Controls\"] shows the Options' Controls page), `set` a variable to "
+             "`value`, `get` a path's value, or list a clip's `children` (each's `depth` and `path`, to `get` or "
+             "`call` under; `placed`: true for those placed in the movie's authoring as well as those made at run "
+             "time). A call answers whether it `ran` and what it returned, a get or a call the `type` and `value` "
+             "(an object or a clip as its string, a clip's being its full path), a set whether it was `done`.",
+             Json{{"screen", {{"type", "string"}, {"description", "A shown screen's name, as gui gives it"}}},
                   {"call", {{"type", "string"}, {"description", "An ActionScript function's path in its movie"}}},
                   {"args", {{"type", "array"}, {"description", "The call's arguments: strings, numbers, bools"}}},
                   {"set", {{"type", "string"}, {"description", "A variable's path in its movie"}}},
@@ -258,36 +280,15 @@ void AddInput(Bench &bench, const Watch &watch)
                   {"children", {{"type", "string"}, {"description", "A clip's path: its children, by depth"}}},
                   {"placed",
                    {{"type", "boolean"},
-                    {"description", "With `children`: the clips placed in authoring too (depths below 0)"}}}}}},
-            Thread::Frame},
-        [&bench, &watch](const Json &raw) -> ToolResult {
-            const Args args(raw, "input");
+                    {"description", "With `children`: the clips placed in authoring too (depths below 0)"}}}},
+             {"screen"}),
+        [&watch](const Json &raw) -> ToolResult {
+            const Args args(raw, "movie");
             if (watch.Mode() < 0)
             {
-                throw ToolError("input: the game is still starting; health says when it runs");
+                throw ToolError("movie: the game is still starting; health says when it runs");
             }
-            const bool binding = args.Has("binding");
-            const int forms = (binding ? 1 : 0) + (args.Has("message") ? 1 : 0) + (args.Has("screen") ? 1 : 0);
-            if (forms != 1)
-            {
-                throw ToolError("input: give one of `message` (\"Receiver.Message arguments\", a button's), "
-                                "`binding` (\"Message arguments\", a key's) or `screen` (a shown screen's name, "
-                                "with call, set, get or children)");
-            }
-            if (args.Has("screen"))
-            {
-                return MovieCall(args);
-            }
-            const auto text = args.String(binding ? "binding" : "message");
-            if (NamesASave(text) && !args.Bool("confirmSave", false))
-            {
-                throw ToolError("input: that text names a save, and the quicksave key's writes over the "
-                                "player's quicksave. game action=save makes a new manual save that writes over "
-                                "nothing; to send this all the same, pass `confirmSave`: true");
-            }
-            const auto cursor = bench.Events().Next();
-            const bool sent = binding ? dao::messages::SendBinding(Wide(text)) : dao::messages::SendText(Wide(text));
-            return Json{{binding ? "binding" : "message", text}, {"sent", sent}, {"cursor", cursor}};
+            return MovieCall(args);
         });
 }
 

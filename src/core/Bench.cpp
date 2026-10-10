@@ -31,10 +31,18 @@ Bench::Bench(BenchOptions options) : options_(std::move(options)), events_(optio
 
 ToolResult Bench::Invoke(std::string_view tool, const Json &args)
 {
-    auto call = tools_.Resolve(tool, args);
+    auto call = tools_.Resolve(tool);
     if (!call)
     {
-        throw UnknownTool("no tool \"" + std::string(tool) + "\"; tools/list (or GET /api/tools) lists them");
+        // Told of like any call: a caller still on a name the tools lost
+        // was seen only in its own transcript (turn-based-agent, 2026-10-09,
+        // #110).
+        const std::string said = "no tool \"" + std::string(tool) + "\"; tools/list (or GET /api/tools) lists them";
+        if (options_.onCall)
+        {
+            options_.onCall(CallRecord{tool, args, Thread::Listener, 0, said});
+        }
+        throw UnknownTool(said);
     }
     const auto thread = call->thread;
     // What it ignores is said: in the answer, or with its refusal, as a
@@ -46,11 +54,20 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
         {
             const double ms =
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            options_.onCall(CallRecord{tool, args, thread, ms, error, answer});
+            options_.onCall(CallRecord{tool, args, thread, ms, error, answer, &ignored});
         }
     };
     try
     {
+        if (const auto missing = tools_.Missing(tool, args); !missing.empty())
+        {
+            std::string names;
+            for (const auto &name : missing)
+            {
+                names += (names.empty() ? "`" : ", `") + name + "`";
+            }
+            throw ToolError(std::string(tool) + ": needs " + names + "; its schema in tools/list says what each is");
+        }
         ToolResult result;
         if (thread == Thread::Listener)
         {

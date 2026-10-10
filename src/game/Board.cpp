@@ -89,7 +89,7 @@ ToolResult ToolBoard(const Watch &watch, const Json &raw)
     const auto action = args.Choice("action", {"look", "accept", "close"}, "look");
     if (!BoardUp())
     {
-        throw ToolError("board: the quest board is not up (inspect kind=gui says the full screen); a use of the "
+        throw ToolError("board: the quest board is not up (gui says the full screen); a use of the "
                         "board placeable opens it");
     }
     if (action == "close")

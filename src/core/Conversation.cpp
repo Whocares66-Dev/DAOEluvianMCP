@@ -55,7 +55,7 @@ class Talk
 {
   public:
     Talk(Bench &bench, const Args &args)
-        : bench_(bench), action_(args.Choice("action", {"choose", "continue", "skip_cutscene"})),
+        : bench_(bench), action_(args.Choice("action", {"look", "choose", "continue", "skip_cutscene"})),
           untilChoice_(args.Choice("until", {"step", "choice"}, "step") == "choice"),
           skipLines_(args.Bool("skipLines", false)),
           deadline_(Clock::now() + milliseconds(args.Integer("budgetMs", 60000, 1000, 300000)))
@@ -69,6 +69,12 @@ class Talk
 
     Json Run()
     {
+        // The conversation read, as dialogue action=look read it: a look
+        // and the acts on one concept are one tool (#110).
+        if (action_ == "look")
+        {
+            return bench_.Invoke("dialogue.read", Json::object()).data;
+        }
         if (!untilChoice_)
         {
             return bench_.Invoke("dialogue.step", step_).data;
@@ -79,7 +85,7 @@ class Talk
         // Quartermaster's: the call waited out its budget on them).
         if (action_ == "choose")
         {
-            const Json before = bench_.Invoke("inspect", Json{{"kind", "dialogue"}}).data;
+            const Json before = bench_.Invoke("dialogue.read", Json::object()).data;
             answered_ = Indices(before.value("replies", Json::array()));
         }
         cursor_ = bench_.Events().Next();
@@ -88,7 +94,7 @@ class Talk
         if (action_ == "choose" && !Chosen())
         {
             return End(false, "the game took no choice, asked " + std::to_string(kMostTries) +
-                                  " times; inspect kind=dialogue says where the conversation is");
+                                  " times; dialogue action=look says where the conversation is");
         }
         return Follow();
     }
@@ -138,7 +144,7 @@ class Talk
                 return std::move(*end);
             }
         }
-        return End(false, "the time ran out before the next choice; inspect kind=dialogue says where it is");
+        return End(false, "the time ran out before the next choice; dialogue action=look says where it is");
     }
 
     // An event's part: a line kept, a choice answered or gone through, the
@@ -185,7 +191,7 @@ class Talk
     // `quietSince` starts again when it goes on.
     std::optional<Json> OnScreen(Clock::time_point &quietSince)
     {
-        const auto read = Ask("inspect", Json{{"kind", "dialogue"}});
+        const auto read = Ask("dialogue.read", Json::object());
         if (!read)
         {
             return End(false, refused_);
@@ -229,7 +235,7 @@ class Talk
     // store, a cutscene), which is the run's end, not a failure.
     Json Stopped()
     {
-        const auto read = Ask("inspect", Json{{"kind", "dialogue"}});
+        const auto read = Ask("dialogue.read", Json::object());
         if (read && !read->value("active", true))
         {
             return Ended(read->value("cutscene", false) ? "cutscene" : Mode());
@@ -317,8 +323,11 @@ void AddDialogueTool(Bench &bench)
         Budgeted(
             ToolSpec{
                 "dialogue",
-                "Answer the conversation on the screen, or skip a cutscene. `action`: choose, the reply at "
-                "`place` among those inspect kind=dialogue lists, as a click on it; continue, as the skip key: "
+                "Read or answer the conversation on the screen, or skip a cutscene. `action`: look, the conversation "
+                "(health's mode is dialog while one is): the `line` spoken last, its speaker, `by` and `to`, the "
+                "conversation's `owner`, and the `replies` the player may choose from now, each with its "
+                "`place`; `cutscene` and `movie` say whether one is playing; choose, the reply at "
+                "`place` among those look lists, as a click on it; continue, as the skip key: "
                 "the line being spoken is cut short and its replies offered, and a reply with no text is gone "
                 "through; skip_cutscene, as Escape in a cutscene or a pre-rendered movie. With `until`: "
                 "\"choice\", it goes on from there to the next real choice in one call: an answer the game "
@@ -331,11 +340,11 @@ void AddDialogueTool(Bench &bench)
                 "eluvian.mode.changed from it. `budgetMs` (default 60000) bounds an `until`.",
                 Json{{"type", "object"},
                      {"properties",
-                      {{"action", {{"type", "string"}, {"enum", {"choose", "continue", "skip_cutscene"}}}},
+                      {{"action", {{"type", "string"}, {"enum", {"look", "choose", "continue", "skip_cutscene"}}}},
                        {"place",
                         {{"type", "integer"},
                          {"minimum", 0},
-                         {"description", "action=choose: which reply, from 0, as inspect kind=dialogue lists"}}},
+                         {"description", "action=choose: which reply, from 0, as dialogue action=look lists"}}},
                        {"until",
                         {{"type", "string"},
                          {"enum", {"step", "choice"}},

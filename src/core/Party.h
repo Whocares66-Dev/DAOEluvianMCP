@@ -17,7 +17,7 @@
 // turn-based-agent found Sten's, by holding the cursor at pixels across
 // the view and reading the name under it (seen in play that day: the five
 // at y 450 of a 1000-pixel view, Sten at 600). It decides over other tools'
-// answers alone (`pointer`, `input`, `inspect` kind=data, `screen`,
+// answers alone (`pointer`, `input`, `data`, `screen`,
 // `health`), so it lives here and is tested with stand-ins.
 #pragma once
 

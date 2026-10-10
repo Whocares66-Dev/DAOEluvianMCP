@@ -190,7 +190,7 @@ void DescribeTopics(EventCatalog &topics)
              Json{{"creature", "{id, name, tag}"},
                   {"item", "{id, name, tag}"},
                   {"slot", "the slot's number (INVENTORY_SLOT_*)"},
-                  {"slotName", "the slot by name, as kind=inventory names it"}});
+                  {"slotName", "the slot by name, as inventory names it"}});
     describe("eluvian.equipment.unequipped",
              "An item came off a creature, by any path; what an equip displaces (a shield for a two-handed "
              "weapon) comes off before the equip.",

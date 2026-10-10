@@ -1,5 +1,5 @@
 // `store`: buy and sell at the store screen that is up, as its own buttons
-// do; and the store as inspect kind=gui reads it. A playthrough driven by
+// do; and the store as gui reads it. A playthrough driven by
 // MCP alone had no health poultices left and gems to sell, and no way to a
 // merchant's wares but a mouse (turn-based-agent, 2026-10-03, #9).
 //
@@ -98,7 +98,7 @@ void AddStore(Bench &bench, const Watch &watch)
     bench.Tools().Add(
         ToolSpec{"store",
                  "Buy or sell at the store screen that is up (a merchant's wares, opened by talking to the "
-                 "merchant: inspect kind=gui says `fullScreen` Store and reads `store`: the stock with each "
+                 "merchant: gui says `fullScreen` Store and reads `store`: the stock with each "
                  "item's `price`, the pack with what each `sellsFor`, and the `money`, all in copper). "
                  "`action`: buy, an `item` of the stock, or sell, an `item` of the pack; `count` of a stack, "
                  "default 1. The game is sent what the screen's own button sends, and does the rest (it "
@@ -108,7 +108,7 @@ void AddStore(Bench &bench, const Watch &watch)
                  Json{{"type", "object"},
                       {"properties",
                        {{"action", {{"type", "string"}, {"enum", {"buy", "sell"}}}},
-                        {"item", {{"type", "string"}, {"description", "An item's id, from inspect kind=gui's store"}}},
+                        {"item", {{"type", "string"}, {"description", "An item's id, from gui's store"}}},
                         {"count",
                          {{"type", "integer"}, {"minimum", 1}, {"description", "How many of a stack; default 1"}}}}},
                       {"required", {"action", "item"}}},
@@ -121,17 +121,16 @@ void AddStore(Bench &bench, const Watch &watch)
             if (!store)
             {
                 throw ToolError("store: no store screen is up; talk to a merchant and choose to see the wares "
-                                "(inspect kind=gui says `fullScreen` Store when it is)");
+                                "(gui says `fullScreen` Store when it is)");
             }
-            const ObjectId item = args.Id("item", "an item, from inspect kind=gui's store");
+            const ObjectId item = args.Id("item", "an item, from gui's store");
             const auto count = static_cast<std::int32_t>(args.Integer("count", 1, 1, 999));
             const bool buying = action == "buy";
             const ObjectId owner = buying ? *store : api::GetHero();
             if (!Holds(owner, item))
             {
-                throw ToolError(std::format("store: {} is not in the {}; inspect kind=gui's store lists the {}",
-                                            FormatId(item), buying ? "store's stock" : "party's pack",
-                                            buying ? "`stock`" : "`pack`"));
+                throw ToolError(std::format("store: {} is not in the {}; gui's store lists the {}", FormatId(item),
+                                            buying ? "store's stock" : "party's pack", buying ? "`stock`" : "`pack`"));
             }
             const auto marks = MarksNow();
             Json answer = {{"action", action},

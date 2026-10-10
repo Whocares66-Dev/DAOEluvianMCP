@@ -1,7 +1,7 @@
-// `inspect kind=gui`: what the interface has up, for an agent that cannot
+// `gui`: what the interface has up, for an agent that cannot
 // see it: the game's screens shown (#2), its message box and its loot panel
 // (#1). And the loot panel's two buttons, pressed as the panel's own script
-// presses them, for game action=press and the loot tool.
+// presses them, for press and the loot tool.
 #include "game/Shared.h"
 
 #include "dao/Data.h"
@@ -146,8 +146,8 @@ Json PressLootButton(Bench &bench, std::size_t index)
     const auto container = LootPanelContainer();
     if (!container)
     {
-        throw ToolError("game: no loot panel is up; order action=use on a container opens one, and inspect "
-                        "kind=gui says what is up");
+        throw ToolError("press: no loot panel is up; order action=use on a container opens one, and "
+                        "gui says what is up");
     }
     Json answer = {{"pressed", kLootButtons.at(index)}, {"container", Brief(*container)}};
     // What follows a press is on the bus from here: the game may start a
@@ -211,26 +211,27 @@ Json PressLootButton(Bench &bench, std::size_t index)
 
 void AddGui(Bench &bench, const Watch &watch)
 {
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"gui", "What the interface has up, for when health's mode is gui or the game waits on something: "
-                        "`screens`, the game's screens on the screen now, the top first, each by `name` (Inventory, "
-                        "Store, WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options, Main the HUD), "
-                        "its `movie` and `layer`; `fullScreen`, the name of the full-screen one up (the inventory, "
-                        "the map, the journal...), null with none; `fullScreenHidden`, a full-screen one left on "
-                        "the game's stack of them but not on the screen (a screen closed by its report alone, "
-                        "WorldMap.WorldMapClosed): input {\"message\": \"GUI.HideFullScreenGUI\"} clears it, as a "
-                        "screen's Close button does; `popup`, the game's message box with "
-                        "its text and each button's label and what pressing it sends (a box holds the game until "
-                        "it is answered, and nothing else says it is there: ask when a load or an order was taken "
-                        "and nothing followed); and `loot`, the loot panel a container opens (a chest, a body's "
-                        "remains, a pile of bones), "
-                        "which is the Inventory screen: its `container`, the `items` in it, the `backpack`'s items "
-                        "and most, and its `buttons`, Take All and Close, with what each sends. game action=press "
-                        "presses a button of the message box or the loot panel; the loot tool walks to a "
-                        "container, opens it and takes all in one call. `store`, with a merchant's Store screen up: "
-                        "the `stock` with each item's `price`, the `pack` with what each `sellsFor`, the `money` "
-                        "(copper), the markups; the store tool buys and sells. Answers in any mode."},
+    bench.Tools().Add(
+        Read("gui",
+             "What the interface has up, for when health's mode is gui or the game waits on something: "
+             "`screens`, the game's screens on the screen now, the top first, each by `name` (Inventory, "
+             "Store, WorldMap, PartyPicker, CharacterRecord, Map, Journal, Skills, Options, Main the HUD), "
+             "its `movie` and `layer`; `fullScreen`, the name of the full-screen one up (the inventory, "
+             "the map, the journal...), null with none; `fullScreenHidden`, a full-screen one left on "
+             "the game's stack of them but not on the screen (a screen closed by its report alone, "
+             "WorldMap.WorldMapClosed): input {\"message\": \"GUI.HideFullScreenGUI\"} clears it, as a "
+             "screen's Close button does; `popup`, the game's message box with "
+             "its text and each button's label and what pressing it sends (a box holds the game until "
+             "it is answered, and nothing else says it is there: ask when a load or an order was taken "
+             "and nothing followed); and `loot`, the loot panel a container opens (a chest, a body's "
+             "remains, a pile of bones), "
+             "which is the Inventory screen: its `container`, the `items` in it, the `backpack`'s items "
+             "and most, and its `buttons`, Take All and Close, with what each sends. press "
+             "presses a button of the message box or the loot panel; the loot tool walks to a "
+             "container, opens it and takes all in one call. `store`, with a merchant's Store screen up: "
+             "the `stock` with each item's `price`, the `pack` with what each `sellsFor`, the `money` "
+             "(copper), the markups; the store tool buys and sells. Answers in any mode.",
+             Json::object(), {}),
         [&watch](const Json &) -> ToolResult {
             // DAOLib's ShownScreens and CurrentFullScreen (0dd22bb, #2): a
             // screen is shown while its movie is drawn, and the full-screen
@@ -276,18 +277,20 @@ void AddGui(Bench &bench, const Watch &watch)
     // keys as shown, "Ctrl + T", "Enter", "" for none (read in play by
     // turn-based-agent, 2026-10-03, #28); the names come from DAOLib's
     // MemberNames, as the screen's ListMemberNames gives them.
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"controls",
-                 "The key bindings, as the Options screen's Controls list shows them: each action's `name`, "
-                 "its `description`, and its `primary` and `secondary` keys as shown (\"Ctrl + T\", \"\" for "
-                 "none). `match` keeps those whose name or description holds it, in any case. A plugin's own "
-                 "actions are among them. Reading only; answers in any mode once the game runs."},
+    bench.Tools().Add(
+        Read("controls",
+             "The key bindings, as the Options screen's Controls list shows them: each action's `name`, "
+             "its `description`, and its `primary` and `secondary` keys as shown (\"Ctrl + T\", \"\" for "
+             "none). `match` keeps those whose name or description holds it, in any case. A plugin's own "
+             "actions are among them. Reading only; answers in any mode once the game runs.",
+             Json{{"match",
+                   {{"type", "string"}, {"description", "Only the actions whose name or description holds this"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult {
-            const Args args(raw, "inspect");
+            const Args args(raw, "controls");
             if (watch.Mode() < 0)
             {
-                throw ToolError("inspect: the game is still starting; health says when it runs");
+                throw ToolError("controls: the game is still starting; health says when it runs");
             }
             const auto lower = [](std::string text) {
                 std::ranges::transform(text, text.begin(),

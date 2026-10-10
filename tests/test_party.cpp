@@ -3,6 +3,8 @@
 // the messages a player's clicks send.
 #include "core/Party.h"
 
+#include "Reads.h"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -50,8 +52,7 @@ struct Picker
     {
         bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener},
                           [this](const Json &) -> ToolResult { return Json{{"mode", mode}}; });
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        AddReads(bench, [this](const Json &args) -> ToolResult { return FakeInspect(args); });
         bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeScript(args); });
         bench.Tools().Add(ToolSpec{"screen", "", {}, Thread::Listener}, [](const Json &) -> ToolResult {

@@ -41,6 +41,11 @@ struct CallRecord
     // the log were the trace a crash's last seconds wanted (lib-agent,
     // 2026-10-08, #98).
     const Json *answer = nullptr;
+    // The arguments its tool does not have, each with what to say of it, as
+    // the answer says them; empty when there were none. The log had 7013
+    // calls and not one said what was ignored (eluvian.log, 2026-10-09,
+    // #110).
+    const Json *ignored = nullptr;
 };
 
 struct BenchOptions

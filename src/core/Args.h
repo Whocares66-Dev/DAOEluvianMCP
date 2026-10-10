@@ -30,6 +30,11 @@ class Args
     Args(const Json &args, std::string_view tool);
 
     [[nodiscard]] bool Has(std::string_view key) const;
+    // The tool whose arguments these are, for a helper's message.
+    [[nodiscard]] const std::string &Tool() const
+    {
+        return tool_;
+    }
     [[nodiscard]] const Json &Raw() const
     {
         return args_;
@@ -44,7 +49,7 @@ class Args
     [[nodiscard]] bool Bool(std::string_view key, bool fallback) const;
 
     // An object id; `what` names what it should be, for the error ("a
-    // creature, as inspect kind=creatures lists them").
+    // creature, as creatures lists them").
     [[nodiscard]] std::uint32_t Id(std::string_view key, std::string_view what) const;
     [[nodiscard]] std::optional<std::uint32_t> OptionalId(std::string_view key, std::string_view what) const;
 

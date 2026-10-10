@@ -324,7 +324,7 @@ void AddScreen(Bench &bench, const Watch &watch)
                  "left), `fx`, `fy` (fractions of the picture) and `desktop` (the pixel to send a real mouse "
                  "to), with `coveredBy` naming the window on top of the game's there, if one is: a real mouse "
                  "sent to that pixel clicks it, not the game, so move it or the game first. After moving the "
-                 "mouse, inspect kind=cursor says what the game has under it.",
+                 "mouse, cursor says what the game has under it.",
                  Json{{"type", "object"},
                       {"properties",
                        {{"target", {{"description", "A creature or object id"}}},
@@ -346,7 +346,7 @@ void AddScreen(Bench &bench, const Watch &watch)
             "shows only under the cursor (a path preview, a cost caption, a highlight). `target` (a "
             "creature or object id: the same pixel screen gives to click it), `point` ({x, y, z} in the "
             "world) or `pixel` ([x, y] in the game's pixels). The game's pick follows from its next pick "
-            "(about a fifteenth of a second): wait a quarter second, then inspect kind=cursor says what it "
+            "(about a fifteenth of a second): wait a quarter second, then cursor says what it "
             "has under it, and a screenshot shows the rest. The real mouse is not moved, nor read for the "
             "pick, wherever it is, and the window need not be in front; the drawn cursor and the game's "
             "menus and bars still follow the real mouse. The hold ends after `seconds` "

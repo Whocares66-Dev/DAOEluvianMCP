@@ -6,8 +6,8 @@
 // It decides over other tools' answers alone, so it lives here and is
 // tested with stand-ins, as travel is: `travel` (the walk, doors opened on
 // the way), `order` (the use, by click, which opens a container),
-// `inspect` kind=gui (the panel and what it holds, a message box, the
-// mode), `game` action=press (Take All, as the panel's own button does it)
+// `gui` (the panel and what it holds, a message box, the
+// mode), `press` (Take All, as the panel's own button does it)
 // and the bus's eluvian.command.ended. It stops and says why where the
 // container does not open: locked, a fight, a conversation, a message box.
 #pragma once

@@ -49,7 +49,7 @@ std::optional<std::string> TakesInput(Bench &bench, const std::string &mode)
     }
     if (mode == "dialog")
     {
-        const auto talk = Ask(bench, "inspect", Json{{"kind", "dialogue"}});
+        const auto talk = Ask(bench, "dialogue.read", Json::object());
         if (talk && talk->value("replies", Json::array()).is_array() && !talk->value("replies", Json::array()).empty())
         {
             return std::string("a conversation at a choice");
@@ -58,7 +58,7 @@ std::optional<std::string> TakesInput(Bench &bench, const std::string &mode)
     }
     if (mode == "gui")
     {
-        const auto gui = Ask(bench, "inspect", Json{{"kind", "gui"}});
+        const auto gui = Ask(bench, "gui", Json::object());
         if (!gui)
         {
             return std::nullopt;

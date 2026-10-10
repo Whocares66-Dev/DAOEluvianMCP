@@ -30,7 +30,7 @@ constexpr milliseconds kScreenWait{5000};
 // How long a made item may take to reach the pack.
 constexpr milliseconds kMadeWait{3000};
 constexpr int kMostCount = 99;
-// inspect's `paths` reads up to 64 at once.
+// data's `paths` reads up to 64 at once.
 constexpr std::size_t kMostPaths = 64;
 
 // The crafting skills by their first rank, the ability ShowCraftingGUI is
@@ -159,7 +159,7 @@ class Crafting
 
     Json Run()
     {
-        const Json game = bench_.Invoke("inspect", Json{{"kind", "game"}}).data;
+        const Json game = bench_.Invoke("state", Json::object()).data;
         const std::string controlled = game.value(Json::json_pointer("/controlled/id"), std::string());
         if (maker_.empty())
         {
@@ -168,23 +168,23 @@ class Crafting
         const auto number = Decimal(maker_);
         if (!number)
         {
-            throw ToolError("craft: `id` is a party member's id, like \"0x82\" (inspect kind=game lists the party)");
+            throw ToolError("craft: `id` is a party member's id, like \"0x82\" (state lists the party)");
         }
         n_ = *number;
-        const Json character = bench_.Invoke("inspect", Json{{"kind", "character"}, {"id", maker_}}).data;
+        const Json character = bench_.Invoke("character", Json{{"id", maker_}}).data;
         const std::string name = character.value("name", maker_);
         answer_["maker"] = Json{{"id", maker_}, {"name", name}};
         answer_["kind"] = kind_.name;
         if (!Held(kind_.ability))
         {
             throw ToolError("craft: " + name + " has no " + std::string(kind_.skill) +
-                            "; inspect kind=abilities lists a creature's skills, and another of the party may have it");
+                            "; abilities lists a creature's skills, and another of the party may have it");
         }
         // The screen crafts for the character the interface has selected,
         // the one controlled.
         if (maker_ != controlled)
         {
-            const Json order = bench_.Invoke("order", Json{{"action", "control"}, {"id", maker_}}).data;
+            const Json order = bench_.Invoke("control", Json{{"id", maker_}}).data;
             if (!order.value("taken", false))
             {
                 throw ToolError("craft: " + name + " could not be given control, which the crafting screen wants " +
@@ -195,7 +195,7 @@ class Crafting
         Json answer = Craft();
         if (!handBack_.empty())
         {
-            const auto back = Ask("order", Json{{"action", "control"}, {"id", handBack_}});
+            const auto back = Ask("control", Json{{"id", handBack_}});
             answer["controlBack"] = back && back->value("taken", false);
         }
         return answer;
@@ -208,7 +208,7 @@ class Crafting
         {
             return End(false, refused_);
         }
-        const auto selected = Ask("inspect", Json{{"kind", "data"}, {"path", "GUI.SelectedChar.ID"}});
+        const auto selected = Ask("data", Json{{"path", "GUI.SelectedChar.ID"}});
         if (!selected || selected->value("number", -1.0) != static_cast<double>(n_))
         {
             Close();
@@ -492,7 +492,7 @@ class Crafting
     // A list's members in the tree, each as its full path.
     std::optional<std::vector<std::string>> Members(const std::string &path)
     {
-        const auto list = Ask("inspect", Json{{"kind", "data"}, {"path", path}, {"members", true}});
+        const auto list = Ask("data", Json{{"path", path}, {"members", true}});
         if (!list)
         {
             return std::nullopt;
@@ -518,7 +518,7 @@ class Crafting
             {
                 chunk.push_back(paths[at]);
             }
-            const auto read = Ask("inspect", Json{{"kind", "data"}, {"paths", std::move(chunk)}});
+            const auto read = Ask("data", Json{{"paths", std::move(chunk)}});
             if (!read)
             {
                 return std::nullopt;
@@ -534,7 +534,7 @@ class Crafting
     // How many of a product the party's pack holds.
     std::optional<int> InPack(const std::string &productRef)
     {
-        const auto pack = Ask("inspect", Json{{"kind", "inventory"}});
+        const auto pack = Ask("inventory", Json::object());
         if (!pack)
         {
             return std::nullopt;
@@ -610,7 +610,7 @@ class Crafting
         const auto deadline = Clock::now() + kScreenWait;
         while (Clock::now() < deadline)
         {
-            const auto gui = Ask("inspect", Json{{"kind", "gui"}});
+            const auto gui = Ask("gui", Json::object());
             if (!gui)
             {
                 return false;

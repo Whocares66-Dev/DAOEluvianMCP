@@ -14,7 +14,7 @@
 // HaveAllIngredients holds, and its Create button sends
 // "GUICrafting.CraftItem <recipe ID> <character>"; GUI.HideFullScreenGUI
 // closes it. It decides over other tools' answers alone (`script`, `input`,
-// `inspect`, `order`), so it lives here and is tested with stand-ins, as
+// the reads, `control`), so it lives here and is tested with stand-ins, as
 // levelup is.
 #pragma once
 

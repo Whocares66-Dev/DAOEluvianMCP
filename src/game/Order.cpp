@@ -62,7 +62,7 @@ bool OrderByCommand(const Args &args, const std::string &action, ObjectId who, J
             }
             if (item == kInvalidObject)
             {
-                throw ToolError(std::format("order: {} carries no item tagged \"{}\"; inspect kind=inventory lists "
+                throw ToolError(std::format("order: {} carries no item tagged \"{}\"; inventory lists "
                                             "what it has",
                                             FormatId(who), args.String("itemTag")));
             }
@@ -117,7 +117,7 @@ bool OrderByClick(const Args &args, const std::string &action, ObjectId who, Jso
     auto *explore = dao::CClientExoApp::CurrentExplore();
     if (explore == nullptr)
     {
-        throw ToolError("order: a click needs explore or combat mode; inspect kind=game says the mode");
+        throw ToolError("order: a click needs explore or combat mode; state says the mode");
     }
     if (action == "move")
     {
@@ -167,23 +167,25 @@ bool OrderByClick(const Args &args, const std::string &action, ObjectId who, Jso
 namespace
 {
 
-// action control: the scripts' own hand-over to a party member.
-Json OrderControl(Bench &bench, const Args &args, ObjectId controlled)
+// The control tool: the scripts' own hand-over to a party member.
+Json ToolControl(Bench &bench, const Watch &watch, const Json &raw)
 {
+    const Args args(raw, "control");
+    RequireWorld(watch, "control");
+    const ObjectId controlled = api::GetMainControlled();
     // The scripts' SetPrimaryControlled, what the game's own
     // scripts use to hand control to a follower. A follower given
     // an order by command out of combat took none, and the
     // selection's binding left the hero controlled
     // (turn-based-agent, 2026-10-03, #22).
-    const ObjectId member = args.Id("id", "a party member, as inspect kind=game lists the party");
+    const ObjectId member = args.Id("id", "a party member, as state lists the party");
     if (!PartyOf(api::GetHero()).contains(member))
     {
-        throw ToolError(std::format("order: {} is not in the party; inspect kind=game lists it", FormatId(member)));
+        throw ToolError(std::format("control: {} is not in the party; state lists it", FormatId(member)));
     }
     api::SetPrimaryControlled(member);
     const ObjectId now = api::GetMainControlled();
-    return Json{{"action", "control"},
-                {"before", Brief(controlled)},
+    return Json{{"before", Brief(controlled)},
                 {"controlled", Brief(now)},
                 {"taken", now == member},
                 {"cursor", bench.Events().Next()}};
@@ -225,7 +227,7 @@ void SayDoorWas(const Args &args, Json &answer)
         answer["doorWas"] = PlaceableStateWord(*target);
         if (answer["doorWas"] == "open")
         {
-            answer["note"] = "the door was open: this use shuts it (inspect kind=placeables says a "
+            answer["note"] = "the door was open: this use shuts it (placeables says a "
                              "door's state)";
         }
     }
@@ -286,13 +288,9 @@ Acting WhoActs(const Args &args, const std::string &action, ObjectId who, Object
 ToolResult ToolOrder(Bench &bench, const Watch &watch, const Json &raw)
 {
     const Args args(raw, "order");
-    const auto action = args.Choice("action", {"attack", "move", "ability", "use", "control"});
+    const auto action = args.Choice("action", {"attack", "move", "ability", "use"});
     RequireWorld(watch, "order");
     const ObjectId controlled = api::GetMainControlled();
-    if (action == "control")
-    {
-        return OrderControl(bench, args, controlled);
-    }
     const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(controlled);
     if (who == kInvalidObject)
     {
@@ -344,8 +342,7 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "control first, and keeps it, said in `controlled`; a creature outside the party is not moved); "
                  "ability "
                  "`ability` (an id from the ability table) on `target` or `point`; use `target` (a placeable: a "
-                 "door, a chest, a lever); control, make `id`, a party member, the creature controlled, as a "
-                 "click on its portrait does. Out of combat a use or an item's ability is a click, and for "
+                 "door, a chest, a lever). Out of combat a use or an item's ability is a click, and for "
                  "another party member `id` control is given to it first, as for a move, and stays with it "
                  "while it acts (`controlled`, `before`); in a fight they go by command. "
                  "`via`: \"command\" (the default, but for use by the controlled creature) gives it through "
@@ -363,14 +360,14 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "nothing for use, their command ending COMMAND_FAILED); by command it does `objectAction`, "
                  "default use. So does an item's ability (`item` or `itemTag`) by the controlled creature out "
                  "of combat, which by command takes nothing there; in combat it goes by command. "
-                 "An area ability with a range (Fireball; inspect kind=abilities says each one's "
+                 "An area ability with a range (Fireball; abilities says each one's "
                  "`aoe` and `range`) given a creature `target` is aimed at its position, as a ground cursor on "
                  "it (`aimedAt`; `atCreature`: true keeps the creature). Answers whether the order was taken, and "
                  "`cursor`: wait_for from it for what came of it (eluvian.command.started and ended, and a mod's "
                  "own events).",
                  Json{{"type", "object"},
                       {"properties",
-                       {{"action", {{"type", "string"}, {"enum", {"attack", "move", "ability", "use", "control"}}}},
+                       {{"action", {{"type", "string"}, {"enum", {"attack", "move", "ability", "use"}}}},
                         {"id", {{"description", "Who obeys: a creature id; default the one controlled"}}},
                         {"atCreature",
                          {{"type", "boolean"},
@@ -401,6 +398,14 @@ void AddOrder(Bench &bench, const Watch &watch)
                       {"required", {"action"}}},
                  Thread::Frame},
         [&bench, &watch](const Json &raw) -> ToolResult { return ToolOrder(bench, watch, raw); });
+    bench.Tools().Add(
+        Spec("control",
+             "Make party member `id` the creature the player controls, as a click on its portrait does, through "
+             "the scripts' own hand-over. Answers whom it was `before`, who is `controlled` now, whether it was "
+             "`taken`, and `cursor`. order hands control over by itself for a move or a use by another party "
+             "member.",
+             Json{{"id", {{"type", "string"}, {"description", "A party member's id; state lists the party"}}}}, {"id"}),
+        [&bench, &watch](const Json &raw) -> ToolResult { return ToolControl(bench, watch, raw); });
 }
 
 } // namespace eluvian::game

@@ -20,7 +20,6 @@ class FakeGame(BaseHTTPRequestHandler):
 
     revision = 1
     popup = False  # whether the game's message box is up
-    old = False  # an Eluvian from before inspect kind=gui (#2)
     forced = False  # whether the game was told Force Load
 
     def log_message(self, *args) -> None:  # quiet
@@ -60,26 +59,20 @@ class FakeGame(BaseHTTPRequestHandler):
         args = json.loads(self.rfile.read(length) or b"{}")
         if self.path == "/api/tool/echo":
             self.answer(200, {"args": args})
-        elif self.path == "/api/tool/game":
-            # A load, as Eluvian's game tool answers it; no such save for "Nobody".
-            if args.get("action") == "forceLoad":
+        elif self.path == "/api/tool/saves":
+            # A load, as Eluvian's saves tool answers it; no such save for "Nobody".
+            if args.get("action") == "force_load":
                 FakeGame.forced = True
                 FakeGame.popup = False
                 self.answer(200, {"forced": True, "cursor": 8})
             elif args.get("character") == "Nobody":
-                self.answer(400, {"error": "game: no such save to load"})
+                self.answer(400, {"error": "saves: no such save to load"})
             elif args.get("character") == "Modded":
                 # Asked, and then the game's own dialog: no load follows.
                 self.answer(200, {"asked": True, "save": args, "cursor": 8})
             else:
                 self.answer(200, {"asked": True, "save": args, "cursor": 7})
-        elif (
-            self.path == "/api/tool/inspect"
-            and FakeGame.old
-            and args.get("kind") == "gui"
-        ):
-            self.answer(400, {"error": "inspect: no kind gui"})
-        elif self.path == "/api/tool/inspect":
+        elif self.path == "/api/tool/gui":
             box = {
                 "text": "This saved game cannot be loaded.",
                 "buttons": [{"label": "Force Load"}, {"label": "Cancel"}],
@@ -240,7 +233,7 @@ class BridgeTest(unittest.TestCase):
 
     def test_a_call_while_the_game_is_down_says_how_to_start_it(self) -> None:
         self.down()
-        result = self.call("inspect", {"kind": "game"})
+        result = self.call("state", {})
         self.assertTrue(result["isError"])
         self.assertIn("game_launch", result["content"][0]["text"])
 
@@ -381,20 +374,6 @@ class BridgeTest(unittest.TestCase):
         text = result["content"][0]["text"]
         self.assertIn("This saved game cannot be loaded.", text)
         self.assertIn("Force Load, Cancel", text)
-
-    def test_an_eluvian_from_before_kind_gui_has_its_box_read_by_kind_popup(
-        self,
-    ) -> None:
-        self.processes.pids.clear()
-        FakeGame.popup = True
-        FakeGame.old = True
-        self.addCleanup(setattr, FakeGame, "popup", False)
-        self.addCleanup(setattr, FakeGame, "old", False)
-        result = self.call(
-            "game_launch", {"load": {"character": "Modded"}, "waitSeconds": 300}
-        )
-        self.assertTrue(result["isError"])
-        self.assertIn("This saved game cannot be loaded.", result["content"][0]["text"])
 
     def test_force_load_is_pressed_only_when_asked_and_the_game_is_marked(self) -> None:
         self.processes.pids.clear()
@@ -711,7 +690,7 @@ class BridgeTest(unittest.TestCase):
             bridge_module.call_budget({"timeoutMs": 120000}, wait_for),
             120 + bridge_module.MARGIN_SECONDS,
         )
-        self.assertEqual(bridge_module.call_budget({"kind": "game"}, None), 60)
+        self.assertEqual(bridge_module.call_budget({}, None), 60)
         self.assertEqual(
             bridge_module.call_budget(["not", "an", "object"], wait_for),
             30 + bridge_module.MARGIN_SECONDS,
@@ -732,13 +711,13 @@ class BridgeTest(unittest.TestCase):
                             }
                         },
                     },
-                    {"name": "inspect"},
+                    {"name": "state"},
                 ]
             )
             or []
         )
         self.assertEqual(self.bridge.budget_of("sweep")["defaultMs"], 300000)
-        self.assertIsNone(self.bridge.budget_of("inspect"))
+        self.assertIsNone(self.bridge.budget_of("state"))
         self.assertGreater(
             bridge_module.call_budget({}, self.bridge.budget_of("sweep")), 300
         )

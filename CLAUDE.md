@@ -50,7 +50,7 @@ extern/DAOLib the submodule
 
 **The game's speed belongs to one plugin.** Each plugin's copy of DAOLib hooks the frame's timer on its first `dao::clock::SetSpeed`, so two setting a speed multiply, and `Speed()` and `Held()` read back only the caller's own (DAOLib `ed55ab8`). In a turn-based test the mod owns it (`ai_turn_speed`); Eluvian neither sets nor reports it.
 
-**Tool names reach a model**: letters, digits, `_` and `-` only (a plugin's: `turnbased_state`). Inspect kinds and event topics may use dots (`turnbased.state`, `turnbased.turn.ended`).
+**Tool names reach a model**: letters, digits, `_` and `-` only (a plugin's: `turnbased_state`). Event topics may use dots (`turnbased.turn.ended`). A tool is one concept, its own arguments in its own schema: no tool of kinds (#110, `dev/DESIGN.md` Principles).
 
 ## Building
 

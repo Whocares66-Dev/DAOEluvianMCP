@@ -140,7 +140,7 @@ class Picker
 
     Json Read(const Json &paths)
     {
-        return bench_.Invoke("inspect", Json{{"kind", "data"}, {"paths", paths}}).data.value("values", Json::array());
+        return bench_.Invoke("data", Json{{"paths", paths}}).data.value("values", Json::array());
     }
 
     std::string Hovered()
@@ -313,7 +313,7 @@ class Picker
         {
             try
             {
-                party = bench_.Invoke("inspect", Json{{"kind", "game"}}).data.value("party", Json::array());
+                party = bench_.Invoke("state", Json::object()).data.value("party", Json::array());
             }
             catch (const std::exception &)
             {
@@ -325,7 +325,7 @@ class Picker
             }
             std::this_thread::sleep_for(milliseconds(200));
         }
-        answer_["party"] = party; // null if the world was not back: inspect kind=game says it after
+        answer_["party"] = party; // null if the world was not back: state says it after
         return answer_;
     }
 

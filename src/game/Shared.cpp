@@ -421,8 +421,8 @@ SelectedFor::SelectedFor(ObjectId who, ObjectId selected, std::string_view tool)
     }
     if (!PartyOf(api::GetHero()).contains(who))
     {
-        throw ToolError(std::format("{}: {} is not in the party; the screen acts on a party member (inspect "
-                                    "kind=game lists the party)",
+        throw ToolError(std::format("{}: {} is not in the party; the screen acts on a party member ("
+                                    "state lists the party)",
                                     tool, FormatId(who)));
     }
     api::SetPrimaryControlled(who);

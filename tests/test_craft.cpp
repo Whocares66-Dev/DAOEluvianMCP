@@ -1,5 +1,7 @@
 #include "core/Craft.h"
 
+#include "Reads.h"
+
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -171,13 +173,12 @@ struct Poisoner
 
     Poisoner()
     {
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakeInspect(args); });
+        AddReads(bench, [this](const Json &args) -> ToolResult { return FakeInspect(args); });
         bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeScript(args); });
         bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeInput(args); });
-        bench.Tools().Add(ToolSpec{"order", "", {}, Thread::Listener},
+        bench.Tools().Add(ToolSpec{"control", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeOrder(args); });
     }
 

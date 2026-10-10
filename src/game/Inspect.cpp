@@ -1,7 +1,8 @@
-// `inspect`: the game read, by `kind`: the game itself, its message box,
-// the conversation on the screen, the placeables, the creatures, one
-// creature in full, and the geometry between two. Reads only; plugins add
-// kinds of their own through the C ABI.
+// The game's reads, a tool each: `state` (the game itself, its message
+// box), the conversation's read under `dialogue`, `placeables`, `exits`,
+// `triggers`, `creatures`, `creature` in full, `surroundings`, `geometry`
+// between two, `data`, `plot`, `journal`, `cursor` and `window`. They were
+// kinds of one `inspect` until #110. Reads only.
 #include "game/Shared.h"
 
 #include "core/Placeables.h"
@@ -173,13 +174,13 @@ std::string PlaceableLine(const Json &p)
 }
 
 // What stands in a walk's way: a placeable with its state and its lock, as
-// kind=placeables reads them, so a door the story keeps shut (pick level
+// placeables reads them, so a door the story keeps shut (pick level
 // 10000) is told from one a use opens (#33), and where it leads if it is an
 // exit, which no use on the way opens (#38).
 // A placeable's lock: whether its key is required, the key's tag, the
 // pick level, and whether the party carries the key, which a door whose
 // key is required opens to and nothing else (#40). The party's things
-// are the hero's. For a walk's blocker and for kind=placeables alike: a
+// are the hero's. For a walk's blocker and for placeables alike: a
 // driver read a door's lock only through the walk (#93).
 Json LockJson(ObjectId id)
 {
@@ -248,7 +249,7 @@ ToolResult KindGame(Bench &bench, const Watch &watch, const Json & /*args*/)
     const auto *app = dao::CClientExoApp::Get();
     answer["paused"] = app != nullptr && app->IsPaused();
     answer["popup"] = PopupJson();
-    RequireWorld(watch, "inspect");
+    RequireWorld(watch, "state");
     const ObjectId hero = api::GetHero();
     answer["hero"] = Brief(hero);
     answer["controlled"] = Brief(api::GetMainControlled());
@@ -271,10 +272,10 @@ ToolResult KindGame(Bench &bench, const Watch &watch, const Json & /*args*/)
 // The data kind's handler, registered by AddInspect.
 ToolResult KindData(const Watch &watch, const Json &raw)
 {
-    const Args args(raw, "inspect");
+    const Args args(raw, "data");
     if (watch.Mode() < 0)
     {
-        throw ToolError("inspect: the game is still starting; health says when it runs");
+        throw ToolError("data: the game is still starting; health says when it runs");
     }
     const auto read = [](const std::string &path) {
         Json value = {{"path", path}};
@@ -317,14 +318,14 @@ ToolResult KindData(const Watch &watch, const Json &raw)
         const auto &paths = args.Raw().at("paths");
         if (!paths.is_array() || paths.size() > 64)
         {
-            throw ToolError("inspect: `paths` is a list of up to 64 dotted paths");
+            throw ToolError("data: `paths` is a list of up to 64 dotted paths");
         }
         Json values = Json::array();
         for (const auto &path : paths)
         {
             if (!path.is_string())
             {
-                throw ToolError("inspect: each of `paths` is a string, like \"GUI.SelectedChar\"");
+                throw ToolError("data: each of `paths` is a string, like \"GUI.SelectedChar\"");
             }
             values.push_back(read(path.get<std::string>()));
         }
@@ -343,7 +344,7 @@ std::wstring PlotGuid(const std::string &asked)
     }
     if (guid.empty())
     {
-        throw ToolError(std::format("inspect: the game has no plot \"{}\"; a plot is named by its "
+        throw ToolError(std::format("plot: the game has no plot \"{}\"; a plot is named by its "
                                     "resource, like bed000pt_main",
                                     asked));
     }
@@ -370,8 +371,8 @@ Json PlotFlag(ObjectId party, const std::wstring &guid, std::int32_t flag, const
 // The plot kind's handler, registered by AddInspect.
 ToolResult KindPlot(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "plot");
+    const Args args(raw, "plot");
     const std::string asked = args.String("plot");
     const std::wstring guid = PlotGuid(asked);
     const ObjectId party = api::GetParty(api::GetHero());
@@ -390,7 +391,7 @@ ToolResult KindPlot(const Watch &watch, const Json &raw)
     const Json wanted = one ? args.Raw().at("flag") : Json(nullptr);
     if (one && !wanted.is_number_integer() && !wanted.is_string())
     {
-        throw ToolError("inspect: `flag` is a flag's number or its name, as kind=plot lists them");
+        throw ToolError("plot: `flag` is a flag's number or its name, as plot lists them");
     }
     Json flags = Json::array();
     Json set = Json::array();
@@ -421,8 +422,8 @@ ToolResult KindPlot(const Watch &watch, const Json &raw)
     }
     if (one)
     {
-        throw ToolError(std::format("inspect: plot \"{}\" has no flag {}; kind=plot without `flag` lists them", asked,
-                                    wanted.dump()));
+        throw ToolError(
+            std::format("plot: plot \"{}\" has no flag {}; plot without `flag` lists them", asked, wanted.dump()));
     }
     answer["flags"] = std::move(flags);
     answer["set"] = std::move(set);
@@ -432,11 +433,11 @@ ToolResult KindPlot(const Watch &watch, const Json &raw)
 // The cursor kind's handler, registered by AddInspect.
 ToolResult KindCursor(const Watch &watch, const Json & /*args*/)
 {
-    RequireWorld(watch, "inspect");
+    RequireWorld(watch, "cursor");
     const auto *explore = dao::CClientExoApp::CurrentExplore();
     if (explore == nullptr)
     {
-        throw ToolError("inspect: the cursor picks in explore and combat mode only (health says the mode)");
+        throw ToolError("cursor: the cursor picks in explore and combat mode only (health says the mode)");
     }
     const auto object = explore->CursorObject();
     const auto ground = explore->CursorGround();
@@ -465,7 +466,7 @@ ToolResult KindWindow(const Json & /*args*/)
     const auto place = GameWindowPlace();
     if (!place.found)
     {
-        throw ToolError("inspect: the game has no window yet");
+        throw ToolError("window: the game has no window yet");
     }
     return Json{{"client", {{"x", place.x}, {"y", place.y}, {"width", place.width}, {"height", place.height}}},
                 {"minimised", place.minimised},
@@ -475,7 +476,7 @@ ToolResult KindWindow(const Json & /*args*/)
 // The dialogue kind's handler, registered by AddInspect.
 ToolResult KindDialogue(const Watch &watch, const Json & /*args*/)
 {
-    RequireWorld(watch, "inspect");
+    RequireWorld(watch, "dialogue");
     const auto *conversation = dao::dialogue::Current();
     Json answer = {{"active", conversation != nullptr},
                    {"cutscene", dao::dialogue::InCutscene()},
@@ -499,12 +500,12 @@ ToolResult KindDialogue(const Watch &watch, const Json & /*args*/)
 // The placeables kind's handler, registered by AddInspect.
 ToolResult KindPlaceables(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "placeables");
+    const Args args(raw, "placeables");
     const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
     if (around == kInvalidObject)
     {
-        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+        throw ToolError("placeables: no creature is controlled and no `near` was given; is a game loaded?");
     }
     const auto from = api::GetPosition(around);
     const auto radius = args.Number("radius", -1);
@@ -560,20 +561,19 @@ ToolResult KindPlaceables(const Watch &watch, const Json &raw)
 // The surroundings kind's handler, registered by AddInspect.
 ToolResult KindSurroundings(Bench &bench, const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "surroundings");
+    const Args args(raw, "surroundings");
     const double radius = args.Number("radius", 30);
-    // The other kinds' own handlers, on this thread: one read of the
+    // The other reads' own handlers, on this thread: one read of the
     // area as they read it, each in brief.
-    const auto look = [&bench, &raw, radius](const char *kind, Json call) {
-        call["kind"] = kind;
+    const auto look = [&bench, &raw, radius](const char *tool, Json call) {
         call["brief"] = true;
         call["radius"] = radius;
         if (raw.contains("near"))
         {
             call["near"] = raw.at("near");
         }
-        return bench.Tools().Resolve("inspect", call)->handler(call).data;
+        return bench.Tools().Resolve(tool)->handler(call).data;
     };
     const Json creatures = look("creatures", Json::object());
     const Json usable = look("placeables", Json{{"interactive", true}});
@@ -588,12 +588,12 @@ ToolResult KindSurroundings(Bench &bench, const Watch &watch, const Json &raw)
 // The exits kind's handler, registered by AddInspect.
 ToolResult KindExits(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "exits");
+    const Args args(raw, "exits");
     const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
     if (around == kInvalidObject)
     {
-        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+        throw ToolError("exits: no creature is controlled and no `near` was given; is a game loaded?");
     }
     const auto from = api::GetPosition(around);
     std::vector<std::pair<float, Json>> found;
@@ -654,13 +654,13 @@ std::vector<std::wstring> IntNames(const Args &args)
         const Json &names = args.Raw().at("ints");
         if (!names.is_array() || names.size() > 32)
         {
-            throw ToolError("inspect: `ints` is a list of up to 32 local int names");
+            throw ToolError("triggers: `ints` is a list of up to 32 local int names");
         }
         for (const auto &name : names)
         {
             if (!name.is_string())
             {
-                throw ToolError("inspect: each of `ints` is a local's name, a string");
+                throw ToolError("triggers: each of `ints` is a local's name, a string");
             }
             ints.push_back(Wide(name.get<std::string>()));
         }
@@ -694,12 +694,12 @@ void Described(ObjectId id, const dao::Vector &position, float distance, const s
 // The triggers kind's handler, registered by AddInspect.
 ToolResult KindTriggers(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "triggers");
+    const Args args(raw, "triggers");
     const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
     if (around == kInvalidObject)
     {
-        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+        throw ToolError("triggers: no creature is controlled and no `near` was given; is a game loaded?");
     }
     const std::vector<std::wstring> ints = IntNames(args);
     std::string want = args.Has("tag") ? args.String("tag") : std::string();
@@ -743,8 +743,8 @@ ToolResult KindTriggers(const Watch &watch, const Json &raw)
 // The journal kind's handler, registered by AddInspect.
 ToolResult KindJournal(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "journal");
+    const Args args(raw, "journal");
     Json done = JournalList(L"CompletedPlots");
     Json answer = {{"active", JournalEntry(L"Journal.ActivePlot.")},
                    {"quests", JournalList(L"PlotList")},
@@ -759,13 +759,13 @@ ToolResult KindJournal(const Watch &watch, const Json &raw)
 // The creatures kind's handler, registered by AddInspect.
 ToolResult KindCreatures(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "creatures");
+    const Args args(raw, "creatures");
     const ObjectId hero = api::GetHero();
     const ObjectId around = args.OptionalId("near", kCreatureHint).value_or(api::GetMainControlled());
     if (around == kInvalidObject)
     {
-        throw ToolError("inspect: no creature is controlled and no `near` was given; is a game loaded?");
+        throw ToolError("creatures: no creature is controlled and no `near` was given; is a game loaded?");
     }
     const auto from = api::GetPosition(around);
     const auto radius = args.Number("radius", -1);
@@ -811,12 +811,12 @@ ToolResult KindCreatures(const Watch &watch, const Json &raw)
 // The creature kind's handler, registered by AddInspect.
 ToolResult KindCreature(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "creature");
+    const Args args(raw, "creature");
     const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
     if (id == kInvalidObject || api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
     {
-        throw ToolError(std::format("inspect: {} is not a creature; inspect kind=creatures lists them",
+        throw ToolError(std::format("creature: {} is not a creature; creatures lists them",
                                     id == kInvalidObject ? "nothing" : FormatId(id)));
     }
     const ObjectId hero = api::GetHero();
@@ -848,7 +848,7 @@ const char *SearchResult(const dao::world::PathSearch &search)
     }
 }
 
-// A walk's search as kind=geometry answers it (#77): what it found, how
+// A walk's search as geometry answers it (#77): what it found, how
 // far it got, what stands in the way, and with `trace`, DAOLib's own
 // reading of it.
 Json WalkJson(const dao::world::PathSearch &search, bool waypoints, bool trace)
@@ -882,8 +882,8 @@ Json WalkJson(const dao::world::PathSearch &search, bool waypoints, bool trace)
     {
         walk["blocker"] = BlockerJson(search.blocker);
         walk["note"] = search.blocker == kInvalidObject
-                           ? "a door or the like stands in the way and was not found by name; inspect "
-                             "kind=placeables near `reached` lists what is there"
+                           ? "a door or the like stands in the way and was not found by name; "
+                             "placeables near `reached` lists what is there"
                            : "a move there ends COMMAND_FAILED_PATH_ACTION_REQUIRED; order action=use "
                              "on `blocker` first (a shut door opens), then move";
     }
@@ -922,12 +922,12 @@ Json WalkJson(const dao::world::PathSearch &search, bool waypoints, bool trace)
 // The geometry kind's handler, registered by AddInspect.
 ToolResult KindGeometry(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "geometry");
+    const Args args(raw, "geometry");
     const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
     if (id == kInvalidObject)
     {
-        throw ToolError("inspect: no creature is controlled and no `id` was given");
+        throw ToolError("geometry: no creature is controlled and no `id` was given");
     }
     const bool waypoints = args.Bool("waypoints", false);
     const auto from = api::GetPosition(id);
@@ -943,7 +943,7 @@ ToolResult KindGeometry(const Watch &watch, const Json &raw)
     }
     else if (args.Has("point"))
     {
-        to = VectorOf(args.Raw().at("point"), "inspect: `point`");
+        to = VectorOf(args.Raw().at("point"), "geometry: `point`");
         const auto eye = [](dao::Vector v) {
             v.z += dao::world::kEyeHeight;
             return v;
@@ -952,7 +952,7 @@ ToolResult KindGeometry(const Watch &watch, const Json &raw)
     }
     else
     {
-        throw ToolError("inspect: kind=geometry needs a `target` (a creature id) or a `point`");
+        throw ToolError("geometry: needs a `target` (a creature id) or a `point`");
     }
     answer["to"] = VectorJson(to);
     answer["distance"] = Distance(from, to);
@@ -981,94 +981,28 @@ ToolResult KindGeometry(const Watch &watch, const Json &raw)
 
 void AddInspect(Bench &bench, const Watch &watch)
 {
-    bench.Tools().Add(ToolSpec{
-        "inspect",
-        "Read the game: its state, the creatures in the area, one creature in full, the geometry between "
-        "two. Creatures are named by id (\"0x7d9\", as the logs write them); pass those ids to "
-        "every other tool.",
-        Json{{"type", "object"},
-             {"properties",
-              {{"id", {{"description", "kind=creature and kind=geometry: the creature; default the one controlled"}}},
-               {"target", {{"description", "kind=geometry: the creature to measure to"}}},
-               {"point", {{"description", "kind=geometry: the point to measure to, {x, y, z} or [x, y, z]"}}},
-               {"path", {{"type", "string"}, {"description", "kind=data: a dotted path in the data tree"}}},
-               {"paths", {{"type", "array"}, {"description", "kind=data: several paths, answered together"}}},
-               {"members",
-                {{"type", "boolean"},
-                 {"description", "kind=data: the list at `path`: its members' paths and how many"}}},
-               {"full", {{"type", "boolean"}, {"description", "kind=inventory: each item in full"}}},
-               {"plot", {{"type", "string"}, {"description", "kind=plot: the plot's resource, like bed000pt_main"}}},
-               {"flag", {{"description", "kind=plot: one flag, by number or name"}}},
-               {"completed", {{"type", "boolean"}, {"description", "kind=journal: list the quests done too"}}},
-               {"waypoints", {{"type", "boolean"}, {"description", "kind=geometry: list the paths' points"}}},
-               {"walk",
-                {{"type", "boolean"},
-                 {"description", "kind=geometry: also search the path the creature would walk there: its length, "
-                                 "or what is in the way"}}},
-               {"trace",
-                {{"type", "boolean"},
-                 {"description", "kind=geometry with walk: the search's own record (each slice's answer, a line "
-                                 "for a log), for whoever reads the pathfinder"}}},
-               {"near",
-                {{"description", "kind=creatures: measure distances from this creature; default "
-                                 "the one controlled"}}},
-               {"radius",
-                {{"type", "number"}, {"description", "kind=creatures: only those within this many metres of `near`"}}},
-               {"side",
-                {{"type", "string"},
-                 {"enum", {"party", "hostile", "neutral"}},
-                 {"description", "kind=creatures: only this side"}}},
-               {"includeDead", {{"type", "boolean"}, {"description", "kind=creatures: default true"}}},
-               {"includeInactive",
-                {{"type", "boolean"},
-                 {"description", "kind=creatures: creatures the area keeps hidden; default false"}}},
-               {"brief",
-                {{"type", "boolean"},
-                 {"description", "kind=creatures, placeables, exits: a thing a line (`lines`) instead of in full"}}},
-               {"interactive",
-                {{"type", "boolean"}, {"description", "kind=placeables: only those that can be used (true)"}}},
-               {"tag",
-                {{"type", "string"}, {"description", "kind=triggers: only those whose tag holds this (any case)"}}},
-               {"ints",
-                {{"type", "array"},
-                 {"description", "kind=triggers: local int names to read on each trigger, as its scripts set "
-                                 "them (GetLocalInt)"}}},
-               // kind=resources' (Resources.cpp): undeclared, they were said
-               // ignored once calls began to say so (#61).
-               {"type",
-                {{"type", "string"},
-                 {"description", "kind=resources: an extension: utc a creature's template, uti an item's, plo a "
-                                 "plot, cut a cutscene"}}},
-               {"match",
-                {{"type", "string"},
-                 {"description", "kind=resources: words the name must hold (\"ogre\"); kind=controls: only the "
-                                 "actions whose name or description holds this"}}},
-               {"most",
-                {{"type", "integer"},
-                 {"minimum", 1},
-                 {"maximum", 2000},
-                 {"description", "kind=resources: at most "
-                                 "this many (100)"}}}}}},
-        Thread::Frame, true});
-
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"game",
-                 "The game mode, pause, the area, the hero, the creature controlled, the party and who of it is "
-                 "selected in the party bar, the game's message box if one is up (`popup`: its text and "
-                 "buttons), and the event cursor."},
+    bench.Tools().Add(
+        Read("state",
+             "The game mode, pause, the area, the hero, the creature controlled, the party and who of it is "
+             "selected in the party bar, the game's message box if one is up (`popup`: its text and "
+             "buttons), and the event cursor.",
+             Json::object(), {}),
         [&bench, &watch](const Json &args) -> ToolResult { return KindGame(bench, watch, args); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"data",
-                 "The game's data tree, which its interface is bound to: the value at a dotted `path` "
-                 "(\"GUI.SelectedChar\", \"Map.ShowAllLabels\", \"GUIPopupLayer.DialogBoxText\"), as `text` "
-                 "and as `number`, and its `type`; or several at once with `paths`. `found` is false for a path "
-                 "the tree has not. What the interface shows of the game is read here without a picture. "
-                 "`members: true` reads the list at `path` (a container's Container.Inventory, the level-up "
-                 "screen's chains): `count` and each member's path, to read the same way. "
-                 "Reading only. Answers in any mode."},
+    bench.Tools().Add(
+        Read("data",
+             "The game's data tree, which its interface is bound to: the value at a dotted `path` "
+             "(\"GUI.SelectedChar\", \"Map.ShowAllLabels\", \"GUIPopupLayer.DialogBoxText\"), as `text` "
+             "and as `number`, and its `type`; or several at once with `paths`. `found` is false for a path "
+             "the tree has not. What the interface shows of the game is read here without a picture. "
+             "`members: true` reads the list at `path` (a container's Container.Inventory, the level-up "
+             "screen's chains): `count` and each member's path, to read the same way. "
+             "Reading only. Answers in any mode.",
+             Json{{"path", {{"type", "string"}, {"description", "A dotted path in the data tree"}}},
+                  {"paths", {{"type", "array"}, {"description", "Several paths, answered together"}}},
+                  {"members",
+                   {{"type", "boolean"}, {"description", "The list at `path`: its members' paths and how many"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindData(watch, raw); });
 
     // A plot is a quest's or a story's set of flags, named by its resource
@@ -1081,86 +1015,101 @@ void AddInspect(Bench &bench, const Watch &watch)
     // those read set all the same on the hero's main plot, so the game
     // answers something for them; whether it is what the script would say
     // was not looked into.
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"plot",
-                 "The state of a quest or story: the flags of a plot, named by its resource in `plot` "
-                 "(\"bed000pt_main\", \"gen00pt_party\"; the names are the game's plot files, and a mod's own). "
-                 "Answers its `name` as the journal shows it and `flags`, each with `flag`, `name` and `set`, "
-                 "with the `journal` text of a set one that has any; `set` lists the names of those set. "
-                 "`flag` (a number or a name) asks for one. Flags numbered from 256 are computed by the plot's "
-                 "script, which a read here does not run: take those as the game's answer without it. "
-                 "Reading only."},
+    bench.Tools().Add(
+        Read("plot",
+             "The state of a quest or story: the flags of a plot, named by its resource in `plot` "
+             "(\"bed000pt_main\", \"gen00pt_party\"; the names are the game's plot files, and a mod's own). "
+             "Answers its `name` as the journal shows it and `flags`, each with `flag`, `name` and `set`, "
+             "with the `journal` text of a set one that has any; `set` lists the names of those set. "
+             "`flag` (a number or a name) asks for one. Flags numbered from 256 are computed by the plot's "
+             "script, which a read here does not run: take those as the game's answer without it. "
+             "Reading only.",
+             Json{{"plot", {{"type", "string"}, {"description", "The plot's resource, like bed000pt_main"}}},
+                  {"flag", {{"description", "One flag, by number or name"}}}},
+             {"plot"}),
         [&watch](const Json &raw) -> ToolResult { return KindPlot(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"cursor",
-                 "What the game says is under the real mouse cursor now, in explore and combat mode: `object`, "
-                 "the one a click would act on (null over none), the `ground` point under it and whether it is "
-                 "`walkable`, and `hits`, everything the cursor's ray meets, nearest first. After moving the "
-                 "real mouse, ask before clicking: a click beside a creature is a move order. The game picks "
-                 "again 15 times a second. No `hits` at all, not even ground, means the game cast no ray: the "
-                 "cursor is over a piece of the interface (a creature's name label among them) or outside "
-                 "the picture."},
+    bench.Tools().Add(
+        Read("cursor",
+             "What the game says is under the real mouse cursor now, in explore and combat mode: `object`, "
+             "the one a click would act on (null over none), the `ground` point under it and whether it is "
+             "`walkable`, and `hits`, everything the cursor's ray meets, nearest first. After moving the "
+             "real mouse, ask before clicking: a click beside a creature is a move order. The game picks "
+             "again 15 times a second. No `hits` at all, not even ground, means the game cast no ray: the "
+             "cursor is over a piece of the interface (a creature's name label among them) or outside "
+             "the picture.",
+             Json::object(), {}),
         [&watch](const Json &args) -> ToolResult { return KindCursor(watch, args); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"window",
-                 "The game's window on the desktop, for a test that must use the real mouse: `client`, its "
-                 "picture's top left corner in desktop pixels and its size, and whether it is minimised or the "
-                 "`foreground` window (the one the mouse and keys go to). A place in a screenshot, as a fraction "
-                 "of the picture, times the size, plus the corner, is where to click. Answers in any mode."},
+    bench.Tools().Add(
+        Read("window",
+             "The game's window on the desktop, for a test that must use the real mouse: `client`, its "
+             "picture's top left corner in desktop pixels and its size, and whether it is minimised or the "
+             "`foreground` window (the one the mouse and keys go to). A place in a screenshot, as a fraction "
+             "of the picture, times the size, plus the corner, is where to click. Answers in any mode.",
+             Json::object(), {}),
         [](const Json &args) -> ToolResult { return KindWindow(args); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{
-            "dialogue",
-            "The conversation on the screen (health's mode is dialog while one is): the `line` spoken last, "
-            "with its speaker as the file writes it, `by` (the creature the game resolves it to) and `to` (whom it "
-            "is spoken to) and text, the conversation's `owner`, and the `replies` the player may choose from now, "
-            "in their order, "
-            "each with its `place`, text and icon. No replies while the other speaks. The same comes as "
-            "events: eluvian.dialogue.line, .replies and .chosen. `cutscene` and `movie` say whether one is playing. "
-            "The dialogue tool answers."},
+    bench.Tools().Add(
+        Read("dialogue.read",
+             "The conversation on the screen (health's mode is dialog while one is): the `line` spoken last, "
+             "with its speaker as the file writes it, `by` (the creature the game resolves it to) and `to` (whom it "
+             "is spoken to) and text, the conversation's `owner`, and the `replies` the player may choose from now, "
+             "in their order, "
+             "each with its `place`, text and icon. No replies while the other speaks. The same comes as "
+             "events: eluvian.dialogue.line, .replies and .chosen. `cutscene` and `movie` say whether one is playing. "
+             "The dialogue tool answers.",
+             Json::object(), {}, false),
         [&watch](const Json &args) -> ToolResult { return KindDialogue(watch, args); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"placeables",
-                 "The doors, chests, levers and other placeables in the area (or within `radius` of `near`), "
-                 "nearest first: id, name, tag, template, position, distance, `state` (the placeable's own "
-                 "number: a door's or a chest's changes when it opens) and `stateName` (shut, locked, open, "
-                 "destroyed), what a use of it does now (`action`, `actionName`: loot, unlock, open, use, ...), "
-                 "whether it is active and can be interacted with, what its tooltip says, and its `lock`: "
-                 "whether it needs a key, the key's tag and whether the party holds it (`keyHeld`), and the "
-                 "level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
-                 "waypoint's there). order action=use uses one. `interactive: true` keeps only those that can be "
-                 "used; `brief: true` answers a line each (`lines`) instead."},
+    bench.Tools().Add(
+        Read("placeables",
+             "The doors, chests, levers and other placeables in the area (or within `radius` of `near`), "
+             "nearest first: id, name, tag, template, position, distance, `state` (the placeable's own "
+             "number: a door's or a chest's changes when it opens) and `stateName` (shut, locked, open, "
+             "destroyed), what a use of it does now (`action`, `actionName`: loot, unlock, open, use, ...), "
+             "whether it is active and can be interacted with, what its tooltip says, and its `lock`: "
+             "whether it needs a key, the key's tag and whether the party holds it (`keyHeld`), and the "
+             "level to pick it; for a way out of the area, `leadsTo` (the area's tag and the "
+             "waypoint's there). order action=use uses one. `interactive: true` keeps only those that can be "
+             "used; `brief: true` answers a line each (`lines`) instead.",
+             Json{{"near",
+                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
+                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
+                  {"includeInactive",
+                   {{"type", "boolean"}, {"description", "Those the area keeps hidden too; default false"}}},
+                  {"interactive", {{"type", "boolean"}, {"description", "Only those that can be used (true)"}}},
+                  {"brief", {{"type", "boolean"}, {"description", "A thing a line (`lines`) instead of in full"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindPlaceables(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"surroundings",
-                 "One look around, a thing a line: the `creatures`, the placeables that can be used (`usable`: "
-                 "chests, doors, bodies' remains, with their state and lock) and the `exits` within `radius` "
-                 "(default 30 m) of `near` (default the creature controlled), nearest first, each as "
-                 "kind=creatures, placeables and exits give it with `brief: true`. The read on arriving "
-                 "anywhere; inspect a thing's kind in full for more."},
+    bench.Tools().Add(
+        Read("surroundings",
+             "One look around, a thing a line: the `creatures`, the placeables that can be used (`usable`: "
+             "chests, doors, bodies' remains, with their state and lock) and the `exits` within `radius` "
+             "(default 30 m) of `near` (default the creature controlled), nearest first, each as "
+             "creatures, placeables and exits give it with `brief: true`. The read on arriving "
+             "anywhere; creatures, placeables and exits give a thing in full.",
+             Json{{"near",
+                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
+                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}}},
+             {}),
         [&bench, &watch](const Json &raw) -> ToolResult { return KindSurroundings(bench, watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"exits",
-                 "The ways out of the area: every door or other placeable and every trigger that takes the "
-                 "party to another area, nearest first, with `leadsTo` (the area's tag and the waypoint's "
-                 "there), its kind, position, distance and whether it is active. A placeable is used with "
-                 "order action=use; a trigger is walked into (travel to its position). Some doors choose where "
-                 "they lead only when used, so their `leadsTo` may be empty or the last use's. Going through "
-                 "one loads the other area, and the game may autosave. `radius` keeps those within it; `brief: "
-                 "true` answers a line each (`lines`)."},
+    bench.Tools().Add(
+        Read("exits",
+             "The ways out of the area: every door or other placeable and every trigger that takes the "
+             "party to another area, nearest first, with `leadsTo` (the area's tag and the waypoint's "
+             "there), its kind, position, distance and whether it is active. A placeable is used with "
+             "order action=use; a trigger is walked into (travel to its position). Some doors choose where "
+             "they lead only when used, so their `leadsTo` may be empty or the last use's. Going through "
+             "one loads the other area, and the game may autosave. `radius` keeps those within it; `brief: "
+             "true` answers a line each (`lines`).",
+             Json{{"near",
+                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
+                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
+                  {"brief", {{"type", "boolean"}, {"description", "A thing a line (`lines`) instead of in full"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindExits(watch, raw); });
 
     // The area's triggers, which no other kind lists: the Gauntlet's bridge
@@ -1168,63 +1117,88 @@ void AddInspect(Bench &bench, const Watch &watch)
     // read one GetLocalInt at a time (turn-based-agent, 2026-10-04, #49). A
     // puzzle's state lives in a trigger's locals, under names its scripts
     // choose, so the names are asked for.
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"triggers",
-                 "The area's triggers, nearest first: each one's `id`, `tag`, `name`, `position`, `distance`, "
-                 "whether it is `active`, and `leadsTo` for one that takes the party elsewhere (kind=exits lists "
-                 "those alone). A trigger is walked into, not used: travel or order move to its position. "
-                 "`radius` and `near` keep those within reach of a creature, `tag` those whose tag holds it; "
-                 "`ints` (names) reads those local ints on each, as its scripts set them (a puzzle's state, a "
-                 "switch's number)."},
+    bench.Tools().Add(
+        Read("triggers",
+             "The area's triggers, nearest first: each one's `id`, `tag`, `name`, `position`, `distance`, "
+             "whether it is `active`, and `leadsTo` for one that takes the party elsewhere (exits lists "
+             "those alone). A trigger is walked into, not used: travel or order move to its position. "
+             "`radius` and `near` keep those within reach of a creature, `tag` those whose tag holds it; "
+             "`ints` (names) reads those local ints on each, as its scripts set them (a puzzle's state, a "
+             "switch's number).",
+             Json{{"near",
+                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
+                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
+                  {"tag", {{"type", "string"}, {"description", "Only those whose tag holds this (any case)"}}},
+                  {"ints",
+                   {{"type", "array"}, {"description", "Local int names to read on each, as its scripts set them"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindTriggers(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"journal",
-                 "The quests in the journal: `active`, the one marked, and `quests`, those under way, each with "
-                 "`plot` (its resource: inspect kind=plot with it gives the flags), `name`, `description` and its "
-                 "`objective` as the journal shows them, its group, area, and whether it was `updated` or is "
-                 "`completed`, and `parent` for a quest within another (one done may stay listed here, with "
-                 "`completed` true). `completed: true` "
-                 "lists the quests done too; otherwise only their count. Reading only."},
+    bench.Tools().Add(
+        Read("journal",
+             "The quests in the journal: `active`, the one marked, and `quests`, those under way, each with "
+             "`plot` (its resource: plot with it gives the flags), `name`, `description` and its "
+             "`objective` as the journal shows them, its group, area, and whether it was `updated` or is "
+             "`completed`, and `parent` for a quest within another (one done may stay listed here, with "
+             "`completed` true). `completed: true` "
+             "lists the quests done too; otherwise only their count. Reading only.",
+             Json{{"completed", {{"type", "boolean"}, {"description", "List the quests done too"}}}}, {}),
         [&watch](const Json &raw) -> ToolResult { return KindJournal(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"creatures",
-                 "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
-                 "(party, hostile, neutral: from the creature controlled, the hero where none is), its `group` (the "
-                 "game's own: 0 the player's, 1 "
-                 "hostile, 2 friendly), position, distance, dead, health and mana or stamina, combat state, "
-                 "whom it attacks, its `room` (number; `seen` by the party: never, which the game draws "
-                 "black with what stands in it, in view, or before; `shown`; and how much the game wants "
-                 "the room and whether it is in memory), and the command it is carrying out. `brief: true` "
-                 "answers a line each (`lines`: id, name, tag, side, health, dead, distance) instead."},
+    bench.Tools().Add(
+        Read("creatures",
+             "Every creature in the area (or within `radius` of `near`), nearest first: id, name, tag, side "
+             "(party, hostile, neutral: from the creature controlled, the hero where none is), its `group` (the "
+             "game's own: 0 the player's, 1 "
+             "hostile, 2 friendly), position, distance, dead, health and mana or stamina, combat state, "
+             "whom it attacks, its `room` (number; `seen` by the party: never, which the game draws "
+             "black with what stands in it, in view, or before; `shown`; and how much the game wants "
+             "the room and whether it is in memory), and the command it is carrying out. `brief: true` "
+             "answers a line each (`lines`: id, name, tag, side, health, dead, distance) instead.",
+             Json{{"near",
+                   {{"type", "string"}, {"description", "Measure from this creature; default the one controlled"}}},
+                  {"radius", {{"type", "number"}, {"description", "Only those within this many metres of `near`"}}},
+                  {"side",
+                   {{"type", "string"}, {"enum", {"party", "hostile", "neutral"}}, {"description", "Only this side"}}},
+                  {"includeDead", {{"type", "boolean"}, {"description", "Default true"}}},
+                  {"includeInactive",
+                   {{"type", "boolean"}, {"description", "Those the area keeps hidden too; default false"}}},
+                  {"brief", {{"type", "boolean"}, {"description", "A thing a line (`lines`) instead of in full"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindCreatures(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"creature",
-                 "One creature in full: its summary (with the command it is carrying out), facing, appearance, the "
-                 "abilities on its quickbar and in its tactics with each one's cooldown (seconds left, and of how "
-                 "many), its "
-                 "movement's path (`beingWalked` says whether it is walking it now), and every effect "
-                 "on it: its type (EFFECT_TYPE_*), creator, ability (id and name) and time left (seconds; null "
-                 "for effects that do not run out)."},
+    bench.Tools().Add(
+        Read("creature",
+             "One creature in full: its summary (with the command it is carrying out), facing, appearance, the "
+             "abilities on its quickbar and in its tactics with each one's cooldown (seconds left, and of how "
+             "many), its "
+             "movement's path (`beingWalked` says whether it is walking it now), and every effect "
+             "on it: its type (EFFECT_TYPE_*), creator, ability (id and name) and time left (seconds; null "
+             "for effects that do not run out).",
+             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
         [&watch](const Json &raw) -> ToolResult { return KindCreature(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"geometry",
-                 "Between a creature (`id`, default the one controlled) and a creature (`target`) or a point "
-                 "(`point`): the straight distance, the line of sight as the engine judges it (eye height to eye "
-                 "height; where it is cut, if it is; only walls and placeables block, not creatures), and the "
-                 "creature's movement path with its length and what is left of it; `beingWalked` says "
-                 "whether it is walking it now (`waypoints: true` lists its points). `walk: true` also searches the "
-                 "path it would walk there, as the game's pathfinder finds it now: `found` with its `length`, or "
-                 "why not, and for a shut door or the like in the way, `blocker`: use that first, then move. The "
-                 "creature is left as it is."},
+    bench.Tools().Add(
+        Read("geometry",
+             "Between a creature (`id`, default the one controlled) and a creature (`target`) or a point "
+             "(`point`): the straight distance, the line of sight as the engine judges it (eye height to eye "
+             "height; where it is cut, if it is; only walls and placeables block, not creatures), and the "
+             "creature's movement path with its length and what is left of it; `beingWalked` says "
+             "whether it is walking it now (`waypoints: true` lists its points). `walk: true` also searches the "
+             "path it would walk there, as the game's pathfinder finds it now: `found` with its `length`, or "
+             "why not, and for a shut door or the like in the way, `blocker`: use that first, then move. The "
+             "creature is left as it is.",
+             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}},
+                  {"target", {{"type", "string"}, {"description", "The creature or object to measure to"}}},
+                  {"point", {{"description", "The point to measure to, {x, y, z} or [x, y, z]"}}},
+                  {"walk",
+                   {{"type", "boolean"},
+                    {"description",
+                     "Also search the path the creature would walk there: its length, or what is in the way"}}},
+                  {"trace",
+                   {{"type", "boolean"}, {"description", "With walk: the search's own record, a line a slice"}}},
+                  {"waypoints", {{"type", "boolean"}, {"description", "List the paths' points"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindGeometry(watch, raw); });
 }
 

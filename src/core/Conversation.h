@@ -7,7 +7,7 @@
 //
 // It decides over other tools' answers alone, so it lives here and is
 // tested with stand-ins: `dialogue.step` (the game's thread's one act,
-// unlisted), `inspect` kind=dialogue, `health`, and the bus's
+// unlisted), `dialogue action=look`, `health`, and the bus's
 // eluvian.dialogue.line, .replies and .chosen and eluvian.mode.changed.
 #pragma once
 

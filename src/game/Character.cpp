@@ -1,4 +1,4 @@
-// `inspect`'s kinds for who a creature is and what it carries: `character`
+// The reads of who a creature is and what it carries: `character`
 // (the sheet: race, class, level, attributes, what it wears), `equipment`
 // (each slot's item in full), `inventory` (the backpack) and `item` (one
 // item in full). Read through the scripts' own commands and the game's rule
@@ -120,7 +120,7 @@ Json LevelUpOffers()
     const auto creature = dao::data::Number(L"CharGenCreature.ID");
     if (!creature)
     {
-        throw ToolError("inspect: no level-up screen is up; the levelup tool with `offers: true` opens one and "
+        throw ToolError("levelup: no level-up screen is up; the levelup tool with `offers: true` opens one and "
                         "reads this");
     }
     const auto number = [](std::wstring_view path) { return dao::data::Number(path).value_or(0); };
@@ -192,7 +192,7 @@ Json LevelUpOffers()
 
 } // namespace
 
-// A slot's name, as kind=inventory names it: for the equipment events
+// A slot's name, as inventory names it: for the equipment events
 // (#57), which live in GameTools.
 std::string_view EquipSlotName(std::int32_t slot)
 {
@@ -200,7 +200,7 @@ std::string_view EquipSlotName(std::int32_t slot)
 }
 
 // An item: in brief for a list, in full for itself. Shared: the loot panel
-// lists its container's items as kind=inventory does.
+// lists its container's items as inventory does.
 Json ItemJson(ObjectId item, bool full)
 {
     if (item == kInvalidObject)
@@ -295,11 +295,20 @@ ObjectId CreatureOrControlled(const Args &args)
     const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetMainControlled());
     if (id == kInvalidObject)
     {
-        throw ToolError("inspect: no creature is controlled and no `id` was given; is a game loaded?");
+        throw ToolError(args.Tool() + ": no creature is controlled and no `id` was given; is a game loaded?");
+    }
+    // An id gone is told from one that is no creature: a driver asked 43
+    // times for a creature of another campaign's, read "not a creature",
+    // and went on (eluvian.log, 2026-10-09, #110).
+    if (api::IsObjectValid(id) == 0)
+    {
+        throw ToolError(std::format("{}: there is no object {} now: it may have died and been taken away, or be "
+                                    "another area's or another game's; creatures lists those here",
+                                    args.Tool(), FormatId(id)));
     }
     if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
     {
-        throw ToolError(std::format("inspect: {} is not a creature; inspect kind=creatures lists them", FormatId(id)));
+        throw ToolError(std::format("{}: {} is not a creature; creatures lists them", args.Tool(), FormatId(id)));
     }
     return id;
 }
@@ -340,8 +349,8 @@ namespace
 // The character kind's handler, registered by AddCharacter.
 ToolResult KindCharacter(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "character");
+    const Args args(raw, "character");
     const ObjectId id = CreatureOrControlled(args);
     Json sheet = Brief(id);
     sheet["template"] = Narrow(api::GetResRef(id));
@@ -429,9 +438,9 @@ ToolResult KindCharacter(const Watch &watch, const Json &raw)
 }
 
 // The items a creature carries that give an ability, by the ability (the
-// engine's GetItemAbilityId, as kind=item reads it): each item's id, tag,
-// name and stack, and how many in all. A driver joined kind=abilities'
-// items to kind=inventory by the item's name to find a poultice it could
+// engine's GetItemAbilityId, as item reads it): each item's id, tag,
+// name and stack, and how many in all. A driver joined abilities'
+// items to inventory by the item's name to find a poultice it could
 // drink, and told health from mana by the tag's prefix (turn-based-agent's
 // survey of its driver, 2026-10-06, #87).
 struct Giving
@@ -485,8 +494,8 @@ std::optional<dao::abilities::Cooldown> ItemCooldown(const std::vector<dao::abil
 // The abilities kind's handler, registered by AddCharacter.
 ToolResult KindAbilities(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "abilities");
+    const Args args(raw, "abilities");
     const ObjectId id = CreatureOrControlled(args);
     const auto giving = ItemsGiving(id);
     const auto running = dao::abilities::Cooldowns(id);
@@ -525,8 +534,8 @@ ToolResult KindAbilities(const Watch &watch, const Json &raw)
 // The tactics kind's handler, registered by AddCharacter.
 ToolResult KindTactics(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "tactics");
+    const Args args(raw, "tactics");
     const ObjectId id = CreatureOrControlled(args);
     constexpr std::int32_t kMostSlots = 64;
     constexpr std::int32_t kCommandUseAbility = 4;
@@ -585,8 +594,8 @@ ToolResult KindTactics(const Watch &watch, const Json &raw)
 // The equipment kind's handler, registered by AddCharacter.
 ToolResult KindEquipment(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "equipment");
+    const Args args(raw, "equipment");
     const ObjectId id = CreatureOrControlled(args);
     Json answer = EquipmentJson(id, true);
     answer["of"] = Brief(id);
@@ -596,12 +605,12 @@ ToolResult KindEquipment(const Watch &watch, const Json &raw)
 // The inventory kind's handler, registered by AddCharacter.
 ToolResult KindInventory(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
+    RequireWorld(watch, "inventory");
+    const Args args(raw, "inventory");
     const ObjectId id = args.OptionalId("id", kCreatureHint).value_or(api::GetHero());
     if (id == kInvalidObject)
     {
-        throw ToolError("inspect: no hero and no `id` was given; is a game loaded?");
+        throw ToolError("inventory: no hero and no `id` was given; is a game loaded?");
     }
     const bool full = args.Bool("full", false);
     Json items = Json::array();
@@ -625,20 +634,20 @@ ToolResult KindInventory(const Watch &watch, const Json &raw)
 // The levelup kind's handler, registered by AddCharacter.
 ToolResult KindLevelup(const Watch &watch, const Json & /*args*/)
 {
-    RequireWorld(watch, "inspect");
+    RequireWorld(watch, "levelup");
     return LevelUpOffers();
 }
 
 // The item kind's handler, registered by AddCharacter.
 ToolResult KindItem(const Watch &watch, const Json &raw)
 {
-    RequireWorld(watch, "inspect");
-    const Args args(raw, "inspect");
-    const ObjectId id = args.Id("id", "an item, as inspect kind=inventory lists them");
+    RequireWorld(watch, "item");
+    const Args args(raw, "item");
+    const ObjectId id = args.Id("id", "an item, as inventory lists them");
     if (api::GetObjectType(id) != k::OBJECT_TYPE_ITEM)
     {
-        throw ToolError(std::format("inspect: {} is not an item; inspect kind=inventory and "
-                                    "kind=equipment list items",
+        throw ToolError(std::format("item: {} is not an item; inventory and "
+                                    "equipment list items",
                                     FormatId(id)));
     }
     return ItemJson(id, true);
@@ -646,39 +655,44 @@ ToolResult KindItem(const Watch &watch, const Json &raw)
 
 } // namespace
 
+ToolResult ReadTactics(const Watch &watch, const Json &raw)
+{
+    return KindTactics(watch, raw);
+}
+
 void AddCharacter(Bench &bench, const Watch &watch)
 {
     AddEquip(bench, watch);
     AddGift(bench, watch);
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"character",
-                 "A creature's sheet (`id`, default the one controlled): race, gender, class, level, experience "
-                 "and whether it can level up with the points left to spend, rank, the six attributes (total "
-                 "and base), its combat numbers (attack, defense, armor, armor penetration, spellpower, "
-                 "weapon damage, fatigue and the rest), health and mana or "
-                 "stamina, weapon style and set, whether it is plot or immortal, for a member of the party `follower` "
-                 "(its state, "
-                 "approval, whether it is locked in and whether its own AI is on), `properties` (every property it has "
-                 "that is not nothing, by the game's own "
-                 "names: resistances, regeneration, damage), and what it wears, slot by slot in brief. inspect "
-                 "kind=equipment gives the items "
-                 "in full, kind=inventory the backpack, kind=creature its effects and abilities."},
+    bench.Tools().Add(
+        Read("character",
+             "A creature's sheet (`id`, default the one controlled): race, gender, class, level, experience "
+             "and whether it can level up with the points left to spend, rank, the six attributes (total "
+             "and base), its combat numbers (attack, defense, armor, armor penetration, spellpower, "
+             "weapon damage, fatigue and the rest), health and mana or "
+             "stamina, weapon style and set, whether it is plot or immortal, for a member of the party `follower` "
+             "(its state, "
+             "approval, whether it is locked in and whether its own AI is on), `properties` (every property it has "
+             "that is not nothing, by the game's own "
+             "names: resistances, regeneration, damage), and what it wears, slot by slot in brief. "
+             "equipment gives the items "
+             "in full, inventory the backpack, creature its effects and abilities.",
+             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
         [&watch](const Json &raw) -> ToolResult { return KindCharacter(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"abilities",
-                 "Everything a creature knows (`id`, default the one controlled), not only what is on its "
-                 "quickbar: its `talents`, `spells`, `skills` and `items`' abilities, each by id and name, with "
-                 "whether it is `ready` (the engine's own check, the one the quickbar greys a button by: the "
-                 "cost against its mana or stamina, the cooldown, what holds it; `why` says why not, as "
-                 "\"Insufficient stamina\"), its `cost` in mana or stamina with its fatigue, and its cooldown. A "
-                 "sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank "
-                 "it has. An item's ability lists the `items` that give it (id, tag, name, stack) and how many "
-                 "are `held`, for order action=ability with `item` or `itemTag`, and its `cooldown` (seconds "
-                 "`remaining` of `total`) while one runs, as a talent's: a poultice drunk, until it comes back. "
-                 "`count` is the game's own count of them."},
+    bench.Tools().Add(
+        Read("abilities",
+             "Everything a creature knows (`id`, default the one controlled), not only what is on its "
+             "quickbar: its `talents`, `spells`, `skills` and `items`' abilities, each by id and name, with "
+             "whether it is `ready` (the engine's own check, the one the quickbar greys a button by: the "
+             "cost against its mana or stamina, the cooldown, what holds it; `why` says why not, as "
+             "\"Insufficient stamina\"), its `cost` in mana or stamina with its fatigue, and its cooldown. A "
+             "sustained ability's upkeep is checked again as it runs. A skill with ranks is an entry per rank "
+             "it has. An item's ability lists the `items` that give it (id, tag, name, stack) and how many "
+             "are `held`, for order action=ability with `item` or `itemTag`, and its `cooldown` (seconds "
+             "`remaining` of `total`) while one runs, as a talent's: a poultice drunk, until it comes back. "
+             "`count` is the game's own count of them.",
+             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
         [&watch](const Json &raw) -> ToolResult { return KindAbilities(watch, raw); });
 
     // A creature's tactics, by the scripts' own commands. Slots count from 1
@@ -688,60 +702,64 @@ void AddCharacter(Bench &bench, const Watch &watch)
     // targets, conditions, command types (4 use ability, 5 and 6 a mode on
     // and off, 7 use item, whose param is the ability), presets, and the
     // behaviours that property 18 (AI_BEHAVIOR) is a row of.
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"tactics",
-                 "A creature's tactics (`id`, default the one controlled): what it does by itself in a fight "
-                 "when it is not the one controlled. `slots` is how many it has; `tactics` is each in order: "
-                 "`enabled`, its `target` (self, ally, enemy ...), its `condition`, its `command` (attack, use "
-                 "ability, activate mode, use item ...) and the `ability` or `item` the command is for; a slot "
-                 "not set is `empty`. `preset` (null when none is chosen) and `behaviour` are the two choices above "
-                 "the slots."},
+    bench.Tools().Add(
+        Read("tactics.read",
+             "A creature's tactics (`id`, default the one controlled): what it does by itself in a fight "
+             "when it is not the one controlled. `slots` is how many it has; `tactics` is each in order: "
+             "`enabled`, its `target` (self, ally, enemy ...), its `condition`, its `command` (attack, use "
+             "ability, activate mode, use item ...) and the `ability` or `item` the command is for; a slot "
+             "not set is `empty`. `preset` (null when none is chosen) and `behaviour` are the two choices above "
+             "the slots.",
+             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {},
+             false),
         [&watch](const Json &raw) -> ToolResult { return KindTactics(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"equipment",
-                 "What a creature wears (`id`, default the one controlled), each slot's item in full: name, tag, "
-                 "template, base type and material (by the game's own labels), value, its stats (armor, damage, "
-                 "defense, attack, crit chance, armor penetration, fatigue, optimum range and the rest, by "
-                 "the game's own names), its properties with their power, and what using it does. `slots` "
-                 "are the active weapon set's main, offhand and ammo, then chest, head, boots, gloves, cloak, "
-                 "the rings, neck and belt; `otherWeapons` is the set not in hand."},
+    bench.Tools().Add(
+        Read("equipment",
+             "What a creature wears (`id`, default the one controlled), each slot's item in full: name, tag, "
+             "template, base type and material (by the game's own labels), value, its stats (armor, damage, "
+             "defense, attack, crit chance, armor penetration, fatigue, optimum range and the rest, by "
+             "the game's own names), its properties with their power, and what using it does. `slots` "
+             "are the active weapon set's main, offhand and ammo, then chest, head, boots, gloves, cloak, "
+             "the rings, neck and belt; `otherWeapons` is the set not in hand.",
+             Json{{"id", {{"type", "string"}, {"description", "The creature; default the one controlled"}}}}, {}),
         [&watch](const Json &raw) -> ToolResult { return KindEquipment(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"inventory",
-                 "The backpack of a creature (`id`, default the hero, whose backpack is the party's), or what "
-                 "a container holds without opening it (a chest, a body, a pile of bones: an `id` from inspect "
-                 "kind=placeables): each item in brief (name, tag, template, base type, stack, value, plot), "
-                 "with `count`; for a creature also the most it `holds` and `money`, the party's purse. `full: "
-                 "true` gives each item as inspect kind=item does. Not what is worn: that is inspect "
-                 "kind=equipment. A container's treasure may be chosen only as it is opened (a body's remains "
-                 "read empty, then held a gem once open), so an empty list before is not the last word: the "
-                 "loot tool opens and empties one."},
+    bench.Tools().Add(
+        Read("inventory",
+             "The backpack of a creature (`id`, default the hero, whose backpack is the party's), or what "
+             "a container holds without opening it (a chest, a body, a pile of bones: an `id` from "
+             "placeables): each item in brief (name, tag, template, base type, stack, value, plot), "
+             "with `count`; for a creature also the most it `holds` and `money`, the party's purse. `full: "
+             "true` gives each item as item does. Not what is worn: that is "
+             "equipment. A container's treasure may be chosen only as it is opened (a body's remains "
+             "read empty, then held a gem once open), so an empty list before is not the last word: the "
+             "loot tool opens and empties one.",
+             Json{{"id", {{"type", "string"}, {"description", "The creature or container; default the hero"}}},
+                  {"full", {{"type", "boolean"}, {"description", "Each item in full"}}}},
+             {}),
         [&watch](const Json &raw) -> ToolResult { return KindInventory(watch, raw); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"levelup",
-                 "What the level-up screen offers its creature, while it is up (the levelup tool with `offers: "
-                 "true` opens it, reads this and closes it unchanged): the `points` to spend (attributes, skills, "
-                 "talents or spells, specialisations), the six `attributes` as the screen shows them, and the "
-                 "class's `talents`, `spells` and `skills`, each a list of abilities, `id`, `name` and "
-                 "`state`: has, learnable (can be taken now) or not yet (a level, an attribute or the one "
-                 "before it in its chain). A class has talents or spells, not both: `abilityPage` names the one "
-                 "the screen shows, and the other list is empty. The levelup tool spends points on named ones."},
+    bench.Tools().Add(
+        Read("levelup.screen",
+             "What the level-up screen offers its creature, while it is up (the levelup tool with `offers: "
+             "true` opens it, reads this and closes it unchanged): the `points` to spend (attributes, skills, "
+             "talents or spells, specialisations), the six `attributes` as the screen shows them, and the "
+             "class's `talents`, `spells` and `skills`, each a list of abilities, `id`, `name` and "
+             "`state`: has, learnable (can be taken now) or not yet (a level, an attribute or the one "
+             "before it in its chain). A class has talents or spells, not both: `abilityPage` names the one "
+             "the screen shows, and the other list is empty. The levelup tool spends points on named ones.",
+             Json::object(), {}, false),
         [&watch](const Json &args) -> ToolResult { return KindLevelup(watch, args); });
 
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"item",
-                 "One item in full, by its `id` (as inspect kind=inventory and kind=equipment give them): name, "
-                 "tag, template, base type, material, stack and the most a stack holds, value, where it is "
-                 "worn, its stats, its properties with their power, what using it does, and whether it is "
-                 "plot, droppable or indestructible."},
+    bench.Tools().Add(
+        Read("item",
+             "One item in full, by its `id` (as inventory and equipment give them): name, "
+             "tag, template, base type, material, stack and the most a stack holds, value, where it is "
+             "worn, its stats, its properties with their power, what using it does, and whether it is "
+             "plot, droppable or indestructible.",
+             Json{{"id", {{"type", "string"}, {"description", "The item: an id from inventory or equipment"}}}},
+             {"id"}),
         [&watch](const Json &raw) -> ToolResult { return KindItem(watch, raw); });
 }
 
@@ -767,7 +785,7 @@ Json Unequip(ObjectId item, Json answer)
     const auto slot = api::GetItemEquipSlot(item);
     if (SlotName(slot).empty())
     {
-        throw ToolError("equip: that item is not worn; inspect kind=equipment says what is");
+        throw ToolError("equip: that item is not worn; equipment says what is");
     }
     if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.UnequipItem {}", item)))
     {
@@ -902,16 +920,16 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
     RequireWorld(watch, "equip");
     const Args args(raw, "equip");
     const auto action = args.Choice("action", {"equip", "unequip"}, "equip");
-    const ObjectId item = args.Id("item", "an item, as inspect kind=inventory and kind=equipment list them");
+    const ObjectId item = args.Id("item", "an item, as inventory and equipment list them");
     if (api::GetObjectType(item) != k::OBJECT_TYPE_ITEM)
     {
-        throw ToolError(std::format("equip: {} is not an item; inspect kind=inventory lists the pack", FormatId(item)));
+        throw ToolError(std::format("equip: {} is not an item; inventory lists the pack", FormatId(item)));
     }
     const auto selected = static_cast<ObjectId>(
         dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
     const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
     // The inventory screen equips whom the interface has selected; the
-    // scripts' hand-over (order action=control's) selects a party
+    // scripts' hand-over (control's) selects a party
     // member wherever the party is, where the binding
     // SelectPartyMemberIndexMessage selected nobody at camp
     // (turn-based-agent, 2026-10-03, #31). Another one is selected so,
@@ -958,7 +976,7 @@ static void AddEquip(Bench &bench, const Watch &watch)
         ToolSpec{"equip",
                  "Put on an item of the pack, or take one off, as the inventory screen's paperdoll does, so the "
                  "game's rules hold (requirements, what a slot takes). `action`: equip (default) or unequip; "
-                 "`item`, an id from inspect kind=inventory or kind=equipment; `slot` for equip, by name (main, "
+                 "`item`, an id from inventory or equipment; `slot` for equip, by name (main, "
                  "offhand, ring1, ring2, ...) or number, default the item's first. It acts on the character the "
                  "interface has selected; `id`, another party member, is made the one selected for the equip and "
                  "control given back after (`selectedFirst`). Answers what the "
@@ -1006,18 +1024,16 @@ ToolResult ToolGift(Bench &bench, const Watch &watch, const Json &raw)
 {
     RequireWorld(watch, "gift");
     const Args args(raw, "gift");
-    const ObjectId to = args.Id("to", "a follower, as inspect kind=game lists the party");
-    const ObjectId item = args.Id("item", "a gift in the pack, as inspect kind=inventory lists it");
+    const ObjectId to = args.Id("to", "a follower, as state lists the party");
+    const ObjectId item = args.Id("item", "a gift in the pack, as inventory lists it");
     const ObjectId hero = api::GetHero();
     if (to == hero || !PartyOf(hero).contains(to))
     {
-        throw ToolError(
-            std::format("gift: {} is not a follower in the party; inspect kind=game lists it", FormatId(to)));
+        throw ToolError(std::format("gift: {} is not a follower in the party; state lists it", FormatId(to)));
     }
     if (api::GetObjectType(item) != k::OBJECT_TYPE_ITEM || !Holds(hero, item))
     {
-        throw ToolError(
-            std::format("gift: {} is not an item in the pack; inspect kind=inventory lists it", FormatId(item)));
+        throw ToolError(std::format("gift: {} is not an item in the pack; inventory lists it", FormatId(item)));
     }
     if (api::GetBaseItemType(item) != kBaseItemTypeGift)
     {

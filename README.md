@@ -11,25 +11,36 @@ An agent asks the game what it wants to know (the creatures, their health, their
 | Tool | What |
 |---|---|
 | `health` | Is the game alive and in what mode, answered even while it loads or hangs; who started it (`owner`) |
-| `inspect` | `kind`: `game` (mode, pause, area, hero, party, a message box if one is up), `creatures` (positions, sides and groups, health, rooms and whether the party has seen them, what each is doing), `creature` (one in full, with its effects and abilities), `character` (the sheet: race, class, level, attributes, combat numbers, what it wears), `abilities` (every talent, spell and skill it knows), `tactics` (its tactics slots, preset and behaviour), `journal` (the quests under way, their objectives and text), `plot` (a quest's or story's flags and which are set), `exits` (the ways out of the area and where each leads), `worldmap` (the world map's or the Fade's pins, where the party is, whether a map is up), `resources` (the game's templates and other resources by name, from its archives), `equipment`, `inventory` and `item` (items with their type, material, stats and properties), `geometry` (distance, line of sight, the path walked), `placeables` (doors, chests, levers: state and lock), `surroundings` (one look around in a line a thing: creatures, what can be used, exits; `brief` does the same for one list), `dialogue` (the line spoken, the replies offered), `gui` (what the interface has up: the screens shown, the full-screen one, the game's message box and what its buttons send, the loot panel and what it holds), `window` (where the game's window is on the desktop), `cursor` (what the game says is under the real mouse), `data` (the data tree the interface is bound to, by path), and kinds plugins add |
-| `order` | The player's orders by id: attack, move, ability, use, and control (a party member made the one controlled); through the engine's own click functions or explore mode's click |
+| `state` | The game itself: mode, pause, area, hero, party, a message box if one is up |
+| `creatures`, `creature` | Every creature in the area (positions, sides and groups, health, rooms and whether the party has seen them, what each is doing); one in full, with its effects and abilities |
+| `placeables`, `exits`, `triggers`, `surroundings` | Doors, chests, levers (state and lock); the ways out of the area and where each leads; the area's triggers; one look around, a line a thing |
+| `geometry` | Distance, line of sight and the path walked between a creature and a target or point |
+| `character`, `abilities`, `equipment`, `inventory`, `item` | The sheet (race, class, level, attributes, combat numbers, what it wears); every talent, spell and skill known; items with their type, material, stats and properties |
+| `journal`, `plot` | The quests under way, their objectives and text; a quest's or story's flags and which are set |
+| `worldmap` | The world map's or the Fade's pins, where the party is, whether a map is up; with `all`, every map's pins from the game's files |
+| `gui`, `controls`, `window`, `cursor`, `data` | What the interface has up (screens, the message box and what its buttons send, the loot panel); the key bindings; the game window on the desktop; what is under the real mouse; the data tree the interface is bound to |
+| `resources` | The game's templates and other resources by name, from its archives |
+| `order` | The player's orders by id: attack, move, ability, use; through the engine's own click functions or explore mode's click |
+| `control` | Make a party member the creature the player controls, as a click on its portrait |
 | `pointer` | Hold the game's cursor over a creature, a point or a pixel without a click, for what shows only under the cursor; the real mouse is not moved |
 | `travel` | Walk a creature to a target or point, opening what is shut on the way, or the party to another area by an exit, or across the world map or the Fade's to a pin (`to`); stops and says why when a fight, a conversation, a message box or a pause takes the journey from it |
 | `loot` | Take what a container holds in one call: walk there, open it, take all as the loot panel's button does; what was taken and what is left, or why it did not open |
 | `levelup` | Spend a creature's level-up points as the game's level-up screen does, through its Auto Level Up: what was raised and gained |
-| `store` | Buy and sell at a merchant's Store screen as its own buttons do; `inspect kind=gui` reads the stock, prices and money |
+| `store` | Buy and sell at a merchant's Store screen as its own buttons do; `gui` reads the stock, prices and money |
 | `party` | The party picker after a recruit and at camp: who is chosen; choose a follower in the picker's scene (found by the name under the cursor), unchoose one, clear, accept |
 | `equip` | Put an item of the pack on, or take one off, as the inventory screen's paperdoll does, so the game's rules hold |
 | `gift` | Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, approval before and after |
-| `tactics` | A follower's tactics set as the tactics screen sets them, by name among what the engine offers; its choices; presets |
+| `tactics` | A follower's tactics set as the tactics screen sets them, by name among what the engine offers; its choices; presets; `look` reads its slots |
 | `board` | The quest board while it is up: its entries, accept one, close it, as its screen does |
-| `dialogue` | Answer the conversation on the screen: choose a reply, continue, skip a cutscene; or run on to the next choice in one call, with the lines spoken on the way |
+| `dialogue` | Read or answer the conversation on the screen: choose a reply, continue, skip a cutscene; or run on to the next choice in one call, with the lines spoken on the way |
 | `camera` | Read it; face a target, follow a creature, turn: so a screenshot shows what the test means |
 | `screen` | For the real mouse: a pixel to click a creature or object at (on its body, with nothing in front), a world point's pixel, what lies under a pixel; each as the game's pixels, a fraction of the picture and a desktop pixel |
 | `script` | Any of the game's script commands by name, with its answer |
-| `stage` | A test's set-up: conditions, health, cooldowns, a death, a spawn, a creature's group (a fight the party is not in), and mods' own actions |
+| `stage_spawn`, `stage_group`, `stage_effect`, `stage_health`, `stage_cooldown`, `stage_kill`, `stage_equip`, `stage_reset`, `stage_cutscene` | A test's set-up, a tool each: a creature made, a creature's group (a fight the party is not in), conditions on and off, health, a cooldown, a death, an item made and worn, the party back to full, a cutscene played |
 | `screenshot` | The game as a picture, interface and all: its window drawn from inside the game (nothing over it gets in the way), or the game's own, as its screenshot key takes it |
-| `game` | Pause, unpause; the saves with their area, name and time played; load one; save; press a button of the game's message box or of the loot panel |
+| `saves` | The saves with their area, name and time played; load one; force a load; save a new one |
+| `pause`, `press` | Pause or let the game run; press a button of the game's message box or of the loot panel |
+| `input`, `movie` | One of the game's own messages, as a button or key sends it; a shown screen's own script: call, set, get, its clips |
 | `events`, `wait_for` | The event bus from a cursor; block until an event happens; `describe` lists the topics and what they hold |
 | `scenario` | Steps in one call: tools, waits for events, pauses, checks; a transcript back |
 | `log` | DAOLib's logs from a cursor; `eluvian.log` holds every tool call with its arguments, time and refusal |
@@ -89,7 +100,7 @@ Directly, for a quick look or a script: start the game; `eluvian.log` in `Docume
 ```sh
 claude mcp add --transport http eluvian-direct http://127.0.0.1:8930/mcp
 curl http://127.0.0.1:8930/api/health
-curl -X POST http://127.0.0.1:8930/api/tool/inspect -d '{"kind":"creatures","side":"hostile"}'
+curl -X POST http://127.0.0.1:8930/api/tool/creatures -d '{"side":"hostile"}'
 ```
 
 It answers on `127.0.0.1` only, has no authentication, and drives the game: a development bench, not something to ship to players.

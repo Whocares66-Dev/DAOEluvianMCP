@@ -91,12 +91,30 @@ TEST_CASE("a tool whose schema lists no arguments, and a kind's own, are not sai
     bench.Tools().Add(ToolSpec{"bare", "Bare.", {{"type", "object"}}, Thread::Listener},
                       [](const Json &) -> ToolResult { return Json::object(); });
     CHECK_FALSE(bench.Invoke("bare", Json{{"anything", 1}}).data.contains("ignored"));
-    ToolSpec look{"look", "Look.", {{"type", "object"}, {"properties", {{"id", Json::object()}}}}, Thread::Listener};
-    bench.Tools().Add(look, nullptr);
-    bench.Tools().AddKind("look", KindSpec{"game", "The game.", Thread::Listener},
-                          [](const Json &) -> ToolResult { return Json::object(); });
-    CHECK_FALSE(bench.Invoke("look", Json{{"kind", "game"}, {"id", "0x82"}}).data.contains("ignored"));
-    CHECK(bench.Invoke("look", Json{{"kind", "game"}, {"idd", "0x82"}}).data.contains("ignored"));
+}
+
+TEST_CASE("a call without what its schema requires is refused before it runs, naming each", "[bench]")
+{
+    Bench bench;
+    int ran = 0;
+    bench.Tools().Add(ToolSpec{"kill",
+                               "Kill.",
+                               {{"type", "object"},
+                                {"properties", {{"id", Json::object()}, {"why", Json::object()}}},
+                                {"required", {"id", "why"}}},
+                               Thread::Listener},
+                      [&ran](const Json &) -> ToolResult {
+                          ++ran;
+                          return Json::object();
+                      });
+    CHECK_THROWS_WITH(bench.Invoke("kill", Json::object()), ContainsSubstring("kill: needs `id`, `why`"));
+    CHECK_THROWS_WITH(bench.Invoke("kill", Json{{"why", "test"}}), ContainsSubstring("needs `id`;"));
+    // A misspelt one is said with it.
+    CHECK_THROWS_WITH(bench.Invoke("kill", Json{{"idd", "0x82"}, {"why", "test"}}),
+                      ContainsSubstring("needs `id`") && ContainsSubstring("did you mean `id`"));
+    CHECK(ran == 0);
+    bench.Invoke("kill", Json{{"id", "0x82"}, {"why", "test"}});
+    CHECK(ran == 1);
 }
 
 TEST_CASE("events from the end answers the cursor now, to read from after acting", "[bench]")
@@ -263,35 +281,44 @@ TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
         Thread thread;
         std::string error;
         Json answer;
+        Json ignored;
     };
     std::vector<Seen> seen;
     BenchOptions options;
     options.onCall = [&seen](const CallRecord &call) {
         CHECK(call.ms >= 0);
         seen.push_back(Seen{std::string(call.tool), call.args, call.thread, std::string(call.error),
-                            call.answer != nullptr ? *call.answer : Json()});
+                            call.answer != nullptr ? *call.answer : Json(),
+                            call.ignored != nullptr ? *call.ignored : Json()});
     };
     Bench bench(options);
-    bench.Tools().Add(ToolSpec{"echo", "Echo.", {}, Thread::Listener},
-                      [](const Json &args) -> ToolResult { return args; });
+    bench.Tools().Add(
+        ToolSpec{"echo", "Echo.", {{"type", "object"}, {"properties", {{"id", Json::object()}}}}, Thread::Listener},
+        [](const Json &args) -> ToolResult { return args; });
     bench.Tools().Add(ToolSpec{"refuse", "Refuse.", {}, Thread::Listener},
                       [](const Json &) -> ToolResult { throw ToolError("refuse: not now"); });
     bench.Tools().Add(ToolSpec{"break", "Break.", {}, Thread::Listener},
                       [](const Json &) -> ToolResult { throw std::runtime_error("broke"); });
 
     bench.Invoke("echo", Json{{"id", "0x7d9"}});
+    bench.Invoke("echo", Json{{"idd", "0x7d9"}});
     CHECK_THROWS_AS(bench.Invoke("refuse", Json::object()), ToolError);
-    CHECK_THROWS_AS(bench.Invoke("nothing", Json::object()), UnknownTool); // no tool, so no call to tell of
+    CHECK_THROWS_AS(bench.Invoke("nothing", Json::object()), UnknownTool); // told of too (#110)
     // A failure that is not a refusal is told of too, by its own path.
     CHECK_THROWS_AS(bench.Invoke("break", Json::object()), std::runtime_error);
 
-    REQUIRE(seen.size() == 3);
+    REQUIRE(seen.size() == 5);
     CHECK(seen[0].tool == "echo");
     CHECK(seen[0].args["id"] == "0x7d9");
     CHECK(seen[0].thread == Thread::Listener);
     CHECK(seen[0].error.empty());
     CHECK(seen[0].answer["id"] == "0x7d9"); // what it answered, for the log to say
-    CHECK(seen[1].error == "refuse: not now");
-    CHECK(seen[1].answer.is_null());
-    CHECK(seen[2].error == "broke");
+    CHECK(seen[0].ignored.empty());
+    // What a call ignored goes with it, for the log to say (#110).
+    CHECK_THAT(seen[1].ignored.value("idd", ""), ContainsSubstring("did you mean `id`"));
+    CHECK(seen[2].error == "refuse: not now");
+    CHECK(seen[2].answer.is_null());
+    CHECK(seen[3].tool == "nothing");
+    CHECK_THAT(seen[3].error, ContainsSubstring("no tool \"nothing\""));
+    CHECK(seen[4].error == "broke");
 }

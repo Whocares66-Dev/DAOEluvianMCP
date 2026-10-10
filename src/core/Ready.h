@@ -11,8 +11,8 @@
 namespace eluvian
 {
 
-// Over the tools `health` (the mode), `inspect kind=dialogue` (a choice's
-// replies) and `inspect kind=gui` (a message box, a full screen).
+// Over the tools `health` (the mode), `dialogue action=look` (a choice's
+// replies) and `gui` (a message box, a full screen).
 void AddWaitReadyTool(Bench &bench);
 
 } // namespace eluvian

@@ -61,14 +61,14 @@ constexpr std::string_view kInstructions =
     "Eluvian serves a running Dragon Age: Origins. Start with `health` (is the game up, in which mode, and "
     "`owner`: who started it; a game that is not yours is another's test or the player's own, to read but not to "
     "drive), then "
-    "`inspect kind=game`. Creatures are named by id strings like \"0x7d9\", as the logs write them; `inspect "
-    "kind=creatures` lists them with positions, sides and health, `inspect kind=creature` gives one with its "
+    "`state`. Creatures are named by id strings like \"0x7d9\", as the logs write them; `"
+    "creatures` lists them with positions, sides and health, `creature` gives one with its "
     "effects. Act, then wait: `order` answers with a `cursor`, and `wait_for` from that cursor returns the event "
     "you expect (eluvian.command.ended, eluvian.creature.died, or a mod's own) instead of a guessed sleep. "
-    "Mods that register with Eluvian add tools, inspect kinds and events of their own; `health` lists them. "
+    "Mods that register with Eluvian add tools and events of their own; `health` lists them. "
     "`log` reads a log from a cursor (`since: \"end\"` marks the end, to read from after acting). `script` calls any "
     "script command by name when no tool fits. A conversation or cutscene on the screen (health's mode dialog or "
-    "cutscene) is read with `inspect kind=dialogue` and answered with `dialogue`. Calls run on the game's frame: while "
+    "cutscene) is read with `dialogue action=look` and answered with `dialogue`. Calls run on the game's frame: while "
     "an area loads they are "
     "refused, and if frames stop they time out; `health` says which.";
 
@@ -141,6 +141,16 @@ void LogCall(const CallRecord &call)
     {
         args.resize(300);
         args += "...";
+    }
+    // What it ignored, by name, after the arguments (#110).
+    if (call.ignored != nullptr && call.ignored->is_object() && !call.ignored->empty())
+    {
+        std::string names;
+        for (const auto &[name, said] : call.ignored->items())
+        {
+            names += (names.empty() ? "" : ", ") + name;
+        }
+        args += " ignoring " + names;
     }
     const bool routine =
         call.tool == "health" || call.tool == "events" || call.tool == "wait_for" || call.tool == "log";

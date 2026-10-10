@@ -5,8 +5,8 @@
 // moves on a door it could not name (2026-10-01).
 //
 // It decides over other tools' answers alone, so it lives here and is
-// tested with stand-ins: `inspect` kind=geometry with `walk` (found, or
-// `blocker`, or `reached`), kind=game (who is controlled), `order` (move,
+// tested with stand-ins: `geometry` with `walk` (found, or
+// `blocker`, or `reached`), state (who is controlled), `order` (move,
 // use), `health` (the mode, paused) and the bus's eluvian.command.ended.
 // It stops and says why where the journey is no longer its to make: a
 // fight began, a conversation or a cutscene took the screen, the game is

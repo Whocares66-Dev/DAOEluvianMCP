@@ -206,16 +206,16 @@ class Levelling
     {
         if (id_.empty())
         {
-            const Json game = bench_.Invoke("inspect", Json{{"kind", "game"}}).data;
+            const Json game = bench_.Invoke("state", Json::object()).data;
             id_ = game.value(Json::json_pointer("/controlled/id"), std::string());
         }
         const auto number = Decimal(id_);
         if (!number)
         {
-            throw ToolError("levelup: `id` is a creature's id, like \"0x82\" (inspect kind=game lists the party)");
+            throw ToolError("levelup: `id` is a creature's id, like \"0x82\" (state lists the party)");
         }
         n_ = std::to_string(*number);
-        const Json first = bench_.Invoke("inspect", Json{{"kind", "character"}, {"id", id_}}).data;
+        const Json first = bench_.Invoke("character", Json{{"id", id_}}).data;
         // A level-up waits with a point of any kind: the game answers
         // canLevelUp false with only a specialization point left, and Lyna,
         // Wynne and Oghren were refused theirs so (turn-based-agent,
@@ -224,10 +224,10 @@ class Levelling
         if (!offers_ && !canLevelUp_)
         {
             throw ToolError("levelup: " + first.value("name", id_) +
-                            " has no level-up points to spend; inspect kind=character says `canLevelUp` and "
+                            " has no level-up points to spend; character says `canLevelUp` and "
                             "`pointsToSpend`");
         }
-        const Json abilities = bench_.Invoke("inspect", Json{{"kind", "abilities"}, {"id", id_}}).data;
+        const Json abilities = bench_.Invoke("abilities", Json{{"id", id_}}).data;
         answer_["creature"] = Json{{"id", id_}, {"name", first.value("name", std::string())}};
         answer_["before"] = Sheet(first);
         if (offers_)
@@ -248,7 +248,7 @@ class Levelling
         }
         answer_["after"] = Sheet(last);
         answer_["attributes"] = Raised(first, last);
-        if (const auto after = Ask("inspect", Json{{"kind", "abilities"}, {"id", id_}}))
+        if (const auto after = Ask("abilities", Json{{"id", id_}}))
         {
             answer_["gained"] = Gained(abilities, *after);
         }
@@ -326,12 +326,12 @@ class Levelling
             // (turn-based-agent, 2026-10-04, #54).
             if (!canLevelUp_)
             {
-                return End(false, refused_ + "; it opens only with a level-up waiting, and inspect kind=character "
+                return End(false, refused_ + "; it opens only with a level-up waiting, and character "
                                              "says `canLevelUp` false");
             }
             return End(false, refused_);
         }
-        const auto read = Ask("inspect", Json{{"kind", "levelup"}});
+        const auto read = Ask("levelup.screen", Json::object());
         // The specializations as the screen shows them: an empty list read
         // as none unlocked, where the tool had listed none at all
         // (turn-based-agent, 2026-10-05, #64).
@@ -386,7 +386,7 @@ class Levelling
             {
                 return End(false, refused_);
             }
-            const auto read = Ask("inspect", Json{{"kind", "character"}, {"id", id_}});
+            const auto read = Ask("character", Json{{"id", id_}});
             if (!read)
             {
                 return End(false, "the level-up is done, but its result could not be read: " + refused_);
@@ -441,7 +441,7 @@ class Levelling
             }
             // Read again each time: taking one makes the next in its chain
             // learnable.
-            const auto offers = Ask("inspect", Json{{"kind", "levelup"}});
+            const auto offers = Ask("levelup.screen", Json::object());
             if (!offers)
             {
                 Close(false);
@@ -521,7 +521,7 @@ class Levelling
             return End(false, refused_);
         }
         ++rounds_;
-        const auto read = Ask("inspect", Json{{"kind", "character"}, {"id", id_}});
+        const auto read = Ask("character", Json{{"id", id_}});
         if (!read)
         {
             return End(false, "the level-up is done, but its result could not be read: " + refused_);
@@ -831,11 +831,11 @@ class Levelling
         return value.get<double>();
     }
 
-    // The level-up screen's own script, through input's `screen`.
+    // The level-up screen's own script, through movie.
     std::optional<Json> Movie(Json args)
     {
         args["screen"] = "LevelUp";
-        return Ask("input", args);
+        return Ask("movie", args);
     }
 
     // An attribute's place in the screen's list, 1 to 6; 0 for no such name.
@@ -921,7 +921,7 @@ class Levelling
         const auto deadline = Clock::now() + kScreenWait;
         while (Clock::now() < deadline)
         {
-            const auto gui = Ask("inspect", Json{{"kind", "gui"}});
+            const auto gui = Ask("gui", Json::object());
             if (!gui)
             {
                 return false;
@@ -1051,7 +1051,7 @@ void AddLevelUpTool(Bench &bench, milliseconds show)
             "closes it. Answers `levelled`, `reason`, `before` and "
             "`after` (level, points to spend), the `attributes` raised and by how much, the talents, spells "
             "and skills `gained`, and `cursor`. Refused for a creature with no points to spend "
-            "(inspect kind=character says `canLevelUp`). A level-up is the character's for good once the "
+            "(character says `canLevelUp`). A level-up is the character's for good once the "
             "game is saved. `showMs` (default 1000) is how long it lingers on the screen before Auto Level Up "
             "and on the result after, so whoever watches sees it; 0 for none.",
             Json{{"type", "object"},

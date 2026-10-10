@@ -63,7 +63,7 @@ Json Give(Bench &bench, const Json &raw, milliseconds poll)
     if (!taken)
     {
         answer["note"] = "the game had not taken the gift within budgetMs: the item is still in the pack and the "
-                         "approval as it was. inspect kind=character (follower.approval) and kind=inventory read "
+                         "approval as it was. character (follower.approval) and inventory read "
                          "them again";
     }
     else if (mode == "dialog")
@@ -82,8 +82,8 @@ void AddGiftTool(Bench &bench, milliseconds poll)
             ToolSpec{"gift",
                      "Give a follower a gift from the pack, as the inventory's Give does: the game's own gift event, "
                      "so its scripts change the approval and move the item, and a special gift may start a "
-                     "conversation. `to`, a follower in the party; `item`, an item of base type Gift from inspect "
-                     "kind=inventory. Answers once the game has taken it (the item gone from the pack, or the "
+                     "conversation. `to`, a follower in the party; `item`, an item of base type Gift from "
+                     "inventory. Answers once the game has taken it (the item gone from the pack, or the "
                      "approval moved; `budgetMs`, default 3000, at most): the approval before and after "
                      "(`approvalBefore`, `approvalAfter`), whether the item left the pack (`given`), the game's "
                      "`mode` after (dialog: a conversation began), and `cursor` for the events that followed.",

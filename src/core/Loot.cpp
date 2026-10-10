@@ -73,7 +73,7 @@ class Looting
         {
             return Act();
         }
-        const Json control = bench_.Invoke("order", Json{{"action", "control"}, {"id", who_}}).data;
+        const Json control = bench_.Invoke("control", Json{{"id", who_}}).data;
         if (!control.value("taken", false))
         {
             throw ToolError("loot: " + who_ + " would not take control; nothing was looted");
@@ -104,7 +104,7 @@ class Looting
         {
             return std::nullopt;
         }
-        const auto back = Ask("order", Json{{"action", "control"}, {"id", before_}});
+        const auto back = Ask("control", Json{{"id", before_}});
         if (!back)
         {
             return Json{{"backTo", before_}, {"refused", refused_}};
@@ -127,12 +127,12 @@ class Looting
     // one is said and passed.
     Json Sweep()
     {
-        Json near = Json{{"kind", "placeables"}, {"radius", *radius_}};
+        Json near = Json{{"radius", *radius_}};
         if (!who_.empty())
         {
             near["near"] = who_;
         }
-        const Json listed = bench_.Invoke("inspect", near).data;
+        const Json listed = bench_.Invoke("placeables", near).data;
         Json containers = Json::array();
         Json skipped = Json::array();
         int looted = 0;
@@ -209,7 +209,7 @@ class Looting
         std::string why = "the time ran out";
         while (Left().count() > 0)
         {
-            const auto read = Ask("inspect", Json{{"kind", "gui"}});
+            const auto read = Ask("gui", Json::object());
             if (!read)
             {
                 return "the game stopped answering: " + refused_;
@@ -243,14 +243,14 @@ class Looting
             if (!target_.empty() && open != target_)
             {
                 throw ToolError("loot: the loot panel of " + open + " is up, not " + target_ +
-                                "'s; loot with no `target` takes from it, or game action=press button=Close "
+                                "'s; loot with no `target` takes from it, or press button=Close "
                                 "closes it");
             }
             return TakeAll();
         }
         if (target_.empty())
         {
-            throw ToolError("loot: no loot panel is up; give `target`, a container's id (inspect kind=placeables "
+            throw ToolError("loot: no loot panel is up; give `target`, a container's id (placeables "
                             "lists chests, bodies' remains and the like)");
         }
         const Json walked =
@@ -266,7 +266,7 @@ class Looting
         // game paused, the walk then stopped or the use after it refused
         // (turn-based-agent, Tower of Ishal, 2026-10-03, #21). Its panel up
         // is the panel waited for.
-        if (const auto gui = Ask("inspect", Json{{"kind", "gui"}}); gui && PanelOf(*gui) == target_)
+        if (const auto gui = Ask("gui", Json::object()); gui && PanelOf(*gui) == target_)
         {
             return TakeAll();
         }
@@ -317,11 +317,11 @@ class Looting
                     endedAt = Clock::now();
                 }
             }
-            const auto read = Ask("inspect", Json{{"kind", "gui"}});
+            const auto read = Ask("gui", Json::object());
             if (!read)
             {
                 return End(false, "as it opened, the game stopped answering: " + refused_ +
-                                      "; wait_for eluvian.mode.changed, then inspect kind=gui says what came");
+                                      "; wait_for eluvian.mode.changed, then gui says what came");
             }
             const Json &gui = *read;
             const std::string open = PanelOf(gui);
@@ -362,7 +362,7 @@ class Looting
         if (gui.contains("popup") && !gui.at("popup").is_null())
         {
             return "the game asks: " + gui.at("popup").value("text", std::string()) +
-                   "; inspect kind=gui reads it and game action=press answers it";
+                   "; gui reads it and press answers it";
         }
         const std::string mode = gui.value("mode", std::string());
         if (mode == "combat")
@@ -384,7 +384,7 @@ class Looting
     // that holds something.
     Json Untouched(const std::string &use)
     {
-        const Json inventory = Ask("inspect", Json{{"kind", "inventory"}, {"id", target_}}).value_or(Json::object());
+        const Json inventory = Ask("inventory", Json{{"id", target_}}).value_or(Json::object());
         const auto count = inventory.value("count", 0);
         answer_["empty"] = count == 0;
         if (count == 0)
@@ -395,8 +395,8 @@ class Looting
         }
         return End(false, "it did not open: " + use + " and no loot panel came, though it holds " +
                               std::to_string(count) + (count == 1 ? " item" : " items") +
-                              ". A locked one is unlocked first (order action=use objectAction=unlock); inspect "
-                              "kind=placeables says its state and lock");
+                              ". A locked one is unlocked first (order action=use objectAction=unlock); "
+                              "placeables says its state and lock");
     }
 
     // Take All, as the panel's own button: the panel closes after, unless
@@ -407,7 +407,7 @@ class Looting
         // call it opened and closed within a frame or two, never seen (the
         // user, 2026-10-03, #14). The frames go on meanwhile.
         std::this_thread::sleep_for(std::min(show_, Left()));
-        const auto press = Ask("game", Json{{"action", "press"}, {"button", "Take All"}});
+        const auto press = Ask("press", Json{{"button", "Take All"}});
         if (!press)
         {
             return End(false, "Take All was refused: " + refused_);
@@ -427,21 +427,21 @@ class Looting
             // Nothing more can be taken, and the panel up holds the game in
             // gui mode for the next verb: closed here, as its Close button
             // does (turn-based-agent, 2026-10-04, #55).
-            const auto shut = Ask("game", Json{{"action", "press"}, {"button", "Close"}});
+            const auto shut = Ask("press", Json{{"button", "Close"}});
             answer_["closed"] = shut.has_value() && (!shut->contains("panel") || shut->at("panel").is_null());
             if (answer_["closed"].get<bool>())
             {
                 return End(true, "the backpack is full: what is `left` stays in the container; its panel closed");
             }
             return End(true, "the backpack is full: what is `left` stays in the container, and its panel stays up; "
-                             "game action=press button=Close closes it");
+                             "press button=Close closes it");
         }
         return End(true, closed ? "taken, and the panel closed" : "taken; the panel is still up");
     }
 
     Json Gui()
     {
-        return bench_.Invoke("inspect", Json{{"kind", "gui"}}).data;
+        return bench_.Invoke("gui", Json::object()).data;
     }
 
     // A call the game refuses for its state (an area loading, the frame
@@ -502,8 +502,8 @@ void AddLootTool(Bench &bench, milliseconds show)
         Budgeted(
             ToolSpec{
                 "loot",
-                "Take what a container holds (a chest, a body's remains, a pile of bones: an id from inspect "
-                "kind=placeables), in one call: the creature controlled, or `id`, another party member, "
+                "Take what a container holds (a chest, a body's remains, a pile of bones: an id from "
+                "placeables), in one call: the creature controlled, or `id`, another party member, "
                 "given control for the looting and control given back after (`controlled` says to whom), "
                 "walks to `target` (as travel does, "
                 "opening doors on the way), uses it, which opens the game's loot panel, and takes all as the "
@@ -513,7 +513,7 @@ void AddLootTool(Bench &bench, milliseconds show)
                 "whether the panel `closed`, and the `walk`. It stops and says why when the container does not "
                 "open: locked, a fight, a conversation, a message box, or nothing there (`empty`: empty remains "
                 "open no panel). With `radius` (metres) instead of `target`, every placeable within it whose use "
-                "is a loot or an unlock (inspect kind=placeables' `action`), nearest first: one report "
+                "is a loot or an unlock (placeables' `action`), nearest first: one report "
                 "each in `containers`, `count` looted, what else was there in `skipped`; it stops "
                 "(`stopped`) at a fight, a conversation, a question or a full pack, and passes a "
                 "locked or empty one. A container's treasure may be chosen "

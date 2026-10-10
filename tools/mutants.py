@@ -588,6 +588,30 @@ MUTANTS = [
         "if (false)",
     ),
     Mutant(
+        "the bench runs a call without what its schema requires",
+        BENCH,
+        "if (const auto missing = tools_.Missing(tool, args); !missing.empty())",
+        "if (const auto missing = tools_.Missing(tool, args); false)",
+    ),
+    Mutant(
+        "the registry finds nothing missing",
+        REGISTRY,
+        "missing.push_back(name.get<std::string>());",
+        "",
+    ),
+    Mutant(
+        "the bench does not tell of a call to no tool",
+        BENCH,
+        "options_.onCall(CallRecord{tool, args, Thread::Listener, 0, said});",
+        "(void)said;",
+    ),
+    Mutant(
+        "the bench tells of a call without what it ignored",
+        BENCH,
+        "error, answer, &ignored}",
+        "error, answer, nullptr}",
+    ),
+    Mutant(
         "the bench does not tell of a failed call",
         BENCH,
         "record(error.what());\n        throw;",
@@ -1040,46 +1064,16 @@ MUTANTS = [
     ),
     # The tool registry (ToolRegistry.cpp).
     Mutant(
-        "the registry keeps a tool's kinds when it is added again",
-        REGISTRY,
-        "entry.kinds.clear();",
-        "",
-    ),
-    Mutant(
         "the registry leaves the revision when a tool is added",
         REGISTRY,
-        "++revision_;\n    // Built where it lives",
-        "// Built where it lives",
+        "const std::lock_guard lock(mutex_);\n    ++revision_;\n    const bool added",
+        "const std::lock_guard lock(mutex_);\n    const bool added",
     ),
     Mutant(
-        "the registry adds a kind to a tool with a handler of its own",
+        "the registry takes a tool without a handler",
         REGISTRY,
-        "if (it->second.handler)",
+        "if (!handler)",
         "if (false)",
-    ),
-    Mutant(
-        "the registry looks up a kind that is no string",
-        REGISTRY,
-        "if (kindArg == args.end() || !kindArg->is_string())",
-        "if (kindArg == args.end())",
-    ),
-    Mutant(
-        "the registry runs a kind on its base tool's thread",
-        REGISTRY,
-        "return Call{entry.spec.name, kindName, kit->second.spec.thread, kit->second.handler};",
-        "return Call{entry.spec.name, kindName, entry.spec.thread, kit->second.handler};",
-    ),
-    Mutant(
-        "the registry requires a kind already required twice",
-        REGISTRY,
-        "if (std::find(required.begin(), required.end(), property) == required.end())",
-        "if (true)",
-    ),
-    Mutant(
-        "the registry leaves a kind out of the schema's enum",
-        REGISTRY,
-        "kinds.push_back(kindName);",
-        "",
     ),
     # levelup (#5): the level-up screen's own messages, in order, for the
     # creature named in decimal; refused without auto or points; rounds
@@ -1716,14 +1710,8 @@ MUTANTS = [
     Mutant(
         "an argument the schema lists is said ignored",
         REGISTRY,
-        "properties.contains(name) ||",
-        "false ||",
-    ),
-    Mutant(
-        "a kind's own property is said ignored",
-        REGISTRY,
-        "(!entry.handler && name == entry.spec.kindProperty)",
-        "(false)",
+        "if (properties.contains(name))",
+        "if (false)",
     ),
     Mutant(
         "no argument meant is ever offered",

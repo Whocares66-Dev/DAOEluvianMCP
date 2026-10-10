@@ -1,5 +1,7 @@
 #include "core/Conversation.h"
 
+#include "Reads.h"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -77,7 +79,7 @@ struct Talker
             }
             return Json{{"action", action}, {"asked", true}};
         });
-        bench.Tools().Add(ToolSpec{"inspect", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
+        AddReads(bench, [this](const Json &) -> ToolResult {
             return Json{{"active", active}, {"cutscene", false}, {"replies", speaking ? Json::array() : Replies()}};
         });
         bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener},

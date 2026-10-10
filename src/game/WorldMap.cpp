@@ -1,4 +1,4 @@
-// `inspect kind=worldmap`: the world map's pins, where the party is, and
+// `worldmap`: the world map's pins, where the party is, and
 // whether the map is up, read as the map screen reads them; travel's `to`
 // (core/Travel.h) goes to a pin by them. A playthrough driven by MCP alone
 // met the map at the Korcari Wilds' edge and had to read its ActionScript
@@ -91,7 +91,7 @@ namespace
 // The worldmap kind's handler, registered by AddWorldMap.
 ToolResult KindWorldmap(const Watch &watch, const Json & /*args*/)
 {
-    RequireWorld(watch, "inspect");
+    RequireWorld(watch, "worldmap");
     const auto screen = MapScreen();
     std::wstring movie = screen ? screen->movie : L"";
     std::ranges::transform(movie, movie.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
@@ -161,7 +161,7 @@ namespace
 // MapTag and MapPinList, each pin a MAPP with its name (a talk-table
 // string), tag and the area it leads to (lib-agent, read 2026-10-09, #91).
 // The labels are xoreos's (DAOLib's dev/gff4_fields.csv). The files hold a
-// pin's first state; the story changes it, and kind=worldmap's pins are the
+// pin's first state; the story changes it, and worldmap's pins are the
 // live ones.
 constexpr std::array<const wchar_t *, 5> kMapFiles = {L"wide_open_world.map", L"denerim.map", L"denerim_climax.map",
                                                       L"underground_map.map", L"fade_map.map"};
@@ -190,7 +190,7 @@ Json MapPins(const dao::core::gff4::Struct &root)
 
 ToolResult KindMaps(const Watch &watch)
 {
-    RequireWorld(watch, "inspect");
+    RequireWorld(watch, "worldmap");
     Json maps = Json::array();
     for (const wchar_t *file : kMapFiles)
     {
@@ -218,29 +218,29 @@ ToolResult KindMaps(const Watch &watch)
 
 void AddWorldMap(Bench &bench, const Watch &watch)
 {
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"maps",
-                 "Every map's pins, the cities' too, as the game's designer maps hold them (`maps`: each map's "
-                 "`tag`, its file and its `pins`, each with `name`, `tag` and the `area` it leads to): which map "
-                 "a pin is on, from anywhere. These are the pins' first states; kind=worldmap gives the live "
-                 "ones of the map up. travel `to` a pin on a city's map reads it to go there by the city."},
-        [&watch](const Json &) -> ToolResult { return KindMaps(watch); });
-    bench.Tools().AddKind(
-        "inspect",
-        KindSpec{"worldmap",
-                 "The world map: whether it is `up`, where the party is (`at`, an area's tag), and its `pins`, "
-                 "each with its `index`, `name`, `tag`, the `area` it leads to and its `state` (active pins can "
-                 "be travelled to; not active, greyed, unlockable, completed, destroyed). travel with `to` (a "
-                 "pin's name, tag or index) crosses to one, with the map up (a travel to the area's world-map "
-                 "exit opens it). The pins are read as the map screen reads them; with the map never opened "
-                 "this game, there may be none. In a city the map up may be the city's: `shown` names the map "
-                 "shown and `other` the one its toggle swaps to (input {\"message\": "
-                 "\"WorldMap.WorldMapSwapMaps\"}, as the button does; travel `to` swaps by itself for a pin on "
-                 "the other). The map is closed as its Close button closes it: input "
-                 "{\"message\": \"GUI.HideFullScreenGUI\"} (WorldMap.WorldMapClosed is the screen's report "
-                 "that it closed, not the close)."},
-        [&watch](const Json &args) -> ToolResult { return KindWorldmap(watch, args); });
+    bench.Tools().Add(
+        Read("worldmap",
+             "The world map: whether it is `up`, where the party is (`at`, an area's tag), and its `pins`, "
+             "each with its `index`, `name`, `tag`, the `area` it leads to and its `state` (active pins can "
+             "be travelled to; not active, greyed, unlockable, completed, destroyed). travel with `to` (a "
+             "pin's name, tag or index) crosses to one, with the map up (a travel to the area's world-map "
+             "exit opens it). The pins are read as the map screen reads them; with the map never opened "
+             "this game, there may be none. In a city the map up may be the city's: `shown` names the map "
+             "shown and `other` the one its toggle swaps to (input {\"message\": "
+             "\"WorldMap.WorldMapSwapMaps\"}, as the button does; travel `to` swaps by itself for a pin on "
+             "the other). The map is closed as its Close button closes it: input "
+             "{\"message\": \"GUI.HideFullScreenGUI\"} (WorldMap.WorldMapClosed is the screen's report "
+             "that it closed, not the close). `all: true` answers instead every map's pins, the cities' too, as "
+             "the game's designer maps hold them (`maps`: each map's `tag`, file and `pins` with `name`, "
+             "`tag` and `area`): which map a pin is on, from anywhere; those are the pins' first states.",
+             Json{{"all",
+                   {{"type", "boolean"},
+                    {"description", "Every map's pins, the cities' too, from the game's designer maps (their first "
+                                    "states), in place of the map up"}}}},
+             {}),
+        [&watch](const Json &args) -> ToolResult {
+            return Args(args, "worldmap").Bool("all", false) ? KindMaps(watch) : KindWorldmap(watch, args);
+        });
 }
 
 } // namespace eluvian::game
