@@ -561,7 +561,7 @@ def main() -> int:
     parser.add_argument(
         "--owner",
         default=OWNER,
-        help="the name to start the game under: the one a claim on the game was made with, if any",
+        help="the name to start the game under, which its health then says as `owner`",
     )
     parser.add_argument(
         "--instance",
@@ -589,7 +589,7 @@ def main() -> int:
         folder / "eluvian.tools.json",
         lambda _message: None,
         characters=folder.parent / "Characters",
-        claims=bridge_module.log_folder(),
+        default=bridge_module.profile_folder(""),
     )
     save = {
         "character": options.character,

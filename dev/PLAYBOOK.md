@@ -24,18 +24,14 @@ Eluvian covers the game itself, not any one mod. A mod that registers with Eluvi
 
 Several agents may share one game. If a game is already running, `game_launch` returns `launched: false` and says who started it (the same `owner` that `health` shows; no owner means the player started it by hand). Read that answer before doing anything else, because every other call goes to that game. A game that is not yours is for reading only: do not drive it or close it.
 
-### Claiming the game
-
-A closed game is not necessarily free: between two runs, a tester may have its own loader and plugins in the game folder. A test that needs the game or its folder for more than one run claims it first and releases it afterwards.
+### What runs, and what it left
 
 | Call | What it does |
 |---|---|
-| `game_claim {"owner": "my-name", "note": "what for", "minutes": 30}` | Bridge tool. Until the claim ends or is released, everyone else's `game_launch` and Eluvian deploys are refused, with your note as the reason. |
-| `game_release {"owner": "my-name"}` | Bridge tool. Ends your claim. |
-| `game_status {}` | Bridge tool. Whether a game is running, whose it is, the claim in force, and `why` when a game runs but Eluvian is not serving in it. |
+| `game_status {}` | Bridge tool. Whether a game is running, whose it is (`eluvian.owner`), the other copies running (`copies`), and `why` when a game runs but Eluvian is not serving in it. |
 | `game_events {"topic": "eluvian.creature.*"}` | Bridge tool. Reads the last run's events from its file, even after the game closed or crashed. Takes `since`, `topic` and `limit` like `events`. |
 
-A claim ends by itself when its time runs out (240 minutes at most; claim again to renew). It only holds back agents that go through the bridge or Eluvian's deploy script. A game the player starts by hand is the player's, and a claim does not hold it.
+Nothing reserves the game between two runs (a claim did until 2026-10-11, #118). A game someone else started says so in `health`'s `owner`, and is theirs. A deploy into the game's folder needs every copy of the game closed, and changes what every later start loads: a test that wants its own build does better with an instance and its own `plugins` folder, below, which puts nothing there.
 
 ### A game of your own beside another's
 
@@ -47,7 +43,7 @@ The game runs one at a time, except as a named instance: a second copy with its 
 | `game_launch {"owner": "my-name", "seed": "save", "load": {"character": "Lyna", "kind": "manual", "number": 4}}` | Starts the instance. `seed: "save"` gives a new instance only the settings and that one save; without it the loader copies the whole default profile on the first start, every save of every character. |
 | `game_launch {..., "plugins": "C:\\path\\to\\build\\release\\daolib\\plugins"}` | Loads the plugins from that folder in place of the game folder's, so nothing is deployed. The folder must hold `eluvian\eluvian.dll`. |
 
-A script does the same with `python eluvian_bridge.py --instance mytest --call game_launch ...`. An instance's saves are its own from then on: what it saves is not in the default profile, and what the default profile saves later is not in it. The claim is still one, on the game's folder: an instance is not started under another's claim, and a deploy needs every copy closed. The first copy may freeze for a few seconds while a second starts.
+A script does the same with `python eluvian_bridge.py --instance mytest --call game_launch ...`. An instance's saves are its own from then on: what it saves is not in the default profile, and what the default profile saves later is not in it. A deploy into the game's folder still needs every copy closed. The first copy may freeze for a few seconds while a second starts.
 
 If `game_launch` says the game is running but Eluvian is not serving, its `error` quotes the log line that explains why. The usual cause is a loader built for a different plugin API version than Eluvian. The loader and every plugin in the game folder must share one API version, so when DAOLib's API changes they are deployed together.
 

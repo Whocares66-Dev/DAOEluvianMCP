@@ -202,8 +202,6 @@ class BridgeTest(unittest.TestCase):
             [
                 "game_events",
                 "game_saves",
-                "game_claim",
-                "game_release",
                 "game_status",
                 "game_launch",
                 "game_instance",
@@ -481,39 +479,6 @@ class BridgeTest(unittest.TestCase):
         travel = {"argument": "budgetMs", "defaultMs": 60000}
         self.assertGreater(bridge_module.call_budget({"budgetMs": 120000}, travel), 120)
         self.assertGreater(bridge_module.call_budget({}, travel), 60)
-
-    def test_a_claim_keeps_another_from_launching_until_it_is_released(self) -> None:
-        self.processes.pids.clear()
-        claimed = self.call(
-            "game_claim", {"owner": "tester-a", "note": "a parity test"}
-        )
-        self.assertTrue(claimed["structuredContent"]["claimed"])
-        self.assertEqual(
-            self.call("game_status")["structuredContent"]["claim"]["owner"], "tester-a"
-        )
-        refused = self.call("game_launch", {"owner": "tester-b"})
-        self.assertTrue(refused["isError"])
-        self.assertIn("claimed by tester-a", refused["content"][0]["text"])
-        self.assertIn("a parity test", refused["content"][0]["text"])
-        self.assertEqual(self.processes.started, 0)
-        self.assertTrue(self.call("game_claim", {"owner": "tester-b"})["isError"])
-        self.assertTrue(self.call("game_release", {"owner": "tester-b"})["isError"])
-        # Its owner launches, and releases.
-        self.assertFalse(self.call("game_launch", {"owner": "tester-a"})["isError"])
-        self.assertEqual(self.processes.started, 1)
-        released = self.call("game_release", {"owner": "tester-a"})
-        self.assertTrue(released["structuredContent"]["released"])
-        self.assertNotIn("claim", self.call("game_status")["structuredContent"])
-
-    def test_a_claim_past_its_time_no_longer_stands(self) -> None:
-        self.processes.pids.clear()
-        path = self.folder / "game.claim.json"
-        path.write_text(
-            json.dumps({"owner": "gone", "note": "", "until": time.time() - 5}),
-            encoding="utf-8",
-        )
-        self.assertNotIn("claim", self.call("game_status")["structuredContent"])
-        self.assertFalse(self.call("game_launch", {"owner": "tester-b"})["isError"])
 
     def test_the_last_runs_events_are_read_from_its_file(self) -> None:
         self.down()
@@ -976,7 +941,7 @@ class BridgeTest(unittest.TestCase):
             (profile / "Settings" / "a.xml").read_text(encoding="utf-8"), "its own"
         )
 
-    def many(self, claims: Path | None = None) -> Bridge:
+    def many(self, default: Path | None = None) -> Bridge:
         """A bridge that can change copies. The game as ever is this test's own; an instance
         has a folder of its own under `instances` and no game running."""
         root = self.folder / "instances"
@@ -1002,7 +967,7 @@ class BridgeTest(unittest.TestCase):
             sleep=lambda _: None,
             characters=characters,
             copies=copy,
-            claims=claims if claims is not None else self.folder,
+            default=default,
         )
         return self.bridge
 
@@ -1064,16 +1029,6 @@ class BridgeTest(unittest.TestCase):
         )
         self.assertEqual(json.loads(record.read_text(encoding="utf-8"))["pid"], 4242)
 
-    def test_the_claim_is_the_installs_whichever_copy_is_driven(self) -> None:
-        self.many()
-        self.call("game_claim", {"owner": "tester-a", "note": "the folder"})
-        self.call("game_instance", {"name": "two"})
-        self.assertTrue((self.folder / bridge_module.CLAIM_FILE).is_file())
-        refused = self.call("game_launch", {"owner": "tester-b"})
-        self.assertTrue(refused["isError"])
-        self.assertIn("claimed by tester-a", refused["content"][0]["text"])
-        self.assertEqual(self.made["two"].started, 0)
-
     def test_plugins_of_a_folder_are_asked_of_the_loader_and_must_hold_eluvian(
         self,
     ) -> None:
@@ -1100,8 +1055,7 @@ class BridgeTest(unittest.TestCase):
 
     def test_an_instance_seeded_with_a_save_is_given_it_before_its_start(self) -> None:
         default = self.default_profile()
-        (default / "daolib").mkdir()
-        self.many(default / "daolib")
+        self.many(default)
         self.call("game_instance", {"name": "two"})
         save = {"character": "Lyna", "kind": "manual", "number": 4}
         answer = self.call("game_launch", {"seed": "save", "load": save})[

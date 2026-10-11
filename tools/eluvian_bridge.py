@@ -105,9 +105,6 @@ def documents_folder() -> Path:
     )
 
 
-# Who holds the game and its folder: one file beside the logs that every agent's scripts read
-# (dev/DESIGN.md, "Outside the game").
-CLAIM_FILE = "game.claim.json"
 # Every event of the last run, a JSON object a line (core/EventLog.h).
 EVENTS_FILE = "eluvian.events.jsonl"
 # The run before's, kept when a game starts (EventLog::PreviousOf, #74).
@@ -603,36 +600,6 @@ BRIDGE_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
-        "name": "game_claim",
-        "description": (
-            "Say the game and its folder are in use: by `owner` (the name you go by), for `note` "
-            "(what you are doing), for `minutes` (default 30, at most 240). While another's claim "
-            "stands game_launch refuses, and so does every agent's deploy, with the claim's words; "
-            "game_status shows it. A game being closed does not mean its folder is free: a test "
-            "may have its own loader and plugins in place between two runs. Claim before setting "
-            "the folder up, and game_release when it is back as it was. A claim renewed by its "
-            "owner runs from now."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "owner": {"type": "string"},
-                "note": {"type": "string"},
-                "minutes": {"type": "integer", "minimum": 1, "maximum": 240},
-            },
-            "required": ["owner"],
-        },
-    },
-    {
-        "name": "game_release",
-        "description": "End your claim on the game and its folder (`owner`, as you claimed it).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {"owner": {"type": "string"}},
-            "required": ["owner"],
-        },
-    },
-    {
         "name": "game_status",
         "description": (
             "Whether Dragon Age: Origins is running (its process ids) and what Eluvian's health says "
@@ -779,7 +746,7 @@ class Bridge:
         sleep: Callable[[float], None] = time.sleep,
         characters: Path | None = None,
         copies: Callable[[str], tuple[Game, Processes, Path, Path]] | None = None,
-        claims: Path | None = None,
+        default: Path | None = None,
     ) -> None:
         self.game = game
         self.processes = processes
@@ -789,9 +756,9 @@ class Bridge:
         # game_instance; a bridge given none stays with the copy it has.
         self.instance: str = getattr(processes, "instance", "")
         self.copies = copies
-        # Where the claim is kept: beside the logs of the game as ever, whichever copy this
-        # drives, since every copy runs from the one game folder the claim is on.
-        self.claims = claims if claims is not None else game.folder
+        # The profile of the game as ever, whichever copy this drives: what a new instance
+        # is seeded from (game_launch's `seed`).
+        self.default = default if default is not None else game.folder.parent
         self.send = send
         self.sleep = sleep
         # How long a load may leave the game's mode unmoved before it counts as declined: from
@@ -1095,9 +1062,6 @@ class Bridge:
         others = self.processes.others()
         if others:
             status["otherInstalls"] = others
-        claim = self.claim()
-        if claim:
-            status["claim"] = claim
         missing = self.install_missing()
         if missing:
             status["install"] = (
@@ -1120,19 +1084,6 @@ class Bridge:
             if not any((game / name).glob("*.erf"))
         ]
         return ", ".join(f"{game / name} holds no archive" for name in lost) or None
-
-    # ---- the claim -------------------------------------------------------
-    #
-    # A running game says whose it is (health's owner). Between a test's two runs nothing did:
-    # a watcher waiting for "no game running" deployed and launched six seconds after a
-    # tester's game closed, into a folder set up with another loader, and its start wiped the
-    # run's logs (2026-10-01). The claim is a small file beside the logs, game.claim.json:
-    # {"owner", "note", "since", "until"}, the times in Unix seconds. The user made it the one
-    # every agent's deploy and launch scripts honour (2026-10-02), so it is named for the game,
-    # not for Eluvian; what it means is in dev/DESIGN.md, "Outside the game".
-
-    def claim_path(self) -> Path:
-        return self.claims / CLAIM_FILE
 
     # ---- the copy this bridge drives --------------------------------------------
 
@@ -1178,86 +1129,6 @@ class Bridge:
             }
         )
 
-    def claim(self) -> dict | None:
-        """The claim that stands now, or None: no file, not readable, or past its time. The file"""
-        return self.read_claim(self.claim_path())
-        return None
-
-    @staticmethod
-    def read_claim(path: Path) -> dict | None:
-        try:
-            claim = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        if not isinstance(claim, dict) or not isinstance(
-            claim.get("until"), (int, float)
-        ):
-            return None
-        left = claim["until"] - time.time()
-        if left <= 0:
-            return None
-        return {
-            "owner": claim.get("owner"),
-            "note": claim.get("note", ""),
-            "minutesLeft": round(left / 60, 1),
-        }
-
-    def held_by_another(self, owner: object) -> dict | None:
-        claim = self.claim()
-        return claim if claim and claim.get("owner") != owner else None
-
-    def game_claim(self, arguments: dict) -> dict:
-        owner = arguments.get("owner")
-        if not isinstance(owner, str) or not owner:
-            return text_result(
-                "game_claim: `owner` is the name you go by", is_error=True
-            )
-        theirs = self.held_by_another(owner)
-        if theirs:
-            return text_result(
-                f"game_claim: the game is claimed by {theirs['owner']} for another "
-                f"{theirs['minutesLeft']} minutes ({theirs['note']}); ask them, or wait",
-                is_error=True,
-            )
-        minutes = arguments.get("minutes", 30)
-        minutes = min(max(minutes if isinstance(minutes, (int, float)) else 30, 1), 240)
-        note = arguments.get("note")
-        record = {
-            "owner": owner,
-            "note": note if isinstance(note, str) else "",
-            "since": time.time(),
-            "until": time.time() + minutes * 60,
-        }
-        # Written whole and then put in place, so a reader never sees half of it; read back,
-        # so that of two claiming at once the one whose claim did not stand is told.
-        path = self.claim_path()
-        partial = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-        partial.write_text(json.dumps(record), encoding="utf-8")
-        os.replace(partial, path)
-        theirs = self.held_by_another(owner)
-        if theirs:
-            return text_result(
-                f"game_claim: {theirs['owner']} claimed the game at the same moment "
-                f"({theirs['note']}); ask them, or wait",
-                is_error=True,
-            )
-        return text_result({"claimed": True, **(self.claim() or {})})
-
-    def game_release(self, arguments: dict) -> dict:
-        owner = arguments.get("owner")
-        theirs = self.held_by_another(owner)
-        if theirs:
-            return text_result(
-                f"game_release: the claim is {theirs['owner']}'s, not yours to end",
-                is_error=True,
-            )
-        had = self.claim() is not None
-        try:
-            self.claim_path().unlink()
-        except OSError:
-            pass
-        return text_result({"released": had})
-
     def game_launch(self, arguments: dict) -> dict:
         environment = {}
         if isinstance(arguments.get("logLevel"), str):
@@ -1289,15 +1160,6 @@ class Bridge:
             return text_result(
                 "game_launch: `seed` is for an instance (game_instance): the game as ever has "
                 "the profile it has",
-                is_error=True,
-            )
-        theirs = self.held_by_another(owner)
-        if theirs:
-            return text_result(
-                f"game_launch: NOT launched. The game and its folder are claimed by "
-                f"{theirs['owner']} for another {theirs['minutesLeft']} minutes "
-                f"({theirs['note']}). No game running does not make the folder free: wait for "
-                "their game_release, or ask them.",
                 is_error=True,
             )
         # Looking for a game and starting one are a single step, under a lock: requests run
@@ -1333,7 +1195,7 @@ class Bridge:
                         "otherInstalls": others,
                         "note": "game_launch: NOT launched. Another install's game is running "
                         f"({others[0].get('exe', 'another path')}); one game runs at a time. "
-                        "game_status says whose claim it is under, if any; wait for it to close.",
+                        "Wait for it to close.",
                     }
                 )
             if not self.processes.exe.exists():
@@ -1354,7 +1216,7 @@ class Bridge:
                 seeded = seed_instance(
                     self.instance,
                     load if isinstance(load, dict) else None,
-                    self.claims.parent,
+                    self.default,
                     self.game.folder.parents[3],
                 )
             started = time.time() - 2  # the logs of this start are no older
@@ -1657,10 +1519,6 @@ class Bridge:
                 return reply(text_result(self.game_status()))
             if name == "game_instance":
                 return reply(self.game_instance(arguments))
-            if name == "game_claim":
-                return reply(self.game_claim(arguments))
-            if name == "game_release":
-                return reply(self.game_release(arguments))
             if name == "game_launch":
                 return reply(self.game_launch(arguments))
             if name == "game_quit":
@@ -1791,7 +1649,7 @@ def main() -> None:
         send,
         characters=characters,
         copies=copy,
-        claims=log_folder(),
+        default=profile_folder(""),
     )
     if options.call:
         sys.exit(call_once(bridge, options.call, stdout))

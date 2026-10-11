@@ -39,8 +39,7 @@ param(
     [string] $Preset = 'release',
     [switch] $Remove,
     [switch] $Loader,
-    [string] $Game = 'C:\Program Files (x86)\GOG Galaxy\Games\Dragon Age Origins\bin_ship',
-    [string] $Owner = 'eluvian-agent'
+    [string] $Game = 'C:\Program Files (x86)\GOG Galaxy\Games\Dragon Age Origins\bin_ship'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,24 +59,6 @@ foreach ($running in @(Get-Process -Name DAOrigins -ErrorAction SilentlyContinue
         throw "DAOrigins.exe is running from $where (process $($running.Id)); close it first"
     }
     Show-Info "another install's game is running, from $from (process $($running.Id)); it does not hold this install's files"
-}
-
-# Another agent may have the game and its folder in use between its runs, with a loader and
-# plugins of its own in place: a deploy six seconds after a tester's game closed went into
-# such a folder (2026-10-01). game.claim.json says who holds it, the one claim every agent's
-# scripts honour (README.md, "The claim"); one that stands and is not this caller's stops the
-# copy. -Owner says who is deploying.
-$claimFolder = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'BioWare\Dragon Age\daolib'
-$claimFile = Join-Path $claimFolder 'game.claim.json'
-if (Test-Path $claimFile) {
-    try {
-        $claim = Get-Content $claimFile -Raw | ConvertFrom-Json
-        $left = [double]$claim.until - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-        if ($left -gt 0 -and $claim.owner -ne $Owner) {
-            throw "the game and its folder are claimed by $($claim.owner) for another $([math]::Round($left / 60, 1)) minutes ($($claim.note)); not deployed"
-        }
-    }
-    catch [System.ArgumentException] { Show-Info "$claimFile is not readable; taken as no claim" }
 }
 
 # A plugin lives in a folder of its own, bin_ship\daolib\plugins\eluvian\, its files

@@ -22,7 +22,7 @@ Start the game as always. `Documents\BioWare\Dragon Age\daolib\loader.log` then 
 
 ## Connecting
 
-An agent connects through the bridge, `eluvian_bridge.py`, a stdio MCP server that outlives the game and needs only Python 3. It forwards to the game while it runs, and adds `game_launch`, `game_quit`, `game_status`, `game_saves` and the claim that tells agents sharing one game whose it is. Started from the game's folder it takes that game as its own:
+An agent connects through the bridge, `eluvian_bridge.py`, a stdio MCP server that outlives the game and needs only Python 3. It forwards to the game while it runs, and adds `game_launch`, `game_quit`, `game_status`, `game_saves` and `game_instance`. Started from the game's folder it takes that game as its own:
 
 ```sh
 claude mcp add eluvian -- python "C:\Program Files (x86)\GOG Galaxy\Games\Dragon Age Origins\bin_ship\daolib\plugins\eluvian\eluvian_bridge.py"
