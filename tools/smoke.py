@@ -381,6 +381,16 @@ def checks(run: Run, owner: str) -> None:
         tool("camera", {"action": "face", "target": wolf}),
         lambda a: "yawDegrees" in a,
     )
+    check(
+        "camera turn, a tilt",
+        tool("camera", {"action": "turn", "pitchDegrees": 100}),
+        lambda a: abs(a["pitchDegrees"] - 100) < 0.5,
+    )
+    check(
+        "camera zoom",
+        tool("camera", {"action": "zoom", "zoom": 0.6}),
+        lambda a: abs(a["zoomSetting"] - 0.6) < 0.01,
+    )
     # A hostile creature appearing may start a fight, and the game (or a mod) pause for it; a
     # death does not come while it is paused.
     tool("pause", {"paused": False})

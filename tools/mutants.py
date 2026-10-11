@@ -117,6 +117,7 @@ PLACEABLES = "src/core/Placeables.cpp"
 GFXLIST = "src/core/GfxList.cpp"
 GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
+SIGHT = "src/core/Sight.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
 # characters here: "\\r\\n" is the source's "\r\n". An edit that leaves a
@@ -2642,6 +2643,43 @@ MUTANTS = [
         REGISTRY,
         "        if (entry.spec.budget)\n",
         "        if (entry.spec.budget && entry.spec.listed && entry.spec.name.empty())\n",
+    ),
+    # the camera's angles for a point to be seen (#117)
+    Mutant(
+        "the camera faces a point from the point's own side",
+        SIGHT,
+        "std::atan2(pivot[1] - to[1], pivot[0] - to[0]);",
+        "std::atan2(to[1] - pivot[1], to[0] - pivot[0]);",
+    ),
+    Mutant(
+        "the camera looks down at a point above it",
+        SIGHT,
+        "sight.pitch = (kPi / 2) + std::atan2(dz, flat);",
+        "sight.pitch = (kPi / 2) - std::atan2(dz, flat);",
+    ),
+    Mutant(
+        "the camera's pivot is taken for the point it looks at",
+        SIGHT,
+        "    if (std::hypot(flat, dz) < kNoDistance)\n",
+        "    if (false)\n",
+    ),
+    Mutant(
+        "the pivot's height is reckoned from above the camera",
+        SIGHT,
+        "return position[2] - (flat * std::cos(pitch) / sine);",
+        "return position[2] + (flat * std::cos(pitch) / sine);",
+    ),
+    Mutant(
+        "the pivot's height is reckoned from a camera straight above",
+        SIGHT,
+        "if (std::abs(sine) < 0.1F)",
+        "if (std::abs(sine) < 0.0F)",
+    ),
+    Mutant(
+        "the close view is said to keep any tilt",
+        SIGHT,
+        "return std::clamp(pitch, kPi / 6, kPi * 5 / 6);",
+        "return std::clamp(pitch, 0.0F, kPi);",
     ),
 ]
 

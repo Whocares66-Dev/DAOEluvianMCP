@@ -425,3 +425,13 @@ The 0.1.0 release's zip, 2026-10-10 (#115; built on DAOLib `v0.1.0`, plugin API 
 - The bridge out of the zip, started from `bin_ship\daolib\plugins\eluvian\` with no `--exe`: `game_status` while no game ran, `game_launch` to the main menu (`health` said version 0.1.0 and the owner), `game_quit`.
 - The link: `eluvian.dll` 2.5 MB where the incremental link's was 5.6, `eluvian.pdb` 40 MB where a PDB linked into twice was 81.
 - Not seen: a crash log naming Eluvian's frames from this PDB, since nothing crashed; the EA and Steam games, where Eluvian has never been run.
+
+`camera`'s tilt and zoom, 2026-10-11 (#117; DAOLib `v0.1.0`), on Lyna's manual 4, the Forest Clearing, a game of this session's own. `SceneCamera::SetPitch` and `CameraController::SetZoomSetting` had been called by nothing before:
+
+- `turn` with `pitchDegrees` 100, then 128: held, the frame after too, and the picture at 128 was the sky through the ruin's arches from below the party. The pivot stayed 1.55 m above the focus as the camera went round it (3 m from it), so at 128 the camera stood about level with the feet and at 150 a metre under them: nothing stops it at the ground.
+- The close view's clamp: 170 asked read 150 a frame later, as the answer's note had said; a creature beside the hero faced with `tilt` came to 27 and read 30.
+- `face` with `tilt` at a point 100 m north and 38 degrees up, from a camera then at 150: yaw -90 and pitch 128.0, so the pivot's height is rightly read back from where the camera stands. A creature's point is its feet: Tamlen at arm's length was looked down on.
+- `zoom` to -1: `zoom` there within 0.6 s (six reads 100 ms apart), `tactical` true, pitch 45. Back to 1 the same.
+- The tactical view keeps its own tilt: 70 asked there read 45 a frame later, and the answer now says so.
+- The party in the picture's corner: each arrival in the tactical view had the focus 9 to 10 m from the hero, forward and left of the view, and the hero at about pixel (1260, 890) of 1600x1000, whatever `follow` did to the offset. The real mouse was off the game's window: the game pans by a cursor at the screen's edge and then only keeps the party in view (DAOLib's `dao/Addresses.h`, ReadInput and KeepInView). With `pointer` holding the cursor at (800, 500), `follow` put the hero at pixel (800, 551) and the picture showed the party at its middle. `follow` now clears the focus's offset, which the tactical view otherwise keeps.
+- The smoke test: 76 of 76, with a tilt and a zoom in it.

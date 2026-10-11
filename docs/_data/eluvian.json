@@ -40,7 +40,7 @@
   },
   {
    "name": "camera",
-   "description": "Reads or moves the camera, in explore or combat mode. `action`:\n\n- `read` (the default): returns what it is `following`, its `focus`, `position`, `yawDegrees` and `pitchDegrees`, whether it is `tactical`, and `zoom` (1 close in, -1 the tactical view).\n- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, for a screenshot that shows it.\n- `follow`: makes it follow `target` and jump there at once, as selecting a party member does (nothing gets selected). Use it to look at a creature elsewhere.\n- `turn`: turns it to `yawDegrees`.\n\nEvery action returns the camera as `read` does. The new view shows from the next frame, so take the screenshot after this call. A mod that smooths camera moves treats a turn from here as the player's and stops its own move.",
+   "description": "Reads or moves the camera, in explore or combat mode. `action`:\n\n- `read` (the default): returns what it is `following`, its `focus` and how far that is from what it follows (`focusOffset`), its `position`, `yawDegrees` and `pitchDegrees`, whether it is `tactical`, `zoom` (1 close in, -1 the tactical view) and `zoomSetting`, the zoom it is easing toward.\n- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, for a screenshot that shows it. With `tilt` true it tilts as well, so the target is in the middle of the picture: use it for something above or below, such as the sky. A creature's point is at its feet, so one standing near is looked down on.\n- `follow`: makes it follow `target` and jump there at once, as selecting a party member does (nothing gets selected). Use it to look at a creature elsewhere, or to centre the tactical view on one.\n- `turn`: turns it to `yawDegrees`, tilts it to `pitchDegrees`, or both. The tactical view keeps its own tilt of 45 degrees, so tilt close in.\n- `zoom`: sets `zoom` as the mouse wheel does, from -1 (the tactical view, high above) to 1 (close in). The camera eases there within about a second. In the tactical view (below 0) the game pans the camera while the mouse is at the picture's edge or off it, so the party drifts to a corner (`focusOffset` grows): first hold the cursor inside the picture with `pointer` (a `pixel` near the middle), then `follow` a creature to centre on it.\n\nEvery action returns the camera as `read` does. A turn or tilt shows from the next frame, so take the screenshot after this call; after `zoom`, read until `zoom` has arrived. A mod that smooths camera moves treats a move from here as the player's and stops its own.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -50,7 +50,8 @@
        "read",
        "face",
        "follow",
-       "turn"
+       "turn",
+       "zoom"
       ],
       "description": "What to do. Default read."
      },
@@ -60,9 +61,21 @@
      "point": {
       "description": "With `face`: a world point, {x, y, z} or [x, y, z]."
      },
+     "tilt": {
+      "type": "boolean",
+      "description": "With `face`: also tilt, so the target is in the middle of the picture and not only ahead. Default false: the tilt stays as it is."
+     },
      "yawDegrees": {
       "type": "number",
       "description": "With `turn`: the direction from the focus to the camera, in degrees, measured from +x toward +y."
+     },
+     "pitchDegrees": {
+      "type": "number",
+      "description": "With `turn`: the camera's angle from straight above, 0 to 180. 90 is level, less looks down, more looks up. Close in, the game keeps it between 30 and 150."
+     },
+     "zoom": {
+      "type": "number",
+      "description": "With `zoom`: from -1 (the tactical view) to 1 (close in)."
      }
     }
    }

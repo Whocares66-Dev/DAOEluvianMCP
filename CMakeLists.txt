@@ -158,6 +158,7 @@ add_library(
     src/core/Requirements.cpp
     src/core/Rest.cpp
     src/core/Scenario.cpp
+    src/core/Sight.cpp
     src/core/ToolRegistry.cpp
     src/core/Travel.cpp
     src/core/Until.cpp

@@ -43,6 +43,7 @@ add_executable(
     test_requirements.cpp
     test_rest.cpp
     test_scenario.cpp
+    test_sight.cpp
     test_until.cpp
     test_ready.cpp
     test_travel.cpp
