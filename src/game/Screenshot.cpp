@@ -52,9 +52,11 @@ std::optional<std::filesystem::path> NewestJpeg(const std::filesystem::path &fol
 // it to its render thread (0x00A23D1D..0x00A23D44), copies a fixed 0x400
 // bytes out of that string's buffer whatever its length; a buffer within
 // 1 KB of an unmapped page is read past (elgara-agent's crash, 2026-10-11
-// 11:56, reading 0x4FCA6000; #120). The screenshot key does the same. The
-// fix is to the game, DAOLib's (src/fix); until a loader has it, the tool's
-// description says to use it only where the window's picture cannot serve.
+// 11:56, reading 0x4FCA6000; #120). The screenshot key did the same. The
+// fix is to the game and is the loader's: DAOLib #78 (fd43f73, the loader
+// of every game Eluvian's next release runs in) hands the renderer the name
+// in a buffer of the full 0x400 bytes. Under a loader from before it, the
+// 0.1.0 one among them, the game's own screenshot can still crash.
 std::filesystem::path GameScreenshot(Bench &bench, const Watch &watch)
 {
     const auto folder = Screenshots() / "User";
@@ -107,9 +109,7 @@ void AddScreenshot(Bench &bench, const Watch &watch)
             "- `window` (the default): Windows draws the game's window at once, even while the game is not "
             "drawing frames. If the display is asleep or the session locked, the picture is all black "
             "(`black`); use `game` then.\n"
-            "- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later. "
-            "Only where `window` cannot serve: the game's own screenshot code can crash the game (rarely; it "
-            "reads past the end of its file name).\n\n"
+            "- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later.\n\n"
             "Returns the picture as an image, with its `width`, `height` and `file` (in Screenshots\\Eluvian; "
             "for `game`, the game's own file is `original`). Pass `image: false` to get only the file and "
             "save tokens.",
