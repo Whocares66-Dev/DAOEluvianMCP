@@ -387,6 +387,11 @@ def checks(run: Run, owner: str) -> None:
         lambda a: abs(a["pitchDegrees"] - 100) < 0.5,
     )
     check(
+        "camera behind the hero",
+        tool("camera", {"action": "behind"}),
+        lambda a: "yawDegrees" in a and "note" in a,
+    )
+    check(
         "camera zoom",
         tool("camera", {"action": "zoom", "zoom": 0.6}),
         lambda a: abs(a["zoomSetting"] - 0.6) < 0.01,

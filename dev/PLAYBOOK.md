@@ -102,7 +102,8 @@ If `game_launch` says the game is running but Eluvian is not serving, its `error
 | `camera {"action": "follow", "target": "0x305"}` | Moves the camera to a creature elsewhere and follows it. |
 | `camera {"action": "face", "point": [x, y, z], "tilt": true}` | Turns and tilts it, so a point above or below (the sky, a ledge) is in the middle of the picture. |
 | `camera {"action": "turn", "pitchDegrees": 120}` | Tilts it: 90 is level, more looks up, less looks down. Close in the game keeps it between 30 and 150. |
-| `camera {"action": "zoom", "zoom": -1}` | Zooms as the mouse wheel does: -1 is the tactical view, 1 close in. It eases there, so read `zoom` again before the screenshot. |
+| `camera {"action": "zoom", "zoom": -1}` | Zooms as the mouse wheel does: -1 is the tactical view, and 0.5 (farthest) to 1 (closest) the close view; the game has nothing between. It eases there, so read `zoom` again before the screenshot. |
+| `camera {"action": "behind", "target": "0x305"}` | Brings it round behind a creature, looking the way it faces. No `target`: behind what it follows. |
 | `pointer {"pixel": [800, 500], "seconds": 120}`, then `camera {"action": "follow", "target": "0x82"}` | In the tactical view: keeps the game from panning toward the real mouse at the picture's edge, then centres on a creature. Without the first the party sits in a corner. |
 | `pointer {"target": "0x2ec"}` | Holds the game's cursor over it without clicking, so hover previews show. Then read `cursor` and take a screenshot. `{"release": true}` ends it. |
 | `screenshot {}` | A picture of the game window as it is drawn. `{"image": false}` only saves the file. |
