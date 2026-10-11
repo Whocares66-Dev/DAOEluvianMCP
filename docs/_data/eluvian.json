@@ -505,7 +505,7 @@
   },
   {
    "name": "health",
-   "description": "Says whether the game is alive and what state it is in. Call it first. It answers without waiting for a game frame, so it works while an area loads or the game hangs.\n\n`state` is one of:\n- running: frames are coming.\n- stalled: no frame for over a second (an area loading, a modal dialog, or a hang).\n- starting: no frame yet.\n\nThe answer also includes the game `mode`, whether it is `paused`, the calls waiting for a frame (`callsWaiting`), the event `cursor` to pass as `since` to `wait_for`, and which plugins have registered tools.",
+   "description": "Says whether the game is alive and what state it is in. Call it first. It answers without waiting for a game frame, so it works while an area loads or the game hangs.\n\n`state` is one of:\n- running: frames are coming.\n- stalled: no frame for over a second (an area loading, a modal dialog, or a hang).\n- starting: no frame yet.\n\nThe answer also includes the game `mode`, whether it is `paused`, the calls waiting for a frame (`callsWaiting`), the event `cursor` to pass as `since` to `wait_for`, which plugins have registered tools, who started the game (`owner`) and, where several copies of the game run, which one this is (`instance`, null for the game as ever).",
    "inputSchema": {
     "type": "object"
    },

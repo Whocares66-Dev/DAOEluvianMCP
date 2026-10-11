@@ -563,24 +563,45 @@ def main() -> int:
         default=OWNER,
         help="the name to start the game under: the one a claim on the game was made with, if any",
     )
+    parser.add_argument(
+        "--instance",
+        default="",
+        help="run in a named instance, a copy of the game beside the one that may be running, "
+        "with a profile of its own (#116); a new one is given the settings and this save alone",
+    )
+    parser.add_argument(
+        "--plugins",
+        help="load the plugins from this folder in place of the game folder's: a build tree's "
+        "daolib\\plugins, so the build under test is deployed nowhere",
+    )
     options = parser.parse_args()
 
-    folder = bridge_module.log_folder()
-    processes = bridge_module.Processes(options.exe)
+    instance = bridge_module.instance_name(options.instance)
+    if instance is None:
+        parser.error(
+            f"--instance {options.instance!r}: 1 to 32 letters, digits, - or _"
+        )
+    folder = bridge_module.log_folder(instance)
+    processes = bridge_module.Processes(options.exe, instance)
     bridge = bridge_module.Bridge(
         bridge_module.Game(folder, None, processes.running),
         processes,
         folder / "eluvian.tools.json",
         lambda _message: None,
+        characters=folder.parent / "Characters",
+        claims=bridge_module.log_folder(),
     )
     save = {
         "character": options.character,
         "kind": options.kind,
         "number": options.number,
     }
-    launch = bridge.game_launch(
-        {"owner": options.owner, "load": save, "waitSeconds": 240}
-    )
+    asked = {"owner": options.owner, "load": save, "waitSeconds": 240}
+    if instance:
+        asked["seed"] = "save"
+    if options.plugins:
+        asked["plugins"] = options.plugins
+    launch = bridge.game_launch(asked)
     answer = launch.get("structuredContent") or {}
     if launch.get("isError") or not answer.get("launched"):
         print(f"not started: {json.dumps(launch, ensure_ascii=False)[:800]}")

@@ -81,8 +81,9 @@ void AddHealthTool(Bench &bench, const Watch &watch, std::function<Json()> extra
                  "- stalled: no frame for over a second (an area loading, a modal dialog, or a hang).\n"
                  "- starting: no frame yet.\n\n"
                  "The answer also includes the game `mode`, whether it is `paused`, the calls waiting for a "
-                 "frame (`callsWaiting`), the event `cursor` to pass as `since` to `wait_for`, and which plugins "
-                 "have registered tools.",
+                 "frame (`callsWaiting`), the event `cursor` to pass as `since` to `wait_for`, which plugins "
+                 "have registered tools, who started the game (`owner`) and, where several copies of the game "
+                 "run, which one this is (`instance`, null for the game as ever).",
                  Json{{"type", "object"}}, Thread::Listener, true},
         [&bench, &watch, extra = std::move(extra)](const Json &) -> ToolResult {
             const auto nowMs =

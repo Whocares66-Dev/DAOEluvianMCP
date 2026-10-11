@@ -8,8 +8,10 @@ REST API (POST /api/tool/<name>) while the game runs.
 
 It adds what only a process outside the game can do:
   game_status   is the game running, and what Eluvian's `health` says
-  game_launch   start DAOrigins.exe (never a second one), wait until it serves
+  game_launch   start DAOrigins.exe (never a second of one copy), wait until it serves
   game_quit     close the game
+  game_instance which copy of the game this bridge drives: the game as ever, or a named
+                instance beside it with a profile of its own (#116)
 
 The game's tools are listed from its GET /api/tools, and kept in
 eluvian.tools.json beside its logs, so they are listed even while the game is
@@ -31,6 +33,8 @@ import argparse
 import ctypes
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -77,25 +81,28 @@ NOT_RUNNING = (
 )
 
 
-def documents_folder() -> Path:
-    """The user's Documents, where the game writes, wherever it really is (OneDrive here)."""
+def known_folder(guid: str, fallback: Path) -> Path:
+    """One of Windows' known folders, by its id's bytes; `fallback` where there is no Windows."""
     if sys.platform == "win32":
-        folder_documents = ctypes.c_char_p(
-            bytes.fromhex(
-                "D0 9A D3 FD 8F 23 AF 46 AD B4 6C 85 48 03 69 C7".replace(" ", "")
-            )
-        )
+        folder = ctypes.c_char_p(bytes.fromhex(guid.replace(" ", "")))
         path = ctypes.c_wchar_p()
         if (
             ctypes.windll.shell32.SHGetKnownFolderPath(
-                folder_documents, 0, None, ctypes.byref(path)
+                folder, 0, None, ctypes.byref(path)
             )
             == 0
         ):
             found = Path(path.value)
             ctypes.windll.ole32.CoTaskMemFree(path)
             return found
-    return Path.home() / "Documents"
+    return fallback
+
+
+def documents_folder() -> Path:
+    """The user's Documents, where the game writes, wherever it really is (OneDrive here)."""
+    return known_folder(
+        "D0 9A D3 FD 8F 23 AF 46 AD B4 6C 85 48 03 69 C7", Path.home() / "Documents"
+    )
 
 
 # Who holds the game and its folder: one file beside the logs that every agent's scripts read
@@ -105,10 +112,115 @@ CLAIM_FILE = "game.claim.json"
 EVENTS_FILE = "eluvian.events.jsonl"
 # The run before's, kept when a game starts (EventLog::PreviousOf, #74).
 PREVIOUS_EVENTS_FILE = "eluvian.events.previous.jsonl"
+# The pid of a copy this bridge started, written beside its logs at once: Eluvian's own
+# eluvian.json comes seconds later, and until then nothing else says whose the process is.
+LAUNCH_FILE = "eluvian.launch.json"
+
+# A second copy of the game beside the first (#116). DAOLib's loader makes a copy started with
+# DAOLIB_INSTANCE=<name> an instance (DAOLib #67; its dev/BUILDS.md, "a second copy beside the
+# first", is the contract this stands on): the name is 1 to 32 letters, digits, '-' or '_' and
+# is taken in lower case; the game's start-up mutex is "dragonage-<name>" where the game as
+# ever has "dragonage", which is the whole of "one game at a time"; and its profile, with the
+# logs, is %LOCALAPPDATA%\DAOLib\instances\<name>\BioWare\Dragon Age where the game as ever
+# has Documents\BioWare\Dragon Age. The bridge runs outside the game, so nothing is redirected
+# for it: it works the folder out from the name.
+INSTANCE_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 
-def log_folder() -> Path:
-    return documents_folder() / "BioWare" / "Dragon Age" / "daolib"
+def instance_name(name: object) -> str | None:
+    """An instance's name as the loader takes it, in lower case; "" for the game as ever
+    (no name, or an empty one); None for a name the loader would refuse."""
+    if name is None or name == "":
+        return ""
+    if isinstance(name, str) and INSTANCE_NAME.fullmatch(name):
+        return name.lower()
+    return None
+
+
+def instances_root() -> Path:
+    """Where the instances' profiles are, a folder each by name."""
+    local = known_folder(
+        "85 27 B3 F1 BA 6F CF 4F 9D 55 7B 8E 7F 15 70 91",
+        Path.home() / "AppData" / "Local",
+    )
+    return local / "DAOLib" / "instances"
+
+
+def profile_folder(instance: str, root: Path | None = None) -> Path:
+    """A copy's profile, the folder the game keeps Settings, Characters and the rest in: the
+    instance's own, or Documents' for the game as ever."""
+    if instance:
+        base = root if root is not None else instances_root()
+        return base / instance / "BioWare" / "Dragon Age"
+    return documents_folder() / "BioWare" / "Dragon Age"
+
+
+def log_folder(instance: str = "", root: Path | None = None) -> Path:
+    return profile_folder(instance, root) / "daolib"
+
+
+def mutex_held(name: str) -> bool:
+    """Whether a mutex of that name is there, in this session: the game makes "dragonage", or
+    an instance "dragonage-<name>", in WinMain and it goes with the process, so this asks
+    whether that copy is running (not in its first moment, before WinMain)."""
+    if sys.platform != "win32":
+        return False
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenMutexW.restype = ctypes.c_void_p
+    handle = kernel32.OpenMutexW(0x00100000, False, name)  # SYNCHRONIZE
+    if not handle:
+        return False
+    kernel32.CloseHandle(ctypes.c_void_p(handle))
+    return True
+
+
+def mutex_of(instance: str) -> str:
+    return f"dragonage-{instance}" if instance else "dragonage"
+
+
+# What a new instance's profile is given of the default one's when the bridge seeds it: the
+# settings and key bindings, and the lists that say which add-ins are installed and allowed,
+# without which a save of the default profile is answered "requires the following content"
+# (lib-agent's play test, 2026-10-11). All of it was under 1 MB here, against 5.9 GB of
+# Characters, which the loader copies whole when it seeds an instance itself.
+SEED_PARTS = ("Settings", "addins", "Offers", "packages")
+
+
+def seed_instance(
+    instance: str, save: dict | None, default: Path, root: Path
+) -> dict | None:
+    """Gives a new instance a profile with the settings and one save, in place of the whole
+    of the default profile's saves the loader would copy. Only for an instance that has no
+    folder yet: one that has is left as it is, and nothing is answered. `save` is as
+    game_saves lists it (character, kind, number), or None for no save at all. The file
+    `seeded` beside the profile is the loader's own mark that there is nothing left to copy."""
+    home = root / instance
+    if home.exists():
+        return None
+    profile = home / "BioWare" / "Dragon Age"
+    profile.mkdir(parents=True)
+    copied = []
+    for part in SEED_PARTS:
+        if (default / part).is_dir():
+            shutil.copytree(default / part, profile / part)
+            copied.append(part)
+    if save:
+        character = default / "Characters" / str(save.get("character"))
+        prefix = {kind: prefix for prefix, kind in SAVE_KINDS}.get(save.get("kind"))
+        slot = character / "Saves" / f"{prefix}{save.get('number')}"
+        if prefix and slot.is_dir():
+            target = profile / "Characters" / character.name
+            (target / "Saves").mkdir(parents=True)
+            # The character's own files, its portrait and its sheet, beside the one save.
+            for file in character.iterdir():
+                if file.is_file():
+                    shutil.copy2(file, target / file.name)
+            shutil.copytree(slot, target / "Saves" / slot.name)
+            copied.append(f"Characters\\{character.name}\\Saves\\{slot.name}")
+        else:
+            copied.append(f"no save {save} in {default}")
+    (home / "seeded").write_text("seeded\n", encoding="utf-8")
+    return {"profile": str(profile), "copied": copied}
 
 
 class Unreachable(Exception):
@@ -258,10 +370,20 @@ def is_same_file(path: str | None, exe: Path) -> bool:
 
 
 class Processes:
-    """DAOrigins.exe as Windows sees it: find, start, close."""
+    """DAOrigins.exe as Windows sees it: find, start, close. One of these is for one copy of
+    the game: the game as ever, or the instance named."""
 
-    def __init__(self, exe: Path) -> None:
+    def __init__(
+        self,
+        exe: Path,
+        instance: str = "",
+        root: Path | None = None,
+        held: Callable[[str], bool] = mutex_held,
+    ) -> None:
         self.exe = exe
+        self.instance = instance
+        self.root = root if root is not None else instances_root()
+        self.held = held
 
     def named(self) -> list[int]:
         """Every process with the game's file name, whichever install it is of."""
@@ -278,11 +400,59 @@ class Processes:
                 pids.append(int(fields[1]))
         return pids
 
-    def running(self) -> list[int]:
-        """This install's game only. A second install of the game has the same file name (the
-        user installed EA's beside GOG's, 2026-10-01): a game of another install is not
-        Eluvian's to attach to, count as its own, or close."""
+    def of_install(self) -> list[int]:
+        """This install's games, every copy. A second install of the game has the same file
+        name (the user installed EA's beside GOG's, 2026-10-01): a game of another install is
+        not Eluvian's to attach to, count as its own, or close."""
         return [pid for pid in self.named() if is_same_file(image_path(pid), self.exe)]
+
+    def instances(self) -> dict[int, str]:
+        """Which pids are instances', by name. Every copy of one install is the same file, so
+        the process does not say; each instance's own folder does: the pid its Eluvian wrote
+        in eluvian.json, or the one a bridge wrote as it started it. A folder's word counts
+        only while its instance runs (its mutex is there), or was started within the last two
+        minutes, the mutex coming a moment after the process: what a run that ended left
+        behind names a pid that may be another game's by now."""
+        found: dict[int, str] = {}
+        try:
+            folders = [folder for folder in self.root.iterdir() if folder.is_dir()]
+        except OSError:
+            return found
+        for folder in folders:
+            name = folder.name.lower()
+            logs = log_folder(name, self.root)
+            running = self.held(mutex_of(name))
+            for file in (LAUNCH_FILE, "eluvian.json"):
+                try:
+                    recent = time.time() - (logs / file).stat().st_mtime < 120
+                    pid = json.loads((logs / file).read_text(encoding="utf-8")).get(
+                        "pid"
+                    )
+                except (OSError, ValueError, AttributeError):
+                    continue
+                if isinstance(pid, int) and (
+                    running or (file == LAUNCH_FILE and recent)
+                ):
+                    found[pid] = name
+        return found
+
+    def running(self) -> list[int]:
+        """This copy's game only: the instance's, or for the game as ever whichever of the
+        install's is no instance's."""
+        theirs = self.instances()
+        return [
+            pid for pid in self.of_install() if theirs.get(pid, "") == self.instance
+        ]
+
+    def copies(self) -> list[dict]:
+        """The install's other copies running now: the game as ever (instance "") and the
+        instances that are not this one."""
+        theirs = self.instances()
+        return [
+            {"instance": theirs.get(pid, ""), "pid": pid}
+            for pid in self.of_install()
+            if theirs.get(pid, "") != self.instance
+        ]
 
     def others(self) -> list[dict]:
         """Games running from another install, or whose file could not be read."""
@@ -466,7 +636,9 @@ BRIDGE_TOOLS = [
         "name": "game_status",
         "description": (
             "Whether Dragon Age: Origins is running (its process ids) and what Eluvian's health says "
-            "inside it. Answers while the game is down."
+            "inside it. Answers while the game is down. Where several copies of the game run, this "
+            "is of the one this bridge drives (`instance`, see game_instance), and `copies` lists "
+            "the others."
         ),
         "inputSchema": {"type": "object"},
         "annotations": {"readOnlyHint": True},
@@ -474,8 +646,10 @@ BRIDGE_TOOLS = [
     {
         "name": "game_launch",
         "description": (
-            "Start DAOrigins.exe, never a second one (a second game's logs and port get in the "
-            "first's way), and wait until Eluvian serves at the main menu; answers its health. "
+            "Start DAOrigins.exe, never a second of the same copy, and wait until Eluvian serves "
+            "at the main menu; answers its health. The copy is the one this bridge drives: the "
+            "game as ever, or the instance game_instance chose, which runs beside it with a "
+            "profile of its own. "
             "With `load` (a save as game_saves lists them: character, kind, number), it then "
             "loads that save without the menus and waits until the world is there, so a test "
             "starts where it means to. Pass `owner`, the name you go by: health then says who "
@@ -495,6 +669,20 @@ BRIDGE_TOOLS = [
                     "type": "string",
                     "enum": ["trace", "debug", "info", "warn", "error"],
                 },
+                "plugins": {
+                    "type": "string",
+                    "description": "A folder to load the plugins from in place of the game's "
+                    "bin_ship\\daolib\\plugins, as it stands: a build tree's daolib\\plugins, "
+                    "so a test deploys nothing into the game. It must hold eluvian\\eluvian.dll",
+                },
+                "seed": {
+                    "type": "string",
+                    "enum": ["profile", "save"],
+                    "description": "For an instance started for the first time. profile (the "
+                    "default): the loader copies the whole default profile, every save of every "
+                    "character, which takes as long as they are large. save: only the settings "
+                    "and the one save in `load`, for a copy made for a test",
+                },
                 "load": {
                     "type": "object",
                     "description": "The save to start in",
@@ -509,6 +697,31 @@ BRIDGE_TOOLS = [
                             "tests); the game is then never saved",
                         },
                     },
+                },
+            },
+        },
+    },
+    {
+        "name": "game_instance",
+        "description": (
+            "Which copy of the game this bridge drives, and a way to drive another. The game runs "
+            "one at a time, except as a named instance: a second copy beside the first, with its "
+            "own saves, settings, logs and port, so two tests need not share a game. With `name` "
+            "(1 to 32 letters, digits, - or _; lower case is the same name), every tool of this "
+            "bridge from then on is that instance's: game_launch starts it, game_status, "
+            "game_saves and game_quit are of it, and the game's own tools go to it. With an "
+            "empty `name` it is the game as ever again. With no `name` it only answers which "
+            "copy it is, the folder of its logs and the other copies running. A new instance's "
+            "first start copies the default profile (game_launch's `seed`). Every copy runs "
+            "from the one game folder and holds its plugins open, so a deploy still needs all "
+            "of them closed. The first copy may freeze for some seconds while a second starts."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The instance to drive from now on; empty for the game as ever",
                 },
             },
         },
@@ -565,10 +778,20 @@ class Bridge:
         send: Callable[[dict], None],
         sleep: Callable[[float], None] = time.sleep,
         characters: Path | None = None,
+        copies: Callable[[str], tuple[Game, Processes, Path, Path]] | None = None,
+        claims: Path | None = None,
     ) -> None:
         self.game = game
         self.processes = processes
         self.cache = cache
+        # Which copy of the game this is the bridge of (#116): the game as ever, "", or an
+        # instance by name. `copies` makes the four things above for another copy, for
+        # game_instance; a bridge given none stays with the copy it has.
+        self.instance: str = getattr(processes, "instance", "")
+        self.copies = copies
+        # Where the claim is kept: beside the logs of the game as ever, whichever copy this
+        # drives, since every copy runs from the one game folder the claim is on.
+        self.claims = claims if claims is not None else game.folder
         self.send = send
         self.sleep = sleep
         # How long a load may leave the game's mode unmoved before it counts as declined: from
@@ -864,6 +1087,11 @@ class Bridge:
             why = self.why_silent() if pids else None
             if why:
                 status["why"] = why
+        if self.instance:
+            status["instance"] = self.instance
+        copies = self.processes.copies()
+        if copies:
+            status["copies"] = copies
         others = self.processes.others()
         if others:
             status["otherInstalls"] = others
@@ -904,7 +1132,51 @@ class Bridge:
     # not for Eluvian; what it means is in dev/DESIGN.md, "Outside the game".
 
     def claim_path(self) -> Path:
-        return self.game.folder / CLAIM_FILE
+        return self.claims / CLAIM_FILE
+
+    # ---- the copy this bridge drives --------------------------------------------
+
+    def game_instance(self, arguments: dict) -> dict:
+        """Says which copy of the game this bridge drives, or changes it (#116)."""
+        if "name" in arguments:
+            name = instance_name(arguments.get("name"))
+            if name is None:
+                return text_result(
+                    "game_instance: `name` is 1 to 32 letters, digits, - or _ (the loader takes "
+                    "no other), or empty for the game as ever",
+                    is_error=True,
+                )
+            if name != self.instance:
+                if self.copies is None:
+                    return text_result(
+                        "game_instance: this bridge was started for one copy of the game and "
+                        "cannot change it",
+                        is_error=True,
+                    )
+                game, processes, cache, characters = self.copies(name)
+                with self.lock:
+                    self.game, self.processes = game, processes
+                    self.cache, self.characters = cache, characters
+                    self.instance = name
+                    self.revision = None
+                    self.budgets = {}
+                # Another copy may have other plugins, and so other tools.
+                self.send(
+                    {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}
+                )
+        # Of one copy, taken together: requests run on threads of their own, and an answer
+        # read piece by piece beside a change named the game as ever and listed its own
+        # process among the others (seen 2026-10-11, two calls sent at once).
+        with self.lock:
+            instance, game, processes = self.instance, self.game, self.processes
+        return text_result(
+            {
+                "instance": instance or None,
+                "folder": str(game.folder),
+                "running": bool(processes.running()),
+                "copies": processes.copies(),
+            }
+        )
 
     def claim(self) -> dict | None:
         """The claim that stands now, or None: no file, not readable, or past its time. The file"""
@@ -994,6 +1266,31 @@ class Bridge:
         # is was asked again and again, and once got wrong (2026-10-01).
         owner = arguments.get("owner")
         environment["ELUVIAN_OWNER"] = owner if isinstance(owner, str) else ""
+        if self.instance:
+            environment["DAOLIB_INSTANCE"] = self.instance
+        # The plugins of a build tree in place of the game folder's (DAOLib #67's
+        # DAOLIB_PLUGINS): a folder that is not there loads nothing, and one without Eluvian
+        # starts a game this bridge cannot reach, so both are said before the start.
+        plugins = arguments.get("plugins")
+        if plugins is not None:
+            folder = Path(plugins) if isinstance(plugins, str) else None
+            if folder is None or not (folder / "eluvian" / "eluvian.dll").is_file():
+                return text_result(
+                    f"game_launch: NOT launched. `plugins` is a folder that holds "
+                    f"eluvian\\eluvian.dll, such as a build tree's daolib\\plugins; {plugins!r} "
+                    "does not",
+                    is_error=True,
+                )
+            environment["DAOLIB_PLUGINS"] = str(folder.resolve())
+        seed = arguments.get("seed", "profile")
+        if seed not in ("profile", "save"):
+            return text_result("game_launch: `seed` is profile or save", is_error=True)
+        if seed == "save" and not self.instance:
+            return text_result(
+                "game_launch: `seed` is for an instance (game_instance): the game as ever has "
+                "the profile it has",
+                is_error=True,
+            )
         theirs = self.held_by_another(owner)
         if theirs:
             return text_result(
@@ -1027,8 +1324,9 @@ class Bridge:
             # executables), and the two share Documents\\BioWare\\Dragon Age: saves, settings
             # and the logs. Two GOG games started beside a Steam one each exited at once
             # (2026-10-02), and the user wants no second game opened: so none is.
+            # An instance shares neither with anyone: its mutex and its profile are its own.
             others = self.processes.others()
-            if others:
+            if others and not self.instance:
                 return text_result(
                     {
                         "launched": False,
@@ -1050,8 +1348,27 @@ class Bridge:
                     "Repair); a game started like this crashes in its renderer's start-up.",
                     is_error=True,
                 )
+            seeded = None
+            if self.instance and seed == "save":
+                load = arguments.get("load")
+                seeded = seed_instance(
+                    self.instance,
+                    load if isinstance(load, dict) else None,
+                    self.claims.parent,
+                    self.game.folder.parents[3],
+                )
             started = time.time() - 2  # the logs of this start are no older
             pid = self.processes.start(environment)
+            if self.instance:
+                # Whose the new process is, until its Eluvian says so itself (Processes.instances).
+                try:
+                    self.game.folder.mkdir(parents=True, exist_ok=True)
+                    (self.game.folder / LAUNCH_FILE).write_text(
+                        json.dumps({"pid": pid, "instance": self.instance}),
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    pass
         wait = arguments.get("waitSeconds", 180)
         deadline = time.monotonic() + (wait if isinstance(wait, (int, float)) else 180)
         health = None
@@ -1092,6 +1409,10 @@ class Bridge:
         self.game_tools()  # lists the game's tools now it serves, and says so if they changed
         self.send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
         answer = {"launched": True, "pid": pid, "health": health}
+        if self.instance:
+            answer["instance"] = self.instance
+        if seeded:
+            answer["seeded"] = seeded
         if others:
             answer["otherInstalls"] = others
         if health is None:
@@ -1334,6 +1655,8 @@ class Bridge:
                 )
             if name == "game_status":
                 return reply(text_result(self.game_status()))
+            if name == "game_instance":
+                return reply(self.game_instance(arguments))
             if name == "game_claim":
                 return reply(self.game_claim(arguments))
             if name == "game_release":
@@ -1415,6 +1738,13 @@ def main() -> None:
         "the GOG install's",
     )
     parser.add_argument(
+        "--instance",
+        default=os.environ.get("ELUVIAN_INSTANCE", ""),
+        help="the copy of the game this bridge drives from its start: an instance's name "
+        "(DAOLib's DAOLIB_INSTANCE), or nothing for the game as ever. Default: "
+        "ELUVIAN_INSTANCE. The game_instance tool changes it while the bridge runs",
+    )
+    parser.add_argument(
         "--call",
         nargs="+",
         metavar=("TOOL", "ARGUMENTS"),
@@ -1433,13 +1763,35 @@ def main() -> None:
             stdout.write(json.dumps(message) + "\n")
             stdout.flush()
 
-    folder = log_folder()
-    processes = Processes(options.exe)
+    instance = instance_name(options.instance)
+    if instance is None:
+        parser.error(
+            f"--instance {options.instance!r}: 1 to 32 letters, digits, - or _"
+        )
+
+    def copy(name: str) -> tuple[Game, Processes, Path, Path]:
+        """What a bridge has of one copy of the game: where it answers, its processes, the
+        list of its tools kept beside its logs, and its saves."""
+        folder = log_folder(name)
+        processes = Processes(options.exe, name)
+        # --port names the port of the copy the bridge was started for, not of every copy.
+        port = options.port if name == instance else None
+        return (
+            Game(folder, port, processes.running),
+            processes,
+            folder / "eluvian.tools.json",
+            folder.parent / "Characters",
+        )
+
+    game, processes, cache, characters = copy(instance)
     bridge = Bridge(
-        Game(folder, options.port, processes.running),
+        game,
         processes,
-        folder / "eluvian.tools.json",
+        cache,
         send,
+        characters=characters,
+        copies=copy,
+        claims=log_folder(),
     )
     if options.call:
         sys.exit(call_once(bridge, options.call, stdout))

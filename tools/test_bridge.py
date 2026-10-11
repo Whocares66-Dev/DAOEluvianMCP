@@ -102,15 +102,20 @@ class FakeGame(BaseHTTPRequestHandler):
 
 
 class FakeProcesses:
-    def __init__(self, exe: Path, pids: list[int]) -> None:
+    def __init__(self, exe: Path, pids: list[int], instance: str = "") -> None:
         self.exe = exe
         self.pids = pids
+        self.instance = instance  # which copy of the game these are the processes of
         self.started = 0
         self.closed: list[tuple[int, bool]] = []
         self.other: list[dict] = []  # games of another install
+        self.beside: list[dict] = []  # the install's other copies
 
     def running(self) -> list[int]:
         return list(self.pids)
+
+    def copies(self) -> list[dict]:
+        return list(self.beside)
 
     def others(self) -> list[dict]:
         return list(self.other)
@@ -201,6 +206,7 @@ class BridgeTest(unittest.TestCase):
                 "game_release",
                 "game_status",
                 "game_launch",
+                "game_instance",
                 "game_quit",
                 "health",
             ],
@@ -843,6 +849,279 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(Game(self.folder, running=lambda: [100, 200]).port(), 8930)
         # No game runs: the last one known, for when it comes back.
         self.assertEqual(Game(self.folder, running=list).port(), 8930)
+
+    # ---- a second copy of the game beside the first (#116) -------------------
+
+    def test_an_instances_name_is_taken_as_the_loader_takes_it(self) -> None:
+        self.assertEqual(bridge_module.instance_name("Two"), "two")
+        self.assertEqual(bridge_module.instance_name("a-b_9"), "a-b_9")
+        self.assertEqual(bridge_module.instance_name(""), "")
+        self.assertEqual(bridge_module.instance_name(None), "")
+        for refused in ("two games", "a/b", "x" * 33, 7, "\u00e9"):
+            self.assertIsNone(bridge_module.instance_name(refused))
+
+    def test_an_instances_logs_are_under_its_own_profile(self) -> None:
+        root = self.folder / "instances"
+        self.assertEqual(
+            bridge_module.log_folder("two", root),
+            root / "two" / "BioWare" / "Dragon Age" / "daolib",
+        )
+        self.assertEqual(bridge_module.mutex_of("two"), "dragonage-two")
+        self.assertEqual(bridge_module.mutex_of(""), "dragonage")
+
+    def install_of(
+        self, instance: str, pids: list[int], held: set[str]
+    ) -> bridge_module.Processes:
+        """The real Processes over a made-up install: `pids` are its games, `held` the
+        mutexes that are there."""
+        processes = bridge_module.Processes(
+            self.exe, instance, self.folder / "instances", lambda name: name in held
+        )
+        processes.of_install = lambda: list(pids)
+        return processes
+
+    def record(self, instance: str, file: str, pid: int, age: float = 0) -> None:
+        """What an instance's folder says of its process: Eluvian's file, or a bridge's."""
+        logs = bridge_module.log_folder(instance, self.folder / "instances")
+        logs.mkdir(parents=True, exist_ok=True)
+        (logs / file).write_text(
+            json.dumps({"pid": pid, "port": 8931}), encoding="utf-8"
+        )
+        if age:
+            then = time.time() - age
+            os.utime(logs / file, (then, then))
+
+    def test_each_copys_processes_are_told_apart_by_what_its_folder_says(self) -> None:
+        self.record("two", "eluvian.json", 200, age=600)
+        held = {"dragonage", "dragonage-two"}
+        self.assertEqual(self.install_of("", [100, 200], held).running(), [100])
+        self.assertEqual(self.install_of("two", [100, 200], held).running(), [200])
+        self.assertEqual(self.install_of("three", [100, 200], held).running(), [])
+        self.assertEqual(
+            self.install_of("", [100, 200], held).copies(),
+            [{"instance": "two", "pid": 200}],
+        )
+        self.assertEqual(
+            self.install_of("two", [100, 200], held).copies(),
+            [{"instance": "", "pid": 100}],
+        )
+
+    def test_a_folder_whose_instance_is_gone_names_nobody(self) -> None:
+        # What a run that ended left behind: its pid may be the game as ever's by now.
+        self.record("two", "eluvian.json", 100, age=600)
+        self.record("two", bridge_module.LAUNCH_FILE, 100, age=600)
+        self.assertEqual(self.install_of("", [100], {"dragonage"}).running(), [100])
+        self.assertEqual(self.install_of("two", [100], {"dragonage"}).running(), [])
+
+    def test_a_copy_just_started_is_its_instances_before_its_mutex_is_there(
+        self,
+    ) -> None:
+        self.record("two", bridge_module.LAUNCH_FILE, 200)
+        self.assertEqual(
+            self.install_of("two", [100, 200], {"dragonage"}).running(), [200]
+        )
+        self.assertEqual(
+            self.install_of("", [100, 200], {"dragonage"}).running(), [100]
+        )
+        # Eluvian's own file is of some run, this one or one before: it says nothing until
+        # the instance's mutex is there.
+        self.record("three", "eluvian.json", 100)
+        self.assertEqual(
+            self.install_of("", [100, 200], {"dragonage"}).running(), [100]
+        )
+
+    def default_profile(self) -> Path:
+        """A default profile with settings, two characters and four saves."""
+        profile = self.folder / "default" / "BioWare" / "Dragon Age"
+        for part in ("Settings", "addins"):
+            (profile / part).mkdir(parents=True)
+            (profile / part / "a.xml").write_text(part, encoding="utf-8")
+        for character, slots in (
+            ("Lyna", ("Slot_4", "Slot_5", "AutoSave_1")),
+            ("Other", ("Slot_1",)),
+        ):
+            for slot in slots:
+                folder = profile / "Characters" / character / "Saves" / slot
+                folder.mkdir(parents=True)
+                (folder / "save.das").write_text(slot, encoding="utf-8")
+            (profile / "Characters" / character / f"{character}.xml").write_text(
+                "sheet", encoding="utf-8"
+            )
+        return profile
+
+    def test_a_seeded_instance_has_the_settings_and_the_one_save(self) -> None:
+        default = self.default_profile()
+        root = self.folder / "instances"
+        seeded = bridge_module.seed_instance(
+            "two", {"character": "Lyna", "kind": "manual", "number": 4}, default, root
+        )
+        profile = root / "two" / "BioWare" / "Dragon Age"
+        self.assertEqual(seeded["profile"], str(profile))
+        self.assertEqual(
+            (profile / "Settings" / "a.xml").read_text(encoding="utf-8"), "Settings"
+        )
+        self.assertTrue((profile / "addins" / "a.xml").is_file())
+        saves = profile / "Characters" / "Lyna" / "Saves"
+        self.assertEqual([folder.name for folder in saves.iterdir()], ["Slot_4"])
+        self.assertTrue((profile / "Characters" / "Lyna" / "Lyna.xml").is_file())
+        self.assertFalse((profile / "Characters" / "Other").exists())
+        # The loader's own mark that nothing is left to copy.
+        self.assertEqual(
+            (root / "two" / "seeded").read_text(encoding="utf-8"), "seeded\n"
+        )
+        # An instance that has a folder is left as it is.
+        (profile / "Settings" / "a.xml").write_text("its own", encoding="utf-8")
+        self.assertIsNone(bridge_module.seed_instance("two", None, default, root))
+        self.assertEqual(
+            (profile / "Settings" / "a.xml").read_text(encoding="utf-8"), "its own"
+        )
+
+    def many(self, claims: Path | None = None) -> Bridge:
+        """A bridge that can change copies. The game as ever is this test's own; an instance
+        has a folder of its own under `instances` and no game running."""
+        root = self.folder / "instances"
+        self.made: dict[str, FakeProcesses] = {}
+
+        def copy(name: str) -> tuple[Game, FakeProcesses, Path, Path]:
+            folder = bridge_module.log_folder(name, root) if name else self.folder
+            processes = FakeProcesses(self.exe, [] if name else [100], name)
+            self.made[name] = processes
+            return (
+                Game(folder, self.server.server_address[1]),
+                processes,
+                folder / "eluvian.tools.json",
+                folder.parent / "Characters",
+            )
+
+        game, processes, cache, characters = copy("")
+        self.bridge = Bridge(
+            game,
+            processes,
+            cache,
+            self.sent.append,
+            sleep=lambda _: None,
+            characters=characters,
+            copies=copy,
+            claims=claims if claims is not None else self.folder,
+        )
+        return self.bridge
+
+    def test_game_instance_says_which_copy_and_changes_it(self) -> None:
+        self.many()
+        first = self.call("game_instance")["structuredContent"]
+        self.assertIsNone(first["instance"])
+        self.assertEqual(first["folder"], str(self.folder))
+        self.assertTrue(first["running"])
+        second = self.call("game_instance", {"name": "Two"})["structuredContent"]
+        self.assertEqual(second["instance"], "two")
+        self.assertEqual(
+            second["folder"],
+            str(bridge_module.log_folder("two", self.folder / "instances")),
+        )
+        self.assertFalse(second["running"])
+        self.assertIn(
+            {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
+        )
+        self.assertEqual(
+            self.call("game_status")["structuredContent"]["instance"], "two"
+        )
+        back = self.call("game_instance", {"name": ""})["structuredContent"]
+        self.assertIsNone(back["instance"])
+        self.assertNotIn("instance", self.call("game_status")["structuredContent"])
+
+    def test_game_instance_refuses_a_name_the_loader_would(self) -> None:
+        self.many()
+        self.assertTrue(self.call("game_instance", {"name": "two games"})["isError"])
+        self.assertIsNone(self.call("game_instance")["structuredContent"]["instance"])
+
+    def test_a_bridge_made_for_one_copy_keeps_it(self) -> None:
+        refused = self.call("game_instance", {"name": "two"})
+        self.assertTrue(refused["isError"])
+        self.assertIn("one copy", refused["content"][0]["text"])
+        # Asked for the copy it has, it only says so.
+        self.assertFalse(self.call("game_instance", {"name": ""})["isError"])
+
+    def test_an_instance_is_launched_as_one_beside_the_game_as_ever(self) -> None:
+        self.many()
+        self.call("game_instance", {"name": "two"})
+        # Another install's game stops a start of the game as ever, not of an instance.
+        self.made["two"].other.append(
+            {"pid": 7, "exe": r"C:\EA\bin_ship\daorigins.exe"}
+        )
+        result = self.call("game_launch", {"owner": "tester-a"})
+        self.assertFalse(result["isError"])
+        answer = result["structuredContent"]
+        self.assertTrue(answer["launched"])
+        self.assertEqual(answer["instance"], "two")
+        self.assertEqual(
+            self.made["two"].environment,
+            {"ELUVIAN_OWNER": "tester-a", "DAOLIB_INSTANCE": "two"},
+        )
+        self.assertEqual(self.made[""].started, 0)
+        record = (
+            bridge_module.log_folder("two", self.folder / "instances")
+            / bridge_module.LAUNCH_FILE
+        )
+        self.assertEqual(json.loads(record.read_text(encoding="utf-8"))["pid"], 4242)
+
+    def test_the_claim_is_the_installs_whichever_copy_is_driven(self) -> None:
+        self.many()
+        self.call("game_claim", {"owner": "tester-a", "note": "the folder"})
+        self.call("game_instance", {"name": "two"})
+        self.assertTrue((self.folder / bridge_module.CLAIM_FILE).is_file())
+        refused = self.call("game_launch", {"owner": "tester-b"})
+        self.assertTrue(refused["isError"])
+        self.assertIn("claimed by tester-a", refused["content"][0]["text"])
+        self.assertEqual(self.made["two"].started, 0)
+
+    def test_plugins_of_a_folder_are_asked_of_the_loader_and_must_hold_eluvian(
+        self,
+    ) -> None:
+        self.processes.pids.clear()
+        plugins = self.folder / "build" / "daolib" / "plugins"
+        (plugins / "eluvian").mkdir(parents=True)
+        refused = self.call("game_launch", {"plugins": str(plugins)})
+        self.assertTrue(refused["isError"])
+        self.assertIn("eluvian.dll", refused["content"][0]["text"])
+        self.assertEqual(self.processes.started, 0)
+        (plugins / "eluvian" / "eluvian.dll").write_bytes(b"")
+        self.assertFalse(self.call("game_launch", {"plugins": str(plugins)})["isError"])
+        self.assertEqual(
+            self.processes.environment["DAOLIB_PLUGINS"], str(plugins.resolve())
+        )
+
+    def test_a_seed_of_one_save_is_an_instances(self) -> None:
+        self.processes.pids.clear()
+        refused = self.call("game_launch", {"seed": "save"})
+        self.assertTrue(refused["isError"])
+        self.assertIn("instance", refused["content"][0]["text"])
+        self.assertTrue(self.call("game_launch", {"seed": "everything"})["isError"])
+        self.assertEqual(self.processes.started, 0)
+
+    def test_an_instance_seeded_with_a_save_is_given_it_before_its_start(self) -> None:
+        default = self.default_profile()
+        (default / "daolib").mkdir()
+        self.many(default / "daolib")
+        self.call("game_instance", {"name": "two"})
+        save = {"character": "Lyna", "kind": "manual", "number": 4}
+        answer = self.call("game_launch", {"seed": "save", "load": save})[
+            "structuredContent"
+        ]
+        self.assertIn("Characters\\Lyna\\Saves\\Slot_4", answer["seeded"]["copied"])
+        profile = self.folder / "instances" / "two" / "BioWare" / "Dragon Age"
+        self.assertTrue(
+            (
+                profile / "Characters" / "Lyna" / "Saves" / "Slot_4" / "save.das"
+            ).is_file()
+        )
+        self.assertFalse((profile / "Characters" / "Other").exists())
+        self.assertEqual(self.made["two"].started, 1)
+
+    def test_status_lists_the_other_copies_running(self) -> None:
+        self.processes.beside = [{"instance": "two", "pid": 200}]
+        status = self.call("game_status")["structuredContent"]
+        self.assertEqual(status["copies"], [{"instance": "two", "pid": 200}])
+        self.assertNotIn("instance", status)
 
 
 if __name__ == "__main__":

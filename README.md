@@ -30,6 +30,8 @@ claude mcp add eluvian -- python "C:\Program Files (x86)\GOG Galaxy\Games\Dragon
 
 In a clone of this repository the same file is `tools\eluvian_bridge.py`, which `.mcp.json` starts; there it takes the GOG install's game unless `--exe` names another.
 
+The game runs one at a time, except as a named instance: a second copy beside the first with its own saves, settings, logs and port, which a loader of DAOLib later than 0.1.0 makes of a copy started with a name. A bridge drives one copy; `game_instance {"name": "mytest"}` makes it that instance's, and `--instance mytest` starts it so. [dev/PLAYBOOK.md](dev/PLAYBOOK.md) has the calls.
+
 A script calls one tool from the shell and reads the answer as JSON (here from a clone):
 
 ```powershell

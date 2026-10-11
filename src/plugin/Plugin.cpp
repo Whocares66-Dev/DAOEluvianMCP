@@ -32,6 +32,7 @@
 
 #include "dao/Frame.h"
 #include "dao/Log.h"
+#include "dao/Module.h"
 #include "dao/Plugin.h"
 
 #include <spdlog/spdlog.h>
@@ -193,22 +194,33 @@ struct State
 // when the process ends, and the OS takes everything then.
 State *g = nullptr;
 
+// Whether this game's files beside the logs have the plain names
+// (eluvian.json, eluvian.events.jsonl) or a second game's, with its pid. A
+// game that found the first port taken is a second game in the same folder:
+// on 2026-09-30 one wrote its port over the first's, and the bridge then
+// looked for the game that was gone (turn-based-agent). An instance (DAOLib
+// #67, dao::Module::Instance) has a folder of its own and is alone in it,
+// whatever port it got: it took 8931 beside the first game and its file was
+// eluvian.<pid>.json where the bridge looks for eluvian.json (lib-agent's
+// play test, 2026-10-11, #116).
+bool PlainNames(std::uint16_t port)
+{
+    return port == PortSetting() || !dao::Module::Instance().empty();
+}
+
 // Where scripts and the bridge find the port: eluvian.json beside the logs.
-// A game that found the first port taken is a second game, and writes
-// eluvian.<pid>.json instead, as DAOLib names a second game's logs: on
-// 2026-09-30 a second game wrote its port over the first's, and the bridge
-// then looked for the game that was gone (turn-based-agent).
 void WriteRuntime(std::uint16_t port)
 {
     const auto name =
-        port == PortSetting() ? std::string("eluvian.json") : std::format("eluvian.{}.json", GetCurrentProcessId());
+        PlainNames(port) ? std::string("eluvian.json") : std::format("eluvian.{}.json", GetCurrentProcessId());
     const auto file = dao::LogDirectory() / name;
     std::ofstream out(file, std::ios::trunc);
     out << Json{{"pid", GetCurrentProcessId()},
                 {"port", port},
                 {"mcp", std::format("http://127.0.0.1:{}/mcp", port)},
                 {"rest", std::format("http://127.0.0.1:{}/api/", port)},
-                {"version", EL_VERSION_STRING}}
+                {"version", EL_VERSION_STRING},
+                {"instance", dao::Module::Instance()}}
                .dump(2);
 }
 
@@ -244,9 +256,13 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     };
     const auto health = [] {
         static const std::string owner = OwnerSetting();
+        // Which copy of the game answers: an instance's name, or nothing
+        // for the game as ever (#116).
+        static const std::string instance = dao::Module::Instance();
         return Json{{"port", g->port},
                     {"version", EL_VERSION_STRING},
                     {"owner", owner.empty() ? Json(nullptr) : Json(owner)},
+                    {"instance", instance.empty() ? Json(nullptr) : Json(instance)},
                     {"plugins", plugin::RegisteredByPlugins()}};
     };
     plugin::RegisterTools(g->bench, g->watch, plugin::ToolSetup{whyNothing, health, dao::LogDirectory()});
@@ -269,8 +285,8 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     // Every event of the run in a file, named as the port's: a second game's
     // is eluvian.<pid>.events.jsonl.
     {
-        const auto name = g->port == PortSetting() ? std::string("eluvian.events.jsonl")
-                                                   : std::format("eluvian.{}.events.jsonl", GetCurrentProcessId());
+        const auto name = PlainNames(g->port) ? std::string("eluvian.events.jsonl")
+                                              : std::format("eluvian.{}.events.jsonl", GetCurrentProcessId());
         g->events = std::make_unique<EventLog>(dao::LogDirectory() / name);
         if (g->events->Open())
         {
