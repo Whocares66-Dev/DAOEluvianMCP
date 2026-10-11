@@ -278,7 +278,7 @@ class Game:
         self.folder = folder
         self.fixed_port = port
         self.running = running  # the pids of the games running, to tell a stale file by
-        self.found: tuple[float, int] | None = None
+        self.found: tuple[float, int | None] | None = None
 
     def read_runtime(self, name: str) -> dict | None:
         try:
@@ -287,35 +287,65 @@ class Game:
         except (OSError, ValueError, AttributeError):
             return None
 
-    def find_port(self) -> int:
-        """The port of a game that is running. eluvian.json's, if its game still runs (or
-        there is no telling); else a running game's own file; else what eluvian.json says, or
-        the default. A second game once wrote its port over the first's and went away
-        (2026-09-30): the file named a game that was gone while the first still served."""
+    def answers_as(self, port: int, pids: set[int]) -> bool:
+        """Whether the game answering at `port` is one of `pids`, by its own health."""
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/health", timeout=2
+            ) as response:
+                return json.loads(response.read() or b"null").get("pid") in pids
+        except (OSError, ValueError, AttributeError):
+            return False
+
+    def find_port(self) -> int | None:
+        """The port of this copy's game, or None where no game of this copy vouches for one.
+        eluvian.json's, if the game it names runs; else a running game's own file,
+        eluvian.<pid>.json, which a game that found the first port taken writes. A second
+        game once wrote its port over the first's and went away (2026-09-30): the file named
+        a game that was gone while the first still served, on the default port. So a port
+        the file's own game does not stand behind is tried, the file's and the default, and
+        taken only if the game answering there says in its health that it is one of this
+        copy's processes: an instance started while no other game was up took the default
+        port itself, and a bridge for the game as ever would have sent its tools there
+        (shaders-agent, 2026-10-11, #119). With no game of this copy running there is none
+        to ask, and no port."""
         named = self.read_runtime("eluvian.json")
-        pids = set(self.running()) if self.running is not None else None
-        if named and (pids is None or named.get("pid") in pids):
+        if self.running is None:
+            # A bridge given no way to tell which games run: the file's word, or the default.
+            return named["port"] if named else DEFAULT_PORT
+        pids = set(self.running())
+        if not pids:
+            return None
+        if named and named.get("pid") in pids:
             return named["port"]
-        for pid in sorted(pids or ()):
+        for pid in sorted(pids):
             own = self.read_runtime(f"eluvian.{pid}.json")
             if own:
                 return own["port"]
-        if named and pids:
-            return DEFAULT_PORT  # a game runs, and it is not the one the file names
-        return named["port"] if named else DEFAULT_PORT
+        guesses = ([named["port"]] if named else []) + [DEFAULT_PORT]
+        for port in dict.fromkeys(guesses):
+            if self.answers_as(port, pids):
+                return port
+        return None
 
-    def port(self) -> int:
+    def port(self) -> int | None:
         if self.fixed_port is not None:
             return self.fixed_port
         now = time.monotonic()
-        if self.found is None or now - self.found[0] > 5:
+        # No port is asked again sooner: a game just started has one within seconds.
+        if self.found is None or now - self.found[0] > (
+            5 if self.found[1] is not None else 1
+        ):
             self.found = (now, self.find_port())
         return self.found[1]
 
     def request(
         self, method: str, path: str, body: object = None, timeout: float = 10
     ) -> tuple[int, object]:
-        url = f"http://127.0.0.1:{self.port()}{path}"
+        port = self.port()
+        if port is None:
+            raise Unreachable("no game of this copy has said where it answers")
+        url = f"http://127.0.0.1:{port}{path}"
         data = None if body is None else json.dumps(body).encode("utf-8")
         request = urllib.request.Request(url, data=data, method=method)
         if data is not None:
@@ -376,11 +406,14 @@ class Processes:
         instance: str = "",
         root: Path | None = None,
         held: Callable[[str], bool] = mutex_held,
+        logs: Path | None = None,
     ) -> None:
         self.exe = exe
         self.instance = instance
         self.root = root if root is not None else instances_root()
         self.held = held
+        # This copy's own folder beside its logs, for what it says of its own process.
+        self.logs = logs if logs is not None else log_folder(instance, self.root)
 
     def named(self) -> list[int]:
         """Every process with the game's file name, whichever install it is of."""
@@ -403,52 +436,78 @@ class Processes:
         not Eluvian's to attach to, count as its own, or close."""
         return [pid for pid in self.named() if is_same_file(image_path(pid), self.exe)]
 
-    def instances(self) -> dict[int, str]:
-        """Which pids are instances', by name. Every copy of one install is the same file, so
-        the process does not say; each instance's own folder does: the pid its Eluvian wrote
-        in eluvian.json, or the one a bridge wrote as it started it. A folder's word counts
-        only while its instance runs (its mutex is there), or was started within the last two
-        minutes, the mutex coming a moment after the process: what a run that ended left
-        behind names a pid that may be another game's by now."""
+    @staticmethod
+    def said(logs: Path, trusted: bool) -> list[int]:
+        """The pids a copy's folder names: the one its Eluvian wrote in eluvian.json, and the
+        one a bridge wrote as it started it. Eluvian's file is of some run, this one or one
+        long over, so it counts only where `trusted` says the copy runs; a bridge's record
+        counts for two minutes whatever else, a copy's mutex coming a moment after its
+        process."""
+        pids = []
+        for file in (LAUNCH_FILE, "eluvian.json"):
+            try:
+                recent = time.time() - (logs / file).stat().st_mtime < 120
+                pid = json.loads((logs / file).read_text(encoding="utf-8")).get("pid")
+            except (OSError, ValueError, AttributeError):
+                continue
+            if isinstance(pid, int) and (trusted or (file == LAUNCH_FILE and recent)):
+                pids.append(pid)
+        return pids
+
+    def attribution(self) -> tuple[list[int], dict[int, str], list[str]]:
+        """The install's processes, which of them are instances' by name, and the instances
+        that run with no process named. Every copy of one install is the same file, so a
+        process does not say whose it is; each instance's own folder does, while the instance
+        runs (its mutex is there): what a run that ended left behind names a pid that may be
+        another game's by now. An instance started by hand with no Eluvian in it leaves no
+        word at all: its mutex says that it runs, and nothing says which process it is."""
+        pids = self.of_install()
         found: dict[int, str] = {}
+        unnamed: list[str] = []
         try:
             folders = [folder for folder in self.root.iterdir() if folder.is_dir()]
         except OSError:
-            return found
+            return pids, found, unnamed
         for folder in folders:
             name = folder.name.lower()
-            logs = log_folder(name, self.root)
-            running = self.held(mutex_of(name))
-            for file in (LAUNCH_FILE, "eluvian.json"):
-                try:
-                    recent = time.time() - (logs / file).stat().st_mtime < 120
-                    pid = json.loads((logs / file).read_text(encoding="utf-8")).get(
-                        "pid"
-                    )
-                except (OSError, ValueError, AttributeError):
-                    continue
-                if isinstance(pid, int) and (
-                    running or (file == LAUNCH_FILE and recent)
-                ):
-                    found[pid] = name
-        return found
+            runs = self.held(mutex_of(name))
+            theirs = self.said(log_folder(name, self.root), runs)
+            for pid in theirs:
+                found[pid] = name
+            if runs and not any(pid in pids for pid in theirs):
+                unnamed.append(name)
+        return pids, found, unnamed
+
+    def instances(self) -> dict[int, str]:
+        """Which pids are instances', by name."""
+        return self.attribution()[1]
 
     def running(self) -> list[int]:
         """This copy's game only: the instance's, or for the game as ever whichever of the
-        install's is no instance's."""
-        theirs = self.instances()
-        return [
-            pid for pid in self.of_install() if theirs.get(pid, "") == self.instance
-        ]
+        install's is no instance's. While an instance runs that names no process, one of
+        those is its, and which is not known: then the game as ever's are only the ones its
+        own folder names, and with none named it has none. That is wrong for the moment a
+        game started by hand takes to say its pid, and is the cheaper mistake: the other is
+        another's game closed, or a start refused because another's runs (#119)."""
+        pids, theirs, unnamed = self.attribution()
+        mine = [pid for pid in pids if theirs.get(pid, "") == self.instance]
+        if self.instance or not unnamed:
+            return mine
+        own = self.said(self.logs, self.held(mutex_of("")))
+        return [pid for pid in mine if pid in own]
 
     def copies(self) -> list[dict]:
         """The install's other copies running now: the game as ever (instance "") and the
-        instances that are not this one."""
-        theirs = self.instances()
-        return [
+        instances that are not this one, each with its process; an instance that names no
+        process is listed without one."""
+        pids, theirs, unnamed = self.attribution()
+        others = [
             {"instance": theirs.get(pid, ""), "pid": pid}
-            for pid in self.of_install()
-            if theirs.get(pid, "") != self.instance
+            for pid in pids
+            if theirs.get(pid, "") != self.instance and (theirs.get(pid) or not unnamed)
+        ]
+        return others + [
+            {"instance": name, "pid": None} for name in unnamed if name != self.instance
         ]
 
     def others(self) -> list[dict]:
@@ -1221,16 +1280,16 @@ class Bridge:
                 )
             started = time.time() - 2  # the logs of this start are no older
             pid = self.processes.start(environment)
-            if self.instance:
-                # Whose the new process is, until its Eluvian says so itself (Processes.instances).
-                try:
-                    self.game.folder.mkdir(parents=True, exist_ok=True)
-                    (self.game.folder / LAUNCH_FILE).write_text(
-                        json.dumps({"pid": pid, "instance": self.instance}),
-                        encoding="utf-8",
-                    )
-                except OSError:
-                    pass
+            # Whose the new process is, until its Eluvian says so itself (Processes.said):
+            # for an instance, and for the game as ever beside an instance that names none.
+            try:
+                self.game.folder.mkdir(parents=True, exist_ok=True)
+                (self.game.folder / LAUNCH_FILE).write_text(
+                    json.dumps({"pid": pid, "instance": self.instance}),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
         wait = arguments.get("waitSeconds", 180)
         deadline = time.monotonic() + (wait if isinstance(wait, (int, float)) else 180)
         health = None

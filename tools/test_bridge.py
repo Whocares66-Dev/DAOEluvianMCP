@@ -22,6 +22,7 @@ class FakeGame(BaseHTTPRequestHandler):
     revision = 1
     popup = False  # whether the game's message box is up
     forced = False  # whether the game was told Force Load
+    pid: int | None = None  # the process its health says it is, where a test needs one
 
     def log_message(self, *args) -> None:  # quiet
         pass
@@ -39,7 +40,10 @@ class FakeGame(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/api/health":
-            self.answer(200, {"state": "running", "mode": "explore"})
+            health = {"state": "running", "mode": "explore"}
+            if FakeGame.pid is not None:
+                health["pid"] = FakeGame.pid
+            self.answer(200, health)
         elif self.path == "/api/slow":
             time.sleep(1.5)
             self.answer(200, {"late": True})
@@ -799,21 +803,29 @@ class BridgeTest(unittest.TestCase):
             )
 
         # A second game wrote its port over the first's, then went away
-        # (2026-09-30): the first, still running, serves on the default.
-        write("eluvian.json", 71156, 8931)
-        self.assertEqual(
-            Game(self.folder, running=lambda: [47408]).port(),
-            bridge_module.DEFAULT_PORT,
-        )
+        # (2026-09-30): the first, still running, serves where it did. The file's port
+        # is the first's only if the game answering there says it is that process.
+        there = self.server.server_address[1]
+        write("eluvian.json", 71156, there)
+        self.addCleanup(setattr, FakeGame, "pid", None)
+        FakeGame.pid = 47408
+        self.assertEqual(Game(self.folder, running=lambda: [47408]).port(), there)
+        # Another copy answering there is not this one's game: no port, and no call sent.
+        FakeGame.pid = 555
+        stranger = Game(self.folder, running=lambda: [47408])
+        self.assertIsNone(stranger.port())
+        with self.assertRaises(bridge_module.Unreachable):
+            stranger.request("GET", "/api/health")
         # The game the file names is the one running: its port.
+        write("eluvian.json", 71156, 8931)
         self.assertEqual(Game(self.folder, running=lambda: [71156]).port(), 8931)
         # A second game keeps its own file, and is found by its pid.
         write("eluvian.json", 100, 8930)
         write("eluvian.200.json", 200, 8931)
         self.assertEqual(Game(self.folder, running=lambda: [200]).port(), 8931)
         self.assertEqual(Game(self.folder, running=lambda: [100, 200]).port(), 8930)
-        # No game runs: the last one known, for when it comes back.
-        self.assertEqual(Game(self.folder, running=list).port(), 8930)
+        # No game of this copy runs: no port, whoever may listen on the one last known.
+        self.assertIsNone(Game(self.folder, running=list).port())
 
     # ---- a second copy of the game beside the first (#116) -------------------
 
@@ -840,7 +852,11 @@ class BridgeTest(unittest.TestCase):
         """The real Processes over a made-up install: `pids` are its games, `held` the
         mutexes that are there."""
         processes = bridge_module.Processes(
-            self.exe, instance, self.folder / "instances", lambda name: name in held
+            self.exe,
+            instance,
+            self.folder / "instances",
+            lambda name: name in held,
+            self.folder / "as-ever",
         )
         processes.of_install = lambda: list(pids)
         return processes
@@ -894,6 +910,48 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(
             self.install_of("", [100, 200], {"dragonage"}).running(), [100]
         )
+
+    def test_an_instance_that_names_no_process_is_not_taken_for_the_game_as_ever(
+        self,
+    ) -> None:
+        # An instance started by hand with no Eluvian in it: its mutex, and no file.
+        (self.folder / "instances" / "lib").mkdir(parents=True)
+        held = {"dragonage-lib"}
+        self.assertEqual(self.install_of("", [300], held).running(), [])
+        self.assertEqual(
+            self.install_of("", [300], held).copies(),
+            [{"instance": "lib", "pid": None}],
+        )
+        # The game as ever beside it is the process its own folder names.
+        as_ever = self.folder / "as-ever"
+        as_ever.mkdir()
+        (as_ever / "eluvian.json").write_text(
+            json.dumps({"pid": 100, "port": 8930}), encoding="utf-8"
+        )
+        held = {"dragonage", "dragonage-lib"}
+        self.assertEqual(self.install_of("", [100, 300], held).running(), [100])
+        # Its file from a run long over says nothing once the game as ever is gone.
+        self.assertEqual(self.install_of("", [100], {"dragonage-lib"}).running(), [])
+        # One a bridge just started is its own before the mutex is there.
+        (as_ever / bridge_module.LAUNCH_FILE).write_text(
+            json.dumps({"pid": 400}), encoding="utf-8"
+        )
+        self.assertEqual(
+            self.install_of("", [300, 400], {"dragonage-lib"}).running(), [400]
+        )
+        # With every instance's process named, the rest are the game as ever's, as before.
+        self.record("lib", "eluvian.json", 300, age=600)
+        self.assertEqual(
+            self.install_of("", [300, 500], {"dragonage-lib"}).running(), [500]
+        )
+
+    def test_a_start_leaves_word_of_whose_the_process_is(self) -> None:
+        self.processes.pids.clear()
+        self.assertFalse(self.call("game_launch")["isError"])
+        record = json.loads(
+            (self.folder / bridge_module.LAUNCH_FILE).read_text(encoding="utf-8")
+        )
+        self.assertEqual(record, {"pid": 4242, "instance": ""})
 
     def default_profile(self) -> Path:
         """A default profile with settings, two characters and four saves."""
