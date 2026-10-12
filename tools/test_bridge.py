@@ -622,7 +622,7 @@ class BridgeTest(unittest.TestCase):
                 "frame: it ended itself, with no crash\n"
                 "SYSTEM: Windows 10\n"
                 "PROBABLE CALL STACK:\n"
-                "\t[ 0] 0x10001234 version.dll ExitHook+0x0\n"
+                "\t[ 0] 0x10001234 dinput8.dll ExitHook+0x0\n"
                 "\t[ 1] 0x008edb57 DAOrigins.exe 0x008edb57\n"
                 "\t[ 2] 0x008edd96 DAOrigins.exe 0x008edd96 _exit+0xd\n"
                 "\n"

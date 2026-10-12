@@ -333,9 +333,10 @@ if(EL_BUILD_TESTS)
 endif()
 
 # `cmake --build --preset debug` builds the loader too, so build\<preset>\
-# is a game folder's worth of files: version.dll, daolib\plugins\<name>\ (a
+# is a game folder's worth of files: dinput8.dll (DAOLib's target `loader`;
+# version.dll and `version` before DAOLib #93), daolib\plugins\<name>\ (a
 # folder a plugin, DAOLib #26) and
 # daolib\addresses\*.bin (the address library's files, one per build of the
 # game, without which the loader loads nothing; built with whatever links
 # daolib, DAOLib 8ecb9ac on).
-add_custom_target(game_folder ALL DEPENDS version eluvian)
+add_custom_target(game_folder ALL DEPENDS loader eluvian)

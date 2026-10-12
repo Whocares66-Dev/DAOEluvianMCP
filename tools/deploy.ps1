@@ -9,9 +9,11 @@
     release's zip has them, #115) at bin_ship\daolib\plugins\eluvian\, where a loader of
     DAOLib #26 on looks for it. The game must not be running: it holds the file open.
 
-    DAOLib's loader (version.dll) is copied only if the game has none, or with -Loader: the
-    turn-based mod deploys one too, and a loader loads every plugin of its own plugin API, so
-    Eluvian does not replace another's. A loader of another API is refused by this plugin:
+    DAOLib's loader (dinput8.dll; version.dll before DAOLib #93) is copied only if the game has
+    none under either name, or with -Loader: the turn-based mod deploys one too, and a loader
+    loads every plugin of its own plugin API, so Eluvian does not replace another's. Where
+    dinput8.dll is in the game, a version.dll beside it is taken out: two loaders would each
+    load the plugins. A loader of another API is refused by this plugin:
     eluvian.log says so in the game's first second, and the bridge's game_launch repeats it.
     -Loader puts this build's loader in, which the plugins built for the old one then refuse,
     so agree it with whoever else deploys plugins.
@@ -69,14 +71,14 @@ $pluginDir = Join-Path $plugins 'eluvian'
 
 if ($Remove) {
     if (Test-Path $pluginDir) { Remove-Item -Recurse -Force $pluginDir; Show-Ok "removed $pluginDir" }
-    Show-Info 'the loader (version.dll) stays; DAOLib''s deploy.ps1 -Remove takes it out'
+    Show-Info 'the loader (dinput8.dll) stays; DAOLib''s deploy.ps1 -Remove takes it out'
     return
 }
 
 $build = Join-Path $repo "build\$Preset"
 $builtDir = Join-Path $build 'daolib\plugins\eluvian'
 $builtPlugin = Join-Path $builtDir 'eluvian.dll'
-$builtLoader = Join-Path $build 'version.dll'
+$builtLoader = Join-Path $build 'dinput8.dll'
 foreach ($f in @($builtPlugin, $builtLoader)) {
     if (-not (Test-Path $f)) { throw "No $f; run .\tools\build.ps1 -Preset $Preset first" }
 }
@@ -86,16 +88,29 @@ if (-not (Test-Path (Join-Path $builtAddresses '*.bin'))) {
 }
 
 New-Item -ItemType Directory -Force $plugins | Out-Null
-$gameLoader = Join-Path $Game 'version.dll'
-$keptLoader = -not $Loader -and (Test-Path $gameLoader)
-if ($Loader -or -not (Test-Path $gameLoader)) {
+$gameLoader = Join-Path $Game 'dinput8.dll'
+# The loader as it was named before DAOLib #93: a game that has only that one has a loader,
+# and it loads this plugin as the new one does. Beside the new one it is a second loader,
+# and each would load the plugins (DAOLib #99), so it goes wherever the new one is.
+$oldLoader = Join-Path $Game 'version.dll'
+$hasLoader = (Test-Path $gameLoader) -or (Test-Path $oldLoader)
+$keptLoader = -not $Loader -and $hasLoader
+if ($Loader -or -not $hasLoader) {
     Copy-Item -Force $builtLoader $gameLoader
-    $loaderPdb = Join-Path $build 'version.pdb'
-    if (Test-Path $loaderPdb) { Copy-Item -Force $loaderPdb (Join-Path $Game 'version.pdb') }
+    $loaderPdb = Join-Path $build 'dinput8.pdb'
+    if (Test-Path $loaderPdb) { Copy-Item -Force $loaderPdb (Join-Path $Game 'dinput8.pdb') }
     Show-Ok "loader  -> $gameLoader"
 }
-else {
+elseif (Test-Path $gameLoader) {
     Show-Info "loader  already at $gameLoader (kept; -Loader replaces it)"
+}
+else {
+    Show-Info "loader  already at $oldLoader, its name before DAOLib #93 (kept; -Loader puts dinput8.dll in its place)"
+}
+if (Test-Path $gameLoader) {
+    foreach ($f in @($oldLoader, (Join-Path $Game 'version.pdb'))) {
+        if (Test-Path $f) { Remove-Item -Force $f; Show-Ok "removed $f (the loader is dinput8.dll now)" }
+    }
 }
 # The plugin's folder as built, but the linker's incremental-link file.
 New-Item -ItemType Directory -Force $pluginDir | Out-Null

@@ -9,7 +9,7 @@
     `git submodule update --init` after cloning), or ..\DAOLib if there is none.
 
 .PARAMETER Preset
-    debug       eluvian.dll, DAOLib's loader (version.dll), and the tests (the
+    debug       eluvian.dll, DAOLib's loader (dinput8.dll), and the tests (the
                 server's over loopback among them); build\debug is then a game
                 folder's worth of files for tools\deploy.ps1. The first run
                 compiles spdlog, Detours, cpp-httplib and Catch2 through vcpkg.
