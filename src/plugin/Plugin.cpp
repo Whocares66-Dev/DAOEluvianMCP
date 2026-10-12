@@ -195,24 +195,27 @@ struct State
 State *g = nullptr;
 
 // Whether this game's files beside the logs have the plain names
-// (eluvian.json, eluvian.events.jsonl) or a second game's, with its pid. A
-// game that found the first port taken is a second game in the same folder:
-// on 2026-09-30 one wrote its port over the first's, and the bridge then
-// looked for the game that was gone (turn-based-agent). An instance (DAOLib
-// #67, dao::Module::Instance) has a folder of its own and is alone in it,
-// whatever port it got: it took 8931 beside the first game and its file was
-// eluvian.<pid>.json where the bridge looks for eluvian.json (lib-agent's
-// play test, 2026-10-11, #116).
-bool PlainNames(std::uint16_t port)
+// (eluvian.json, eluvian.events.jsonl) or a second game's, with its pid: a
+// second game in one folder wrote its port over the first's on 2026-09-30,
+// and the bridge then looked for the game that was gone (turn-based-agent).
+// It is the folder's owner that has them, as it has the plain eluvian.log
+// (dao::OwnsLogs, DAOLib #91), so the two cannot disagree. Until #122 the
+// port said it, a game that found the first port taken being a second game
+// in the folder; an instance (DAOLib #67) in a folder of its own broke that
+// both ways: it took 8931 beside the first game and wrote eluvian.<pid>.json
+// where the bridge looks for eluvian.json (lib-agent's play test,
+// 2026-10-11, #116), and held 8930 while the game as ever, alone in its
+// folder on 8931, wrote its pid's names each run (2026-10-12).
+bool PlainNames()
 {
-    return port == PortSetting() || !dao::Module::Instance().empty();
+    return dao::OwnsLogs();
 }
 
 // Where scripts and the bridge find the port: eluvian.json beside the logs.
 void WriteRuntime(std::uint16_t port)
 {
     const auto name =
-        PlainNames(port) ? std::string("eluvian.json") : std::format("eluvian.{}.json", GetCurrentProcessId());
+        PlainNames() ? std::string("eluvian.json") : std::format("eluvian.{}.json", GetCurrentProcessId());
     const auto file = dao::LogDirectory() / name;
     std::ofstream out(file, std::ios::trunc);
     out << Json{{"pid", GetCurrentProcessId()},
@@ -282,11 +285,11 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
         return true; // the game plays on; the plugins that register still can
     }
     WriteRuntime(g->port);
-    // Every event of the run in a file, named as the port's: a second game's
-    // is eluvian.<pid>.events.jsonl.
+    // Every event of the run in a file, named as the port's file is: a second
+    // game's in one folder is eluvian.<pid>.events.jsonl.
     {
-        const auto name = PlainNames(g->port) ? std::string("eluvian.events.jsonl")
-                                              : std::format("eluvian.{}.events.jsonl", GetCurrentProcessId());
+        const auto name = PlainNames() ? std::string("eluvian.events.jsonl")
+                                       : std::format("eluvian.{}.events.jsonl", GetCurrentProcessId());
         g->events = std::make_unique<EventLog>(dao::LogDirectory() / name);
         if (g->events->Open())
         {

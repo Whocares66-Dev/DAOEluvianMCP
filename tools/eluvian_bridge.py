@@ -107,7 +107,7 @@ def documents_folder() -> Path:
 
 # Every event of the last run, a JSON object a line (core/EventLog.h).
 EVENTS_FILE = "eluvian.events.jsonl"
-# A game's that found the first port taken, named by its pid as its eluvian.<pid>.json is.
+# A second game's in one folder, named by its pid as its eluvian.<pid>.json is.
 OWN_EVENTS_FILE = re.compile(r"eluvian\.\d+\.events\.jsonl")
 
 
@@ -277,7 +277,7 @@ def call_budget(arguments: object, budget: dict | None) -> float:
 
 class Game:
     """The game's REST API, at the port its Eluvian wrote down beside the logs: eluvian.json,
-    or eluvian.<pid>.json for a game that found the first port taken."""
+    or eluvian.<pid>.json for a game started in a folder where another runs."""
 
     def __init__(
         self,
@@ -310,7 +310,8 @@ class Game:
     def find_port(self) -> int | None:
         """The port of this copy's game, or None where no game of this copy vouches for one.
         eluvian.json's, if the game it names runs; else a running game's own file,
-        eluvian.<pid>.json, which a game that found the first port taken writes. A second
+        eluvian.<pid>.json, which a game started in a folder where another runs writes (and,
+        until #122, any game that found the first port taken). A second
         game once wrote its port over the first's and went away (2026-09-30): the file named
         a game that was gone while the first still served, on the default port. So a port
         the file's own game does not stand behind is tried, the file's and the default, and
@@ -341,12 +342,12 @@ class Game:
     def events_file(self, pids: set[int], previous: bool = False) -> Path:
         """The file of this copy's game's events (core/EventLog.h), or of the run before it.
         The game find_port chooses is the one whose events these are: eluvian.json's game
-        writes eluvian.events.jsonl, and a game that found the first port taken its own
-        eluvian.<pid>.events.jsonl. Only the plain name was read, so a second instance's
+        writes eluvian.events.jsonl, and a game started in a folder where another runs its
+        own eluvian.<pid>.events.jsonl. Only the plain name was read, so a second instance's
         game_events answered a run of hours before while its events tool answered the live
-        ones (kadan-agent, 2026-10-12, #121; that Eluvian was older than #116, and the game
-        as ever beside an instance holding the first port writes the same today). With no
-        game of this copy running, the last game's is the one written last."""
+        ones (kadan-agent, 2026-10-12, #121; that Eluvian was older than #116, and until
+        #122 any game that found the first port taken wrote its pid's names). With no game
+        of this copy running, the last game's is the one written last."""
         named = self.read_runtime("eluvian.json")
         file = self.folder / EVENTS_FILE
         if not pids:
@@ -659,9 +660,9 @@ BRIDGE_TOOLS = [
             '`since` (a seq; default the first), `topic` (a name, a prefix ending in ".*", or a '
             "list of them), `limit` (default 500). Answers `events` as the events tool gives them, "
             "`next` to read on from, `count` matched, `running` (whether a game runs now, "
-            "whose file it is then) and `file`, the one read: a game that found the first port "
-            "taken keeps eluvian.<pid>.events.jsonl, and with no game running the file written "
-            "last is read. A new game starts the file again, keeping the run before's: "
+            "whose file it is then) and `file`, the one read: a game started in a folder where "
+            "another runs keeps eluvian.<pid>.events.jsonl, and with no game running the file "
+            "written last is read. A new game starts the file again, keeping the run before's: "
             "`previous: true` reads that one (a crash's, after a launch)."
         ),
         "inputSchema": {

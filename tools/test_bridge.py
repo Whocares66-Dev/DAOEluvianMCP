@@ -539,10 +539,11 @@ class BridgeTest(unittest.TestCase):
         read = self.call("game_events", arguments)["structuredContent"]
         return [e["topic"] for e in read["events"]]
 
-    def test_a_game_on_a_second_port_is_read_from_its_own_events_file(self) -> None:
-        # A game that found the first port taken keeps eluvian.<pid>.events.jsonl, and the
-        # plain file beside it is an older run's: that one was answered, `running: true`
-        # (kadan-agent, 2026-10-12, #121).
+    def test_a_second_game_in_a_folder_is_read_from_its_own_events_file(self) -> None:
+        # A game that does not own its folder's plain names keeps eluvian.<pid>.events.jsonl
+        # (until #122, any game that found the first port taken), and the plain file beside
+        # it is an older run's: that one was answered, `running: true` (kadan-agent,
+        # 2026-10-12, #121).
         self.run_of("eluvian.events.jsonl", "hours before", age=3600)
         self.run_of("eluvian.100.events.jsonl", "live")
         self.run_of("eluvian.200.events.jsonl", "another's")
