@@ -171,6 +171,9 @@ Json AbilityJson(std::int32_t ability);
 // Fireball ordered at a creature failed COMMAND_FAILED_PATH_ACTION_REQUIRED
 // 41 times, and at the creature's position cast (#35).
 bool AimedAtAPlace(std::int32_t ability);
+// Whether an ability is used on its user and nothing else (TargetType 1): a
+// sustained mode ordered with no target went off but never on (#124).
+bool UsedOnOneself(std::int32_t ability);
 Json Abilities(ObjectId id);
 Json Effects(ObjectId id);
 

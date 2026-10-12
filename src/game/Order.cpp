@@ -19,6 +19,32 @@ std::int32_t AbilityArg(const Args &args)
     return ability;
 }
 
+// The item an ability comes from, by `item` or `itemTag`, or none. An item
+// named by its tag is found on the creature: a potion's id changes each
+// launch, its tag does not (turn-based-agent, 2026-10-02).
+ObjectId ItemArg(const Args &args, ObjectId who)
+{
+    if (const auto item = args.OptionalId("item", "an item"))
+    {
+        return *item;
+    }
+    if (!args.Has("itemTag"))
+    {
+        return kInvalidObject;
+    }
+    const std::wstring tag = Wide(args.String("itemTag"));
+    const auto items = api::GetItemsInInventory(who, k::GET_ITEMS_OPTION_ALL);
+    for (std::size_t i = 0; i < items.Size(); ++i)
+    {
+        if (api::GetTag(items.Object(i)) == tag)
+        {
+            return items.Object(i);
+        }
+    }
+    throw ToolError(std::format("order: {} carries no item tagged \"{}\"; inventory lists what it has", FormatId(who),
+                                args.String("itemTag")));
+}
+
 // Through the engine's own click functions (dao/Orders.h): the command
 // player-issued, queued as a click queues it. Any creature may obey.
 // PLACEABLE_ACTION_* from 1 (script.ldf), by the names a tester writes.
@@ -44,28 +70,18 @@ bool OrderByCommand(const Args &args, const std::string &action, ObjectId who, J
     if (action == "ability")
     {
         const auto ability = AbilityArg(args);
-        const ObjectId target = args.OptionalId("target", kCreatureHint).value_or(kInvalidObject);
+        ObjectId target = args.OptionalId("target", kCreatureHint).value_or(kInvalidObject);
         const auto point = args.Has("point") ? VectorOf(args.Raw().at("point"), "order: `point`") : dao::Vector{};
-        ObjectId item = args.OptionalId("item", "an item").value_or(kInvalidObject);
-        // An item named by its tag, found on the creature: a potion's id
-        // changes each launch, its tag does not (turn-based-agent, 2026-10-02).
-        if (item == kInvalidObject && args.Has("itemTag"))
+        const ObjectId item = ItemArg(args, who);
+        // An ability used on oneself wants its user as the target, as the
+        // quickbar's click gives it. With none, a sustained mode that was on
+        // went off and one that was off stayed off, the command ending in
+        // success either way, in some twenty tries over five modes; the
+        // scripts' CommandUseAbility did the same, and both turned the mode
+        // on with the creature as the target (kadan-agent, 2026-10-13, #124).
+        if (target == kInvalidObject && !args.Has("point") && item == kInvalidObject && UsedOnOneself(ability))
         {
-            const std::wstring tag = Wide(args.String("itemTag"));
-            const auto items = api::GetItemsInInventory(who, k::GET_ITEMS_OPTION_ALL);
-            for (std::size_t i = 0; i < items.Size() && item == kInvalidObject; ++i)
-            {
-                if (api::GetTag(items.Object(i)) == tag)
-                {
-                    item = items.Object(i);
-                }
-            }
-            if (item == kInvalidObject)
-            {
-                throw ToolError(std::format("order: {} carries no item tagged \"{}\"; inventory lists "
-                                            "what it has",
-                                            FormatId(who), args.String("itemTag")));
-            }
+            target = who;
         }
         answer["ability"] = AbilityJson(ability);
         if (item != kInvalidObject)
@@ -356,7 +372,9 @@ void AddOrder(Bench &bench, const Watch &watch)
                  "- `ability`: use `ability` (an id from `abilities`) on `target` or at `point`. For an item's "
                  "ability, such as a potion's, also pass `item` or `itemTag`. An area ability with a range (such "
                  "as Fireball; `abilities` gives each one's `aoe` and `range`) aimed at a creature is aimed at the "
-                 "ground under it (`aimedAt`), unless `atCreature` is true.\n"
+                 "ground under it (`aimedAt`), unless `atCreature` is true. An ability used on oneself alone "
+                 "(`targetType` 1 in `abilities`, such as a sustained mode) needs no `target`: by command it is "
+                 "aimed at the creature itself, which turns a mode on or off.\n"
                  "- `use`: use the object `target`, such as a door, chest or lever. Using a door toggles it; "
                  "`doorWas` says whether it was open.\n\n"
                  "How the order is sent (`via`):\n"

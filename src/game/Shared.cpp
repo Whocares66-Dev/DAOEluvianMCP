@@ -519,6 +519,13 @@ Json AbilityJson(std::int32_t ability)
     return answer;
 }
 
+// TargetType is bits, and 1 is the user itself (TARGET_TYPE_SELF): alone, the
+// ability has nothing else to be aimed at.
+bool UsedOnOneself(std::int32_t ability)
+{
+    return ability > 0 && api::GetM2DAInt(k::TABLE_ABILITIES_SPELLS, L"TargetType", ability) == 1;
+}
+
 bool AimedAtAPlace(std::int32_t ability)
 {
     return ability > 0 && api::GetM2DAInt(k::TABLE_ABILITIES_SPELLS, L"AOE_Type", ability) != 0 &&
