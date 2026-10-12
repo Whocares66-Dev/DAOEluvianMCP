@@ -476,21 +476,34 @@ class Levelling
 
     // The attributes raised as the screen's buttons raise them: false,
     // with refused_ said, where the screen took a raise not.
+    //
+    // GUICharGen's message is the raise. The paperdoll's tells the
+    // creature's picture of character creation, which not every game has:
+    // the screen's own SpendPoints sends both and looks at neither's answer,
+    // and asks whether Paperdoll.PaperCreature is there before it uses it
+    // (levelup.gfx's AttributesScene, read 2026-10-13). Both were wanted
+    // taken here, and in a game that knew no Paperdoll the three points of
+    // a raise went in, the screen was abandoned and the answer said nothing
+    // was levelled (kadan-agent, 2026-10-12, #126). An abandoned screen
+    // gives back what its own buttons stored, which these messages are not.
     bool RaiseAttributes()
     {
-        // Each raise is a command to the screen, stopping at the first it
-        // refuses: a loop says so plainer than all_of with a predicate that
-        // sends (#77).
-        // NOLINTNEXTLINE(readability-use-anyofallof)
+        bool raised = false;
         for (const auto &[name, amount] : raise_.items())
         {
             const std::string spend =
                 n_ + " " + std::to_string(AttributeIndex(name)) + " " + std::to_string(amount.get<int>());
-            if (!Send("GUICharGen.CharGenAssignAttribute " + spend) ||
-                !Send("Paperdoll.CharGenAssignAttribute " + spend))
+            const bool took = Send("GUICharGen.CharGenAssignAttribute " + spend);
+            if (!took || !Ask("input", Json{{"message", "Paperdoll.CharGenAssignAttribute " + spend}}))
             {
+                if (took || raised)
+                {
+                    refused_ += "; the attributes raised before that stay raised, the screen giving back only "
+                                "what its own buttons took: character says what is left";
+                }
                 return false;
             }
+            raised = true;
         }
         return true;
     }

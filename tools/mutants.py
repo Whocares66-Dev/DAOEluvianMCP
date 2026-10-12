@@ -1559,8 +1559,33 @@ MUTANTS = [
     Mutant(
         "levelup tells only the paperdoll of an attribute",
         LEVELUP,
-        'if (!Send("GUICharGen.CharGenAssignAttribute " + spend) ||',
-        "if (",
+        'Send("GUICharGen.CharGenAssignAttribute " + spend)',
+        'Send("Paperdoll.CharGenAssignAttribute " + spend)',
+    ),
+    # The paperdoll's message is sent and not waited on (#126).
+    Mutant(
+        "levelup takes a game with no paperdoll for a refusal",
+        LEVELUP,
+        '!Ask("input", Json{{"message", "Paperdoll.CharGenAssignAttribute " + spend}})',
+        '!Send("Paperdoll.CharGenAssignAttribute " + spend)',
+    ),
+    Mutant(
+        "levelup tells the paperdoll of no attribute",
+        LEVELUP,
+        'if (!took || !Ask("input", Json{{"message", "Paperdoll.CharGenAssignAttribute " + spend}}))',
+        "if (!took)",
+    ),
+    Mutant(
+        "levelup forgets the raises taken before one refused",
+        LEVELUP,
+        "if (took || raised)",
+        "if (took)",
+    ),
+    Mutant(
+        "levelup says raises stay where none was taken",
+        LEVELUP,
+        "if (took || raised)",
+        "if (true)",
     ),
     Mutant(
         "levelup takes an attribute it does not know",

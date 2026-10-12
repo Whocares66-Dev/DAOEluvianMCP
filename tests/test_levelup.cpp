@@ -56,6 +56,9 @@ struct Rogue
     int chainOpened = 0;
     std::vector<int> specialStored; // picks its icons stored, which an unfinished end reverts
     std::vector<std::string> sent;  // input's messages, in order
+    bool paperdoll = true;          // whether the game knows a Paperdoll to tell: not in every game (#126)
+    int raised = 0;                 // attribute points the raises have spent
+    int raisesTaken = -1;           // the raises the game takes before it takes no more; -1 all
     std::vector<Json> movie;        // input's calls into the screen's movie, in order
 
     static constexpr const char *kContainer = "_level0.ScrollingAbilities_mc.Scrollable_mc.AbilityClassContainer84";
@@ -349,12 +352,13 @@ struct Rogue
             {
                 talents.push_back(Json{{"id", id}, {"state", state}});
             }
-            return Json{{"abilityPage", "talents"},
-                        {"points", {{"attributes", 3 * levels}, {"talentsOrSpells", levels}, {"skills", skillPoints}}},
-                        {"attributes", {{"strength", strength}}},
-                        {"talents", talents},
-                        {"spells", spell ? Json::array({Json{{"id", 60}, {"state", "learnable"}}}) : Json::array()},
-                        {"skills", Json::array({Json{{"id", 50}, {"state", "learnable"}}})}};
+            return Json{
+                {"abilityPage", "talents"},
+                {"points", {{"attributes", AttributePoints()}, {"talentsOrSpells", levels}, {"skills", skillPoints}}},
+                {"attributes", {{"strength", strength}}},
+                {"talents", talents},
+                {"spells", spell ? Json::array({Json{{"id", 60}, {"state", "learnable"}}}) : Json::array()},
+                {"skills", Json::array({Json{{"id", 50}, {"state", "learnable"}}})}};
         }
         if (kind == "abilities")
         {
@@ -369,11 +373,17 @@ struct Rogue
                     {"level", 2 + levels},
                     {"canLevelUp", levels > 0}, // as the game: false with only a specialization point (#64)
                     {"pointsToSpend",
-                     {{"attributes", 3 * levels},
+                     {{"attributes", AttributePoints()},
                       {"skills", levels},
                       {"talentsOrSpells", levels},
                       {"specializations", specialPoints}}},
                     {"attributes", {{"strength", {{"base", strength}, {"total", strength + 2}}}}}};
+    }
+
+    // A level's three attribute points, less what the raises spent.
+    int AttributePoints() const
+    {
+        return std::max(0, (3 * levels) - raised);
     }
 
     // The stand-in's input.
@@ -410,7 +420,18 @@ struct Rogue
         }
         else if (text.starts_with("GUICharGen.CharGenAssignAttribute"))
         {
-            strength += std::stoi(text.substr(text.rfind(' ') + 1));
+            if (raisesTaken == 0)
+            {
+                return Json{{"sent", false}};
+            }
+            raisesTaken -= raisesTaken > 0 ? 1 : 0;
+            const int amount = std::stoi(text.substr(text.rfind(' ') + 1));
+            strength += amount;
+            raised += amount;
+        }
+        else if (text.starts_with("Paperdoll.") && !paperdoll)
+        {
+            return Json{{"sent", false}}; // the engine knows no such receiver
         }
         else if (text == "GUI.HideFullScreenGUI")
         {
@@ -538,6 +559,40 @@ TEST_CASE("chosen points are spent as the screen's buttons spend them, a chain i
                             "GUICharGen.CharGenAssignAbility 130 9 0", "Paperdoll.CharGenAssignAbility 130 9 0",
                             "GUICharGen.CharGenAssignAttribute 130 1 2", "Paperdoll.CharGenAssignAttribute 130 1 2",
                             "GUI.HideFullScreenGUI", "GUILevelUp.CharGenEnd 130 1 1"});
+}
+
+TEST_CASE("attributes alone are raised in a game with no paperdoll to tell", "[levelup]")
+{
+    // The paperdoll's message is not taken there, and the raise stands all
+    // the same: it was read as a refusal, the screen abandoned and nothing
+    // said levelled with the points in (kadan-agent, 2026-10-12, #126).
+    Rogue rogue;
+    rogue.paperdoll = false;
+    const auto answer = rogue.LevelUp(Json{{"attributes", {{"strength", 3}}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == true);
+    CHECK(answer["reason"] == "levelled; points are left to spend");
+    CHECK(answer["attributes"]["strength"] == 3);
+    CHECK(answer["after"]["pointsToSpend"]["attributes"] == 0);
+    CHECK(rogue.sent == std::vector<std::string>{"GUI.GoToLevelUp 130 0", "GUICharGen.CharGenAssignAttribute 130 1 3",
+                                                 "Paperdoll.CharGenAssignAttribute 130 1 3", "GUI.HideFullScreenGUI",
+                                                 "GUILevelUp.CharGenEnd 130 1 1"});
+}
+
+TEST_CASE("a raise the game does not take is said, and that those before it stay raised", "[levelup]")
+{
+    Rogue rogue;
+    rogue.raisesTaken = 1;
+    const auto answer = rogue.LevelUp(Json{{"attributes", {{"dexterity", 1}, {"strength", 1}}}, {"showMs", 0}});
+    CHECK(answer["levelled"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("took no \"GUICharGen.CharGenAssignAttribute"));
+    CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("stay raised"));
+    CHECK(rogue.raised == 1);
+    // The first refused has nothing before it to say so of.
+    Rogue none;
+    none.raisesTaken = 0;
+    const auto nothing = none.LevelUp(Json{{"attributes", {{"strength", 1}}}, {"showMs", 0}});
+    CHECK(nothing["levelled"] == false);
+    CHECK_THAT(nothing["reason"].get<std::string>(), !ContainsSubstring("stay raised"));
 }
 
 TEST_CASE("an ability is taken by pressing its own icon, its page played once", "[levelup]")
