@@ -528,6 +528,55 @@ class BridgeTest(unittest.TestCase):
         now = self.call("game_events")["structuredContent"]
         self.assertEqual([e["topic"] for e in now["events"]], ["now"])
 
+    def run_of(self, name: str, topic: str, age: float = 0) -> None:
+        """A run's events file, written `age` seconds ago."""
+        file = self.folder / name
+        file.write_text(json.dumps({"seq": 1, "topic": topic}) + "\n", encoding="utf-8")
+        then = time.time() - age
+        os.utime(file, (then, then))
+
+    def topics(self, arguments: dict | None = None) -> list[str]:
+        read = self.call("game_events", arguments)["structuredContent"]
+        return [e["topic"] for e in read["events"]]
+
+    def test_a_game_on_a_second_port_is_read_from_its_own_events_file(self) -> None:
+        # A game that found the first port taken keeps eluvian.<pid>.events.jsonl, and the
+        # plain file beside it is an older run's: that one was answered, `running: true`
+        # (kadan-agent, 2026-10-12, #121).
+        self.run_of("eluvian.events.jsonl", "hours before", age=3600)
+        self.run_of("eluvian.100.events.jsonl", "live")
+        self.run_of("eluvian.200.events.jsonl", "another's")
+        (self.folder / "eluvian.json").write_text(
+            json.dumps({"pid": 71156, "port": 8930}), encoding="utf-8"
+        )
+        read = self.call("game_events")["structuredContent"]
+        self.assertEqual([e["topic"] for e in read["events"]], ["live"])
+        self.assertTrue(read["file"].endswith("eluvian.100.events.jsonl"))
+        # Its run before, where the game kept one, is beside it under its name.
+        missing = self.call("game_events", {"previous": True})
+        self.assertTrue(missing["isError"])
+        self.assertIn(
+            "eluvian.100.events.previous.jsonl", missing["content"][0]["text"]
+        )
+        self.run_of("eluvian.100.events.previous.jsonl", "before")
+        self.assertEqual(self.topics({"previous": True}), ["before"])
+        # The game eluvian.json names is the one served while it runs, as its port is.
+        self.processes.pids.append(71156)
+        self.assertEqual(self.topics(), ["hours before"])
+
+    def test_with_no_game_running_the_run_written_last_is_read(self) -> None:
+        self.down()
+        self.processes.pids.clear()
+        self.run_of("eluvian.events.jsonl", "the run before last", age=3600)
+        self.run_of("eluvian.300.events.jsonl", "older still", age=7200)
+        self.run_of("eluvian.200.events.jsonl", "the last run", age=60)
+        # Not a run's file, however lately written.
+        self.run_of("eluvian.200.events.previous.jsonl", "a run before")
+        self.run_of("eluvian.notes.events.jsonl", "not a game's")
+        self.assertEqual(self.topics(), ["the last run"])
+        self.run_of("eluvian.events.jsonl", "a game since")
+        self.assertEqual(self.topics(), ["a game since"])
+
     def test_a_game_that_crashed_starting_is_answered_with_its_crash_log(self) -> None:
         self.down()
         self.processes.pids.clear()

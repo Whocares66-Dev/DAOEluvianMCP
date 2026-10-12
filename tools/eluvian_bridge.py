@@ -107,8 +107,18 @@ def documents_folder() -> Path:
 
 # Every event of the last run, a JSON object a line (core/EventLog.h).
 EVENTS_FILE = "eluvian.events.jsonl"
-# The run before's, kept when a game starts (EventLog::PreviousOf, #74).
-PREVIOUS_EVENTS_FILE = "eluvian.events.previous.jsonl"
+# A game's that found the first port taken, named by its pid as its eluvian.<pid>.json is.
+OWN_EVENTS_FILE = re.compile(r"eluvian\.\d+\.events\.jsonl")
+
+
+def written(file: Path) -> float:
+    """When a file was last written; 0 for one that is not there."""
+    try:
+        return file.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 # The pid of a copy this bridge started, written beside its logs at once: Eluvian's own
 # eluvian.json comes seconds later, and until then nothing else says whose the process is.
 LAUNCH_FILE = "eluvian.launch.json"
@@ -327,6 +337,30 @@ class Game:
             if self.answers_as(port, pids):
                 return port
         return None
+
+    def events_file(self, pids: set[int], previous: bool = False) -> Path:
+        """The file of this copy's game's events (core/EventLog.h), or of the run before it.
+        The game find_port chooses is the one whose events these are: eluvian.json's game
+        writes eluvian.events.jsonl, and a game that found the first port taken its own
+        eluvian.<pid>.events.jsonl. Only the plain name was read, so a second instance's
+        game_events answered a run of hours before while its events tool answered the live
+        ones (kadan-agent, 2026-10-12, #121; that Eluvian was older than #116, and the game
+        as ever beside an instance holding the first port writes the same today). With no
+        game of this copy running, the last game's is the one written last."""
+        named = self.read_runtime("eluvian.json")
+        file = self.folder / EVENTS_FILE
+        if not pids:
+            runs = [
+                run
+                for run in self.folder.glob("eluvian.*.events.jsonl")
+                if OWN_EVENTS_FILE.fullmatch(run.name)
+            ]
+            file = max([file, *runs], key=written)
+        elif not (named and named.get("pid") in pids):
+            own = (self.folder / f"eluvian.{pid}.events.jsonl" for pid in sorted(pids))
+            file = next((run for run in own if run.exists()), file)
+        # As EventLog::PreviousOf names it.
+        return file.with_name(file.stem + ".previous.jsonl") if previous else file
 
     def port(self) -> int | None:
         if self.fixed_port is not None:
@@ -624,8 +658,10 @@ BRIDGE_TOOLS = [
             "game has closed or crashed, or for more than the running game's buffer holds. "
             '`since` (a seq; default the first), `topic` (a name, a prefix ending in ".*", or a '
             "list of them), `limit` (default 500). Answers `events` as the events tool gives them, "
-            "`next` to read on from, `count` matched, and `running` (whether a game runs now, "
-            "whose file it is then). A new game starts the file again, keeping the run before's: "
+            "`next` to read on from, `count` matched, `running` (whether a game runs now, "
+            "whose file it is then) and `file`, the one read: a game that found the first port "
+            "taken keeps eluvian.<pid>.events.jsonl, and with no game running the file written "
+            "last is read. A new game starts the file again, keeping the run before's: "
             "`previous: true` reads that one (a crash's, after a launch)."
         ),
         "inputSchema": {
@@ -958,11 +994,10 @@ class Bridge:
     def game_events(self, arguments: dict) -> dict:
         """The run's events from the file the game writes (core/EventLog.h)."""
         previous = arguments.get("previous") is True
-        name = PREVIOUS_EVENTS_FILE if previous else EVENTS_FILE
-        file = self.game.folder / name
+        file = self.game.events_file(set(self.processes.running()), previous)
         if not file.exists():
             return text_result(
-                f"game_events: no {name} in {self.game.folder}; "
+                f"game_events: no {file.name} in {self.game.folder}; "
                 + (
                     "a game with Eluvian keeps the run before's there when it starts"
                     if previous
