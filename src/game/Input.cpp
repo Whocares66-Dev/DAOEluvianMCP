@@ -107,6 +107,12 @@ Json Children(dao::gui::Movie &movie, const std::string &clip, bool placed)
 // name the tab buttons are made with, only returns a button's handler.
 // DAOLib's ScreenMovie (lib-agent's #11) finds a shown screen's movie by its
 // scene's name.
+// A button's own message goes the same way: each movie's ExternalCommands.
+// SendMessage is fscommand("SendMessage", text), and an FSCommand DAOLib
+// takes before the engine (a dao::options checkbox's click) is reached by
+// it and by nothing `input` sends. Seen 2026-10-13 with the loader's own
+// toggle, its option "DAOLib" and the plugin's name for it (kadan-agent's
+// question, #127).
 Json MovieCall(const Args &args)
 {
     const std::string screen = args.String("screen");
@@ -269,7 +275,11 @@ void AddInput(Bench &bench, const Watch &watch)
              "or a scroll). Pass `screen` (its name from `gui`, such as \"Options\") and exactly one of:\n\n"
              "- `call`: call a function by its path, with `args`. For example \"SceneManager.PlayScene\" with "
              "[\"Controls\"] shows the Options screen's Controls page. Returns whether it `ran` and what it "
-             "returned (`type` and `value`).\n"
+             "returned (`type` and `value`). \"ExternalCommands.SendMessage\" with one text sends what a "
+             "button of the screen sends, and reaches what a plugin takes before the engine sees it: on the "
+             "Options screen, [\"ClientOptions.SetClientOptionMessage DAOLibMyOption 1\"] ticks a checkbox a "
+             "plugin added as MyOption (0 unticks; its clip is OptDAOLibMyOption_mc). `ran` then says only that "
+             "the function ran, not that anything took the text.\n"
              "- `get`: read a path. Returns its `type` and `value`.\n"
              "- `set`: set a variable to `value`. Returns whether it was `done` and whether the path `existed`; "
              "setting a path that did not exist creates a new variable that nothing reads.\n"
