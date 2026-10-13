@@ -15,4 +15,4 @@ It reads archives, data tables, talk tables, templates, conversations and textur
 
 Ghilana never writes to the game's folders. Add-in archives are encrypted with a key that only the game has. Ghilana can list what's inside them, but it can't read the contents. To read those, ask the running game through Eluvian.
 
-The design and plans are in [dev/GHILANA.md](https://github.com/Whocares66-Dev/DAOEluvianMCP/blob/main/dev/GHILANA.md). The file formats are parsed by [DAOLib](https://github.com/Whocares66-Dev/DAOLib)'s core. DAOLib's [dev/FILES.md](https://github.com/Whocares66-Dev/DAOLib/blob/master/dev/FILES.md) documents the order the game loads files in.
+The file formats are parsed by [DAOLib](https://github.com/Whocares66-Dev/DAOLib)'s core.

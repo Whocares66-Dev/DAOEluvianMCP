@@ -230,9 +230,8 @@ Json Environment(Ghilana &ghilana, const Json &raw)
                          {"textures", set.textures},
                          {"note", "what ghilana takes the game to be doing, which decides some of the copies it has "
                                   "(--campaign, --language, --textures)"}};
-    out["precedence"] = "the game's: of a resource's copies it takes the one of the lowest priority it has, read in "
-                        "the exe and seen in play (DAOLib's dev/FILES.md). Every answer gives the copies in that "
-                        "order and says which the game takes.";
+    out["precedence"] = "the game's: of a resource's copies it uses the one with the lowest priority, as the game "
+                        "does. Every answer lists the copies in that order and says which one the game uses.";
     std::size_t unsettled = 0;
     for (const auto &[name, copies] : files.Resources())
     {

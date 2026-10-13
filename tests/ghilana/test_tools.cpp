@@ -66,7 +66,7 @@ TEST_CASE("environment: the sources found, their archives and files, the add-ins
     CHECK(env["unreadable"]["enciphered_archives"] == 1);
     CHECK(env["game_state"]["campaign"] == "Single Player");
     CHECK(env["game_state"]["textures"] == "high");
-    CHECK_THAT(env["precedence"].get<std::string>(), ContainsSubstring("FILES.md"));
+    CHECK_THAT(env["precedence"].get<std::string>(), ContainsSubstring("lowest priority"));
     REQUIRE(env["listed_without_folder"].size() == 1);
     CHECK(env["listed_without_folder"][0]["uid"] == "DAO_PRC_GONE");
     // The index is built once: a second call does not say it built it.

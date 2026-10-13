@@ -406,8 +406,8 @@ void Decided(const m2da::Merged &merged, PartsRead &read, Json &out)
     {
         out["overrides"] = {{"ids", merged.conflicts},
                             {"how", "When two files give the same ID, the game keeps the row from the file it reads "
-                                    "first: files are ordered by source, then by name within a source (DAOLib's "
-                                    "dev/FILES.md, Merged tables). `_over` names the files whose rows were dropped; "
+                                    "first: files are ordered by source, then by name within a source. `_over` names "
+                                    "the files whose rows were dropped; "
                                     "`dropped` shows those rows."}};
     }
     Json skipped = Json::array();
@@ -1058,13 +1058,13 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
                           "_dropped. Default false: the table as the game has it."}}}};
     tableProperties.update(PageProperties(100, 10000));
     tools.Add(Spec("table",
-                   "Reads one of the game's data tables as the game merges it (M2DA): every GDA file whose name "
-                   "starts with the table's worksheet prefix, from every source (the core's abi_base.gda, an "
-                   "add-in's or a mod's abi_*.gda), of each the copy the game takes, in the order the game lists "
-                   "its files; of an ID's rows the game keeps the first file's (read in the exe, DAOLib's "
-                   "dev/FILES.md). Answers the table as the game has it, each row with the file and source it "
-                   "comes from and `_over` naming the files whose rows of its ID it overrides. Filter by `id` or "
-                   "`where`; `overrides_only` for what mods and add-ins change; page with `limit`/`offset`.",
+                   "Reads one of the game's data tables merged the way the game merges it (M2DA). The table is "
+                   "built from every GDA file whose name starts with the table's prefix, from every source (for "
+                   "example the core's abi_base.gda and a mod's abi_*.gda), using the copy of each file the game "
+                   "uses. Files are ordered by source, then by name; when two files give the same ID, the game "
+                   "keeps the row from the first. Each row says which file and source it comes from, and `_over` "
+                   "lists the files whose rows for that ID it replaces. Filter with `id` or `where`; use "
+                   "`overrides_only` to see only what mods and add-ins change; page with `limit`/`offset`.",
                    std::move(tableProperties), {"table"}),
               [&ghilana](const Json &args) -> ToolResult { return Table(ghilana, args); });
 
