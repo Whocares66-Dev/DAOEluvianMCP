@@ -133,6 +133,8 @@ TEST_CASE("resource: of several copies the one the game takes; another named, wi
     CHECK(read["copy"]["source"] == "plugin:mymod");
     CHECK(read["taken"] == true);
     CHECK(read["content"]["width"] == 4);
+    CHECK(read["content"]["format"] == "B8G8R8A8");
+    CHECK(read["content"]["mips"] == 2);
     REQUIRE(read["other_copies"].size() == 2);
     read = served.Call("resource", {{"name", "ogre_d.dds"}, {"source", "core"}});
     CHECK(read["copy"]["source"] == "core");
@@ -333,6 +335,12 @@ TEST_CASE("texture: a DDS as a PNG image, its largest picture no larger than ask
     Served served;
     auto result = served.bench.Invoke("texture", {{"name", "ogre_d.dds"}, {"source", "core"}});
     CHECK(result.data["width"] == 8);
+    // What the file holds, the shown picture apart from it (#130).
+    CHECK(result.data["file"]["format"] == "B8G8R8A8");
+    CHECK(result.data["file"]["width"] == 8);
+    CHECK(result.data["file"]["mips"] == 2);
+    CHECK(result.data["file"]["shape"] == "flat");
+    CHECK_FALSE(result.data["file"].contains("header_mips")); // the test file's header says 2 too
     REQUIRE(result.content.size() == 1);
     CHECK(result.content[0]["type"] == "image");
     CHECK(result.content[0]["mimeType"] == "image/png");
@@ -340,6 +348,7 @@ TEST_CASE("texture: a DDS as a PNG image, its largest picture no larger than ask
     result =
         served.bench.Invoke("texture", {{"name", "ogre_d.dds"}, {"source", "core"}, {"size", 4}, {"channel", "alpha"}});
     CHECK(result.data["width"] == 4);
+    CHECK(result.data["file"]["width"] == 8);
     CHECK(result.data["channel"] == "alpha");
     CHECK_THAT(Message(served, "texture", {{"name", "ogre.utc"}}), ContainsSubstring("DDS"));
 }

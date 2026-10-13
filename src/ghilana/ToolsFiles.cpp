@@ -449,28 +449,40 @@ Json Gff4Content(std::span<const std::byte> bytes, const Limits &limits, std::st
     return Gff4ToJson(*file, limits);
 }
 
+// What a DDS file holds, as DAOLib's core reads it without decoding
+// (dds::Describe, DAOLib #111): its format, size and pictures, counted from
+// the bytes, since the header's count is wrong in the game's own files
+// (beckmann.dds holds 10 where its header says 1). Asked by the shaders'
+// session for a texture's format and mips (#130).
+Json DdsJson(const dao::core::dds::Description &dds)
+{
+    static constexpr std::array<std::string_view, 3> kShapes{"flat", "cube", "volume"};
+    Json answer = {{"format", dds.format},
+                   {"width", dds.width},
+                   {"height", dds.height},
+                   {"mips", dds.pictures},
+                   {"shape", kShapes.at(static_cast<std::size_t>(dds.shape))}};
+    if (dds.headerPictures != dds.pictures)
+    {
+        answer["header_mips"] = dds.headerPictures;
+    }
+    if (!dds.decodes)
+    {
+        answer["decodes"] = false;
+    }
+    return answer;
+}
+
 Json DdsContent(std::span<const std::byte> bytes)
 {
-    const auto word = [&](std::size_t at) {
-        std::uint32_t v = 0;
-        if (bytes.size() >= at + 4)
-        {
-            std::memcpy(&v, bytes.data() + at, 4);
-        }
-        return v;
-    };
-    std::string fourcc;
-    for (std::size_t i = 84; i < 88 && i < bytes.size(); ++i)
+    const auto dds = dao::core::dds::Describe(bytes);
+    if (!dds)
     {
-        if (bytes[i] != std::byte{0})
-        {
-            fourcc += static_cast<char>(bytes[i]);
-        }
+        return Json{{"note", "a DDS file whose header gives no size"}};
     }
-    return Json{{"height", word(12)},
-                {"width", word(16)},
-                {"format", fourcc.empty() ? std::to_string(word(88)) + " bits" : fourcc},
-                {"note", "`texture` gives the picture as an image"}};
+    Json answer = DdsJson(*dds);
+    answer["note"] = "`texture` gives the picture as an image";
+    return answer;
 }
 
 Json TextContent(const std::string &text, std::size_t chars)
@@ -856,6 +868,10 @@ ToolResult Texture(Ghilana &ghilana, const Json &raw)
     const auto png = EncodePng(image->width, image->height, channels, out);
     Json data = Chosen(files, Lower(name), *files.Find(name), copy);
     Put(data, "index", indexed);
+    if (const auto dds = dao::core::dds::Describe(*bytes))
+    {
+        data["file"] = DdsJson(*dds);
+    }
     data["width"] = image->width;
     data["height"] = image->height;
     data["channel"] = channel;
@@ -1004,7 +1020,11 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
         ToolSpec spec = Spec("texture",
                              "Shows a DDS texture as a PNG image you can look at, with its size and the copy it "
                              "came from: one picture of its mip chain no larger than `size`, all its channels or "
-                             "one as grey. DXT1, DXT3, DXT5 and uncompressed 24 and 32 bits are read.",
+                             "one as grey; `width` and `height` are the picture shown. `file` is what the file "
+                             "holds: its `format` (DXT1, DXT3, DXT5, B8G8R8 or B8G8R8A8, the ones read), its "
+                             "largest picture's size, `mips` (counted from the bytes; `header_mips` where the "
+                             "header says otherwise, as the game's own files often do) and `shape` (flat, cube "
+                             "or volume).",
                              std::move(textureProperties));
         spec.inputSchema["required"] = Json::array({"name"});
         tools.Add(std::move(spec), [&ghilana](const Json &args) { return Texture(ghilana, args); });

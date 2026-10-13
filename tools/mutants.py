@@ -2791,13 +2791,9 @@ MUTANTS = [
         "if (dropped && !row.taken)",
         "ghilana",
     ),
-    Mutant(
-        "ghilana table: the merge is given each part's source",
-        "src/ghilana/Tables.cpp",
-        "return dao::core::m2da::Merge(tables, sources);",
-        "return dao::core::m2da::Merge(tables);",
-        "ghilana",
-    ),
+    # "the merge is given each part's source" went (#130): DAOLib's m2da::Merge takes the
+    # tables alone since the readers moved there, each row's file named by the caller after,
+    # so its text was in Tables.cpp no more and the suite stopped before building anything.
     Mutant(
         "ghilana conflicts: copies of one source are no conflict across sources",
         "src/ghilana/ToolsFiles.cpp",
