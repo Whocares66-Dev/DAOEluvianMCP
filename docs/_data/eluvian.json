@@ -1370,6 +1370,35 @@
    }
   },
   {
+   "name": "steer",
+   "description": "Holds one of the game's movement keys down for the creature you control, with no key pressed and the window not in front: the creature is steered as by the keyboard, by the engine's own Drive command (`order` with `move` is another thing, a walk to a point). Pass `direction` and `ms`, how long to hold it, or `release: true` to let go of every direction held.\n\nThe direction is by the way the camera faces; left and right strafe, they do not turn. The creature runs or walks as the player has it set, and stops when nothing is held. A second direction held while a first still is adds to it (forward and left go diagonally). The game takes movement keys only in explore or combat mode, and not in a conversation or a menu.\n\nThe answer says what is `held` and for how many more milliseconds, who is `controlled` (with its position), whether the window is in the `foreground`, and a `cursor`: `wait_for` eluvian.command.started from it shows the Drive command. Each hold ends by itself after its `ms`; read the creature again then to see how far it went.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "direction": {
+      "type": "string",
+      "enum": [
+       "forward",
+       "backward",
+       "left",
+       "right"
+      ],
+      "description": "Which movement key to hold, by the camera's facing."
+     },
+     "ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60000,
+      "description": "How long to hold it, in milliseconds. Default 1000."
+     },
+     "release": {
+      "type": "boolean",
+      "description": "Let go of every direction held, at once."
+     }
+    }
+   }
+  },
+  {
    "name": "store",
    "description": "Buys or sells an item at the store screen that is open. Open a store by talking to a merchant and asking to see the wares.\n\nWhile a store is open, `gui` reports `fullScreen` Store, and its `store` lists the `stock` with each item's `price`, your `pack` with what each item `sellsFor`, and your `money`, all in copper.\n\n`action` is one of:\n- buy: buys `item` from the stock.\n- sell: sells `item` from your pack.\n\nThe tool sends what the screen's own button sends, and the game does the rest; it refuses a purchase you cannot afford. The answer includes the price of one (`each`), the `money` before and after, and `taken`, which is false when the money did not change. To close the store, call `input` with {\"message\": \"GUI.HideFullScreenGUI\"}.",
    "inputSchema": {

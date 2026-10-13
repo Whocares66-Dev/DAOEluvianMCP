@@ -113,6 +113,16 @@ def checks(run: Run, owner: str) -> None:
         lambda a: a["released"] is True,
     )
     check(
+        "steer holds a movement key for the controlled creature",
+        tool("steer", {"direction": "forward", "ms": 300}),
+        lambda a: a["held"][0]["direction"] == "forward" and "id" in a["controlled"],
+    )
+    check(
+        "steer lets go",
+        tool("steer", {"release": True}),
+        lambda a: a["released"] == ["forward"],
+    )
+    check(
         "journal, the quests under way",
         tool("journal"),
         lambda a: (

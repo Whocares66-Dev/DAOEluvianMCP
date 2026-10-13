@@ -1,6 +1,17 @@
 // `input`: one of the game's own messages, sent by its text: what an
-// interface's button sends, or what a key's binding names.
+// interface's button sends, or what a key's binding names. `movie`: a shown
+// screen's ActionScript, for what no message reaches. `steer`: a movement
+// key held down, which is no message either.
 #include "game/Shared.h"
+
+#include "game/Capture.h"
+
+#include "dao/Input.h"
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <optional>
 
 namespace eluvian::game
 {
@@ -217,6 +228,82 @@ Json MovieCall(const Args &args)
     return called;
 }
 
+// `steer`: a movement key held down for the game with no key pressed
+// (dao::input::Hold, DAOLib #95, asked for #123). The four directions are
+// no messages, which is why `input` could not send them: the steering asks
+// the input system each frame whether they are down, and Hold answers for
+// one held; the direction by the camera, the Drive command and the stop are
+// the engine's own (lib-agent, 2026-10-13: each direction held 1.5 s moved
+// the controlled creature six to seven units, in a fight as exploring, the
+// window not in front). A direction stays held until let go, so each hold
+// here has its end, kept on the frame thread: a test that stops leaves no
+// creature running.
+constexpr std::array<std::string_view, 4> kMoveNames = {"forward", "backward", "left", "right"};
+constexpr std::int64_t kMostSteerMs = 60000;
+std::array<std::optional<std::chrono::steady_clock::time_point>, 4> g_steerUntil;
+
+void LetGo(std::size_t move)
+{
+    dao::input::Hold(static_cast<dao::input::Move>(move), false);
+    g_steerUntil.at(move).reset();
+}
+
+// The directions held, each with what is left of its hold.
+Json HeldJson()
+{
+    const auto now = std::chrono::steady_clock::now();
+    Json held = Json::array();
+    for (std::size_t move = 0; move < g_steerUntil.size(); ++move)
+    {
+        if (const auto &until = g_steerUntil.at(move))
+        {
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(*until - now).count();
+            held.push_back(Json{{"direction", kMoveNames.at(move)}, {"ms", std::max<std::int64_t>(left, 0)}});
+        }
+    }
+    return held;
+}
+
+ToolResult ToolSteer(Bench &bench, const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "steer");
+    const Args args(raw, "steer");
+    if (args.Bool("release", false))
+    {
+        Json released = Json::array();
+        for (std::size_t move = 0; move < g_steerUntil.size(); ++move)
+        {
+            if (g_steerUntil.at(move))
+            {
+                released.emplace_back(kMoveNames.at(move));
+                LetGo(move);
+            }
+        }
+        return Json{{"released", std::move(released)}};
+    }
+    if (!args.Has("direction"))
+    {
+        throw ToolError("steer: give `direction` (forward, backward, left or right) with `ms`, or `release: true`");
+    }
+    const auto mode = watch.Mode();
+    if (mode != static_cast<std::int32_t>(dao::GameMode::Explore) &&
+        mode != static_cast<std::int32_t>(dao::GameMode::Combat))
+    {
+        throw ToolError("steer: the game takes movement keys only in explore or combat mode; state says the mode");
+    }
+    const std::string direction = args.Choice("direction", {"forward", "backward", "left", "right"});
+    const auto ms = args.Integer("ms", 1000, 1, kMostSteerMs);
+    const auto move = static_cast<std::size_t>(std::ranges::find(kMoveNames, direction) - kMoveNames.begin());
+    const auto cursor = bench.Events().Next();
+    dao::input::Hold(static_cast<dao::input::Move>(move), true);
+    g_steerUntil.at(move) = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    const auto window = GameWindowPlace();
+    return Json{{"held", HeldJson()},
+                {"controlled", Brief(api::GetMainControlled())},
+                {"foreground", window.found && window.foreground},
+                {"cursor", cursor}};
+}
+
 } // namespace
 
 // The game's own messages by their text: the general way in at the input
@@ -308,6 +395,46 @@ void AddInput(Bench &bench, const Watch &watch)
             }
             return MovieCall(args);
         });
+
+    dao::OnFrame([] {
+        const auto now = std::chrono::steady_clock::now();
+        for (std::size_t move = 0; move < g_steerUntil.size(); ++move)
+        {
+            if (g_steerUntil.at(move) && now >= *g_steerUntil.at(move))
+            {
+                LetGo(move);
+            }
+        }
+    });
+    bench.Tools().Add(
+        ToolSpec{
+            "steer",
+            "Holds one of the game's movement keys down for the creature you control, with no key pressed and "
+            "the window not in front: the creature is steered as by the keyboard, by the engine's own Drive "
+            "command (`order` with `move` is another thing, a walk to a point). Pass `direction` and `ms`, how "
+            "long to hold it, or `release: true` to let go of every direction held.\n\n"
+            "The direction is by the way the camera faces; left and right strafe, they do not turn. The "
+            "creature runs or walks as the player has it set, and stops when nothing is held. A second "
+            "direction held while a first still is adds to it (forward and left go diagonally). The game "
+            "takes movement keys only in explore or combat mode, and not in a conversation or a menu.\n\n"
+            "The answer says what is `held` and for how many more milliseconds, who is `controlled` (with its "
+            "position), whether the window is in the `foreground`, and a `cursor`: `wait_for` "
+            "eluvian.command.started from it shows the Drive command. Each hold ends by itself after its "
+            "`ms`; read the creature again then to see how far it went.",
+            Json{{"type", "object"},
+                 {"properties",
+                  {{"direction",
+                    {{"type", "string"},
+                     {"enum", {"forward", "backward", "left", "right"}},
+                     {"description", "Which movement key to hold, by the camera's facing."}}},
+                   {"ms",
+                    {{"type", "integer"},
+                     {"minimum", 1},
+                     {"maximum", kMostSteerMs},
+                     {"description", "How long to hold it, in milliseconds. Default 1000."}}},
+                   {"release", {{"type", "boolean"}, {"description", "Let go of every direction held, at once."}}}}}},
+            Thread::Frame},
+        [&bench, &watch](const Json &raw) -> ToolResult { return ToolSteer(bench, watch, raw); });
 }
 
 } // namespace eluvian::game

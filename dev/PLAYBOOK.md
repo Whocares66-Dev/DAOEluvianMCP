@@ -214,6 +214,8 @@ For the `eluvian.script.*` events:
 
 By default `order` sends orders through the engine's own order functions (`via: "command"`). The order counts as the player's, and any creature can obey. Two cases go by click instead unless you say otherwise: a `use` without `objectAction` by the creature you control, and an item's ability used out of combat.
 
+To move the creature you control as the keyboard does, not to a point, use `steer`: `steer {"direction": "forward", "ms": 1500}` holds the forward key for a second and a half with no key pressed, and the engine drives the creature by the way the camera faces (left and right strafe). It ends by itself; `steer {"release": true}` ends it sooner. `eluvian.command.started` from its `cursor` shows the Drive command, and the creature's position after says how far it went. It works in explore and combat mode only.
+
 `via: "click"` sends what a player's click sends in explore mode, so the game's own click handling runs too, along with anything a mod hooks there. Only the creature you control can click, and only in explore or combat mode. A click can:
 
 - use an ability with its target already chosen. With no target, the game (or a mod) asks for one, as the quickbar does.
