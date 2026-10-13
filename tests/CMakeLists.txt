@@ -25,7 +25,6 @@ add_executable(
     test_bench.cpp
     test_conversation.cpp
     test_craft.cpp
-    test_erf.cpp
     test_events.cpp
     test_event_log.cpp
     test_frame_queue.cpp
@@ -44,6 +43,7 @@ add_executable(
     test_rest.cpp
     test_scenario.cpp
     test_sight.cpp
+    test_stdio.cpp
     test_until.cpp
     test_ready.cpp
     test_travel.cpp
@@ -53,6 +53,12 @@ target_link_libraries(el_tests PRIVATE el_core Catch2::Catch2WithMain)
 
 include(Catch)
 catch_discover_tests(el_tests)
+
+# ghilana's (gh_lib is defined after this, in cmake/Ghilana.cmake, which a
+# target's link resolves at generate time).
+if(EL_BUILD_GHILANA)
+    add_subdirectory(ghilana)
+endif()
 
 # The Python tools' own tests (tools/test_*.py), where there is a Python:
 # each test its own ctest entry, so they run side by side. As one process

@@ -64,6 +64,35 @@
             "cacheVariables": { "EL_SANITIZE": "ON" }
         },
         {
+            "name": "x64",
+            "hidden": true,
+            "inherits": ["base"],
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+                "VCPKG_MANIFEST_FEATURES": "tests",
+                "EL_BUILD_PLUGIN": "OFF",
+                "EL_BUILD_GHILANA": "ON"
+            }
+        },
+        {
+            "name": "ghilana",
+            "inherits": ["x64"],
+            "displayName": "ghilana.exe, 64-bit, debug: the server of the tools that need no game, its tests and the core's",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "ghilana-release",
+            "inherits": ["x64"],
+            "displayName": "ghilana.exe, 64-bit, release with symbols: what is released",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+        },
+        {
             "name": "core-cov",
             "inherits": ["base"],
             "displayName": "Core only, clang-cl, test coverage (64-bit: LLVM ships the profile runtime for x64 only)",
@@ -86,7 +115,9 @@
         { "name": "debug-analyze", "configurePreset": "debug-analyze" },
         { "name": "core", "configurePreset": "core" },
         { "name": "core-asan", "configurePreset": "core-asan" },
-        { "name": "core-cov", "configurePreset": "core-cov" }
+        { "name": "core-cov", "configurePreset": "core-cov" },
+        { "name": "ghilana", "configurePreset": "ghilana" },
+        { "name": "ghilana-release", "configurePreset": "ghilana-release" }
     ],
     "testPresets": [
         { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },
@@ -95,6 +126,8 @@
         { "name": "debug-analyze", "configurePreset": "debug-analyze", "output": { "outputOnFailure": true } },
         { "name": "core", "configurePreset": "core", "output": { "outputOnFailure": true } },
         { "name": "core-asan", "configurePreset": "core-asan", "output": { "outputOnFailure": true } },
-        { "name": "core-cov", "configurePreset": "core-cov", "output": { "outputOnFailure": true } }
+        { "name": "core-cov", "configurePreset": "core-cov", "output": { "outputOnFailure": true } },
+        { "name": "ghilana", "configurePreset": "ghilana", "output": { "outputOnFailure": true } },
+        { "name": "ghilana-release", "configurePreset": "ghilana-release", "output": { "outputOnFailure": true } }
     ]
 }

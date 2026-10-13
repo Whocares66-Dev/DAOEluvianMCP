@@ -1179,6 +1179,71 @@ class BridgeTest(unittest.TestCase):
         self.assertFalse((profile / "Characters" / "Other").exists())
         self.assertEqual(self.made["two"].started, 1)
 
+    def test_an_instance_that_has_a_folder_is_given_the_save_it_lacks(self) -> None:
+        # lib-agent's, 2026-10-12: the instance had only an autosave of its own, the seed asked
+        # for a manual save, and it was left as it was; the load then found no such save.
+        default = self.default_profile()
+        root = self.folder / "instances"
+        profile = root / "two" / "BioWare" / "Dragon Age"
+        own = profile / "Characters" / "Lyna" / "Saves" / "AutoSave_3"
+        own.mkdir(parents=True)
+        (own / "save.das").write_text("its own", encoding="utf-8")
+        (profile / "Settings").mkdir(parents=True)
+        (profile / "Settings" / "a.xml").write_text("its own", encoding="utf-8")
+        seeded = bridge_module.seed_instance(
+            "two", {"character": "Lyna", "kind": "manual", "number": 4}, default, root
+        )
+        self.assertIn("Characters\Lyna\Saves\Slot_4", seeded["copied"])
+        self.assertIn("kept", seeded)
+        saves = profile / "Characters" / "Lyna" / "Saves"
+        self.assertEqual(
+            sorted(folder.name for folder in saves.iterdir()), ["AutoSave_3", "Slot_4"]
+        )
+        self.assertEqual((own / "save.das").read_text(encoding="utf-8"), "its own")
+        self.assertEqual(
+            (profile / "Settings" / "a.xml").read_text(encoding="utf-8"), "its own"
+        )
+        self.assertTrue((profile / "Characters" / "Lyna" / "Lyna.xml").is_file())
+        self.assertFalse((root / "two" / "seeded").exists())
+
+    def test_a_save_the_instance_made_itself_is_not_replaced(self) -> None:
+        default = self.default_profile()
+        root = self.folder / "instances"
+        own = (
+            root
+            / "two"
+            / "BioWare"
+            / "Dragon Age"
+            / "Characters"
+            / "Lyna"
+            / "Saves"
+            / "Slot_4"
+        )
+        own.mkdir(parents=True)
+        (own / "save.das").write_text("its own", encoding="utf-8")
+        seeded = bridge_module.seed_instance(
+            "two", {"character": "Lyna", "kind": "manual", "number": 4}, default, root
+        )
+        self.assertEqual(seeded["copied"], [])
+        self.assertTrue(any("Slot_4" in kept for kept in seeded["kept"]))
+        self.assertEqual((own / "save.das").read_text(encoding="utf-8"), "its own")
+
+    def test_a_save_to_seed_that_is_nowhere_refuses_the_launch(self) -> None:
+        default = self.default_profile()
+        self.many(default)
+        self.call("game_instance", {"name": "two"})
+        refused = self.call(
+            "game_launch",
+            {
+                "seed": "save",
+                "load": {"character": "Lyna", "kind": "manual", "number": 9},
+            },
+        )
+        self.assertTrue(refused["isError"])
+        self.assertIn("NOT launched", refused["content"][0]["text"])
+        self.assertIn("game_saves", refused["content"][0]["text"])
+        self.assertEqual(self.made["two"].started, 0)
+
     def test_status_lists_the_other_copies_running(self) -> None:
         self.processes.beside = [{"instance": "two", "pid": 200}]
         status = self.call("game_status")["structuredContent"]

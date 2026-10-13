@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The docs site: what Eluvian serves, generated from what it registers (#109).
 
-    python tools/build_docs.py --update     # refresh docs/_data/eluvian.json from eluvian_describe
+    python tools/build_docs.py --update     # refresh docs/_data/eluvian.json and ghilana.json
     python tools/build_docs.py --check      # fail if it is stale, or a page will not render (ctest)
     python tools/build_docs.py              # stage and build the site into build/docs-site
     python tools/build_docs.py --serve      # the same, served at http://127.0.0.1:4000/DAOEluvianMCP/
@@ -15,6 +15,12 @@ it at build time: one per tool, the events, and the C interface (src/api/Eluvian
 shown whole: its comments are its documentation). The front page and the guide are the
 site's own, short, in docs/ (index.md, getting-started.md); the README is linked, not
 copied. Only the API is here: the tools, the events and the C interface, not the internals.
+
+Ghilana, the second server (dev/GHILANA.md), is a section of its own after Eluvian's, a
+Just the Docs collection (docs/_ghilana, its front page and guide written by hand) whose
+tool pages are made the same way from `ghilana.exe --describe`, kept in
+docs/_data/ghilana.json. A release from before ghilana has no such file, and its site no
+such section.
 """
 
 from __future__ import annotations
@@ -36,16 +42,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 DATA = DOCS / "_data" / "eluvian.json"
+GHILANA_DATA = DOCS / "_data" / "ghilana.json"
 STAGE = ROOT / "build" / "docs-src"
 SITE = ROOT / "build" / "docs-site"
 BASEURL = "/DAOEluvianMCP"
 
 
-def describe(exe: Path) -> dict:
+def describe(exe: Path, *args: str) -> dict:
     out = subprocess.run(
-        [str(exe)], capture_output=True, text=True, encoding="utf-8", check=True
+        [str(exe), *args], capture_output=True, text=True, encoding="utf-8", check=True
     )
     return json.loads(out.stdout)
+
+
+def find_ghilana(given: str | None) -> Path:
+    if given:
+        return Path(given)
+    for preset in ("debug", "ghilana", "ghilana-release", "release"):
+        exe = ROOT / "build" / preset / "ghilana.exe"
+        if exe.exists():
+            return exe
+    sys.exit(
+        "no ghilana.exe: build it (tools\\build.ps1 -Preset debug) or pass --ghilana-exe"
+    )
 
 
 def find_exe(given: str | None) -> Path:
@@ -115,14 +134,18 @@ def type_of(schema: dict) -> str:
     return text + (f" ({', '.join(bounds)})" if bounds else "")
 
 
-def tool_page(tool: dict, order: int) -> str:
+def tool_page(tool: dict, order: int, ghilana: bool = False) -> str:
     name = tool["name"]
     schema = tool.get("inputSchema") or {}
     properties = schema.get("properties") or {}
     required = set(schema.get("required") or [])
     notes = []
     if (tool.get("annotations") or {}).get("readOnlyHint"):
-        notes.append("Read-only: it changes nothing in the game.")
+        notes.append(
+            "Read-only: it writes nothing."
+            if ghilana
+            else "Read-only: it changes nothing in the game."
+        )
     budget = (tool.get("_meta") or {}).get("eluvian/budget")
     if budget:
         notes.append(
@@ -141,11 +164,18 @@ def tool_page(tool: dict, order: int) -> str:
             )
     else:
         body.append("None.")
-    body += [
-        "",
-        f"Call it as `{name}` over MCP, or `POST /api/tool/{name}` with the arguments as JSON.",
-    ]
-    page = front(name, f"/tools/{name}/", order, parent="Tools")
+    if ghilana:
+        body += [
+            "",
+            f"Call it as `{name}` over MCP, or from a shell as `ghilana.exe --call {name} '<arguments as JSON>'`.",
+        ]
+        page = front(name, f"/ghilana/tools/{name}/", order, parent="Tools")
+    else:
+        body += [
+            "",
+            f"Call it as `{name}` over MCP, or `POST /api/tool/{name}` with the arguments as JSON.",
+        ]
+        page = front(name, f"/tools/{name}/", order, parent="Tools")
     return page + raw("\n".join(body))
 
 
@@ -164,6 +194,25 @@ def tools_index(tools: list[dict]) -> str:
         *rows,
     ]
     return front("Tools", "/tools/", 3, has_children=True, has_toc=False) + raw(
+        "\n".join(body)
+    )
+
+
+def ghilana_tools_index(tools: list[dict]) -> str:
+    rows = ["| Tool | What |", "|---|---|"]
+    rows += [
+        f"| [{t['name']}]({BASEURL}/ghilana/tools/{t['name']}/) | {cell(first_sentence(t['description']))} |"
+        for t in tools
+    ]
+    body = [
+        "# Tools",
+        "",
+        "Every tool ghilana serves, as `tools/list` gives them (`ghilana.exe --describe` prints them); "
+        "generated from the code. None needs the game.",
+        "",
+        *rows,
+    ]
+    return front("Tools", "/ghilana/tools/", 3, has_children=True, has_toc=False) + raw(
         "\n".join(body)
     )
 
@@ -210,9 +259,14 @@ LOCAL_OUTPUT = shutil.ignore_patterns("_site", ".jekyll-cache", ".bundle", "vend
 
 
 def stage(
-    data: dict, docs: Path = DOCS, header: str | None = None, target: Path = STAGE
+    data: dict,
+    docs: Path = DOCS,
+    header: str | None = None,
+    target: Path = STAGE,
+    ghilana: dict | None = None,
 ) -> None:
-    """A docs folder with every generated page beside it, in `target`."""
+    """A docs folder with every generated page beside it, in `target`; ghilana's tools in
+    its collection, where there is ghilana's data."""
     if target.exists():
         shutil.rmtree(target)
     shutil.copytree(docs, target, ignore=LOCAL_OUTPUT)
@@ -235,6 +289,24 @@ def stage(
     (target / "c-interface.md").write_text(
         c_interface_page(header), encoding="utf-8", newline="\n"
     )
+    if ghilana is None:
+        return
+    gh_tools = sorted(ghilana["tools"], key=lambda t: t["name"])
+    gh_folder = target / "_ghilana" / "tools"
+    gh_folder.mkdir(parents=True, exist_ok=True)
+    (gh_folder / "index.md").write_text(
+        ghilana_tools_index(gh_tools), encoding="utf-8", newline="\n"
+    )
+    for order, tool in enumerate(gh_tools, 1):
+        (gh_folder / f"{tool['name']}.md").write_text(
+            tool_page(tool, order, ghilana=True), encoding="utf-8", newline="\n"
+        )
+
+
+def ghilana_data(docs: Path) -> dict | None:
+    """A docs folder's ghilana.json, if it has one."""
+    path = docs / "_data" / "ghilana.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
 def git(*args: str) -> bytes:
@@ -284,7 +356,7 @@ def from_tag(tag: str, into: Path) -> Path | None:
     target = into / tag
     data = json.loads((docs / "_data" / "eluvian.json").read_text(encoding="utf-8"))
     header = (raw_dir / "src" / "api" / "EluvianAPI.h").read_text(encoding="utf-8")
-    stage(data, docs, header, target)
+    stage(data, docs, header, target, ghilana_data(docs))
     return target
 
 
@@ -323,7 +395,11 @@ def build_site() -> int:
         prefix="docs-versions-", dir=ROOT / "build"
     ) as temporary:
         staging = Path(temporary)
-        stage(json.loads(DATA.read_text(encoding="utf-8")), target=STAGE)
+        stage(
+            json.loads(DATA.read_text(encoding="utf-8")),
+            target=STAGE,
+            ghilana=ghilana_data(DOCS),
+        )
         sources = [("Current", STAGE, BASEURL)]
         for tag in release_tags():
             source = from_tag(tag, staging)
@@ -395,27 +471,39 @@ def main() -> int:
         "--exe",
         help="eluvian_describe.exe; default build\\debug's, else build\\release's",
     )
+    parser.add_argument(
+        "--ghilana-exe",
+        help="ghilana.exe; default build\\debug's, else a ghilana preset's",
+    )
     options = parser.parse_args()
 
     if options.update or options.check:
         fresh = describe(find_exe(options.exe))
+        ghilana = describe(find_ghilana(options.ghilana_exe), "--describe")
         if options.update:
             DATA.parent.mkdir(parents=True, exist_ok=True)
             DATA.write_text(written(fresh), encoding="utf-8", newline="\n")
+            GHILANA_DATA.write_text(written(ghilana), encoding="utf-8", newline="\n")
             print(
-                f"{DATA.relative_to(ROOT)}: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics"
+                f"{DATA.relative_to(ROOT)}: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics; "
+                f"{GHILANA_DATA.relative_to(ROOT)}: {len(ghilana['tools'])} tools"
             )
             return 0
-        kept = DATA.read_text(encoding="utf-8") if DATA.exists() else ""
-        if kept != written(fresh):
-            print(
-                "docs/_data/eluvian.json is not what eluvian_describe prints now: run "
-                "python tools/build_docs.py --update and commit it"
-            )
-            return 1
-        stage(fresh)
+        for path, data, program in (
+            (DATA, fresh, "eluvian_describe"),
+            (GHILANA_DATA, ghilana, "ghilana --describe"),
+        ):
+            kept = path.read_text(encoding="utf-8") if path.exists() else ""
+            if kept != written(data):
+                print(
+                    f"docs/_data/{path.name} is not what {program} prints now: run "
+                    "python tools/build_docs.py --update and commit it"
+                )
+                return 1
+        stage(fresh, ghilana=ghilana)
         print(
-            f"current: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics; pages staged"
+            f"current: {len(fresh['tools'])} tools, {len(fresh['topics'])} topics, "
+            f"ghilana's {len(ghilana['tools'])} tools; pages staged"
         )
         return 0
 

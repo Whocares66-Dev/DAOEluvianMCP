@@ -151,7 +151,9 @@ Json McpEndpoint::CallTool(const Json &params)
     try
     {
         ToolResult answer = bench_.Invoke(name, args);
-        Json result = TextResult(answer.data.dump(), false);
+        // Replaced, not thrown on: text that is not UTF-8 (a file's string,
+        // read by ghilana) would fail the whole answer (#128).
+        Json result = TextResult(answer.data.dump(-1, ' ', false, Json::error_handler_t::replace), false);
         for (auto &item : answer.content)
         {
             result["content"].push_back(std::move(item));

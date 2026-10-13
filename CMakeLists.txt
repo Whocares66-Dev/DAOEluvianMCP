@@ -14,6 +14,15 @@ option(
     ON
 )
 option(EL_BUILD_TESTS "Build the unit tests (no game required)" ON)
+# ghilana.exe, the server of the tools that need no game (#128,
+# dev/GHILANA.md): built with the plugin (so the debug gate builds, tests
+# and lints it, 32-bit) and alone in the ghilana presets, 64-bit, which is
+# what is released. The core presets build neither.
+option(
+    EL_BUILD_GHILANA
+    "Build ghilana.exe and its tests (needs DAOLib's core)"
+    ${EL_BUILD_PLUGIN}
+)
 option(EL_SANITIZE "Build with AddressSanitizer (for the tests)" OFF)
 option(EL_ANALYZE "MSVC static analysis (/analyze) on our own targets" OFF)
 option(
@@ -139,7 +148,6 @@ add_library(
     src/core/Bench.cpp
     src/core/Conversation.cpp
     src/core/Craft.cpp
-    src/core/Erf.cpp
     src/core/EventBus.cpp
     src/core/EventLog.cpp
     src/core/Expect.cpp
@@ -159,6 +167,7 @@ add_library(
     src/core/Rest.cpp
     src/core/Scenario.cpp
     src/core/Sight.cpp
+    src/core/Stdio.cpp
     src/core/ToolRegistry.cpp
     src/core/Travel.cpp
     src/core/Until.cpp
@@ -175,21 +184,23 @@ endif()
 # The core presets stop here: no DAOLib, no server, no plugin, and no format
 # or lint targets, which read the plugin's compile database (run them on
 # debug).
-if(NOT EL_BUILD_PLUGIN)
+if(NOT EL_BUILD_PLUGIN AND NOT EL_BUILD_GHILANA)
     return()
 endif()
 
-# ---------------------------------------------------------------------------
-# el_server -- the socket loop under core/Http.h: 127.0.0.1 only, a thread
-# per connection. It needs Winsock but not the game, so its tests run over
-# loopback.
-# ---------------------------------------------------------------------------
-add_library(el_server STATIC src/server/HttpServer.cpp)
-el_apply_warnings(el_server)
-target_link_libraries(el_server PUBLIC el_core ws2_32)
+if(EL_BUILD_PLUGIN)
+    # -----------------------------------------------------------------------
+    # el_server -- the socket loop under core/Http.h: 127.0.0.1 only, a
+    # thread per connection. It needs Winsock but not the game, so its tests
+    # run over loopback.
+    # -----------------------------------------------------------------------
+    add_library(el_server STATIC src/server/HttpServer.cpp)
+    el_apply_warnings(el_server)
+    target_link_libraries(el_server PUBLIC el_core ws2_32)
 
-if(EL_BUILD_TESTS)
-    add_subdirectory(tests/server)
+    if(EL_BUILD_TESTS)
+        add_subdirectory(tests/server)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -227,6 +238,16 @@ add_subdirectory(
     "${CMAKE_BINARY_DIR}/extern/DAOLib"
     EXCLUDE_FROM_ALL
 )
+
+if(EL_BUILD_GHILANA)
+    include(cmake/Ghilana.cmake)
+endif()
+
+# The ghilana presets stop here: no plugin, and the format and lint targets
+# are the debug preset's, which builds ghilana too.
+if(NOT EL_BUILD_PLUGIN)
+    return()
+endif()
 
 # The format and lint targets, DAOLib's own module run over this tree: it
 # reads the top-level source directory, our .clang-format and .clang-tidy,
@@ -322,12 +343,15 @@ target_link_libraries(eluvian_describe PRIVATE el_game)
 if(EL_BUILD_TESTS)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+        # And ghilana's, from ghilana --describe (docs/_data/ghilana.json),
+        # which this preset builds too (cmake/Ghilana.cmake).
         add_test(
             NAME docs.reference_current
             COMMAND
                 "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tools/build_docs.py" --check --exe
-                $<TARGET_FILE:eluvian_describe>
+                $<TARGET_FILE:eluvian_describe> --ghilana-exe
+                $<TARGET_FILE:ghilana>
         )
     endif()
 endif()

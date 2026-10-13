@@ -44,6 +44,14 @@ vcpkg packages), as one PowerShell line:
     python tools\\mutants.py travel loot   those whose name contains "travel" or "loot"
     python tools\\mutants.py -j 4          four at a time (by default one a core)
 
+Ghilana's own code (src/ghilana, #128) is a suite of its own: built with the
+ghilana preset, 64-bit, so from a shell build.ps1 set up for it, and tested by
+gh_tests without its cases over a real install. Each worker copies src/core,
+src/ghilana, tests and cmake, and builds against the tree's own extern/DAOLib,
+which it only reads:
+
+    .\\tools\\build.ps1 -Preset ghilana; python tools\\mutants.py --suite ghilana
+
 Exits non-zero if any mutant survives or fails to compile, and before
 building anything if a mutant's text is not in its file exactly once.
 """
@@ -62,17 +70,47 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 WORK = REPO / "build" / "mutants"
-# What a worker's copy holds: the core preset builds from these and nothing else.
+# What a worker's copy holds, besides its suite's trees.
 FILES = (
     "CMakeLists.txt",
     "CMakePresets.json",
     "vcpkg.json",
     "vcpkg-configuration.json",
 )
-TREES = ("src/core", "tests")
-# The core preset's packages (Catch2, nlohmann-json), installed once by the
-# tree's own build.
-PACKAGES = REPO / "build" / "core" / "vcpkg_installed"
+
+
+@dataclass(frozen=True)
+class Suite:
+    preset: str
+    trees: tuple[str, ...]  # the folders a worker copies
+    tests: str  # the test program, under the worker's build/<preset>
+    args: tuple[str, ...] = ()  # what the test program is run with
+    target: str = ""  # what a build builds; empty for all
+    configure: tuple[str, ...] = ()  # more for its configure
+    work: str = ""  # its workers' folder under build/mutants
+
+    @property
+    def packages(self) -> Path:
+        # Its preset's packages, installed once by the tree's own build.
+        return REPO / "build" / self.preset / "vcpkg_installed"
+
+
+SUITES = {
+    # src/core, its tests: el_tests.
+    "core": Suite("core", ("src/core", "tests"), "tests/el_tests.exe"),
+    # src/ghilana over src/core and DAOLib's core: gh_tests, its cases over a
+    # real install left out (machine's, and an index of ten thousand archives
+    # each).
+    "ghilana": Suite(
+        "ghilana",
+        ("src/core", "src/ghilana", "tests", "cmake"),
+        "tests/ghilana/gh_tests.exe",
+        ("~[install]",),
+        "gh_tests",
+        (f"-DDAOLIB_DIR={(REPO / 'extern' / 'DAOLib').as_posix()}",),
+        "ghilana",
+    ),
+}
 # el_tests takes 17 s (2026-10-03); a mutant that turns a cut wait into the
 # whole one it was asked for (a scenario's minute) takes a little over one.
 # Past three, a run has hung, and counts as caught: one that sends every
@@ -88,6 +126,7 @@ class Mutant:
     file: str
     old: str
     new: str
+    suite: str = "core"
 
 
 TRAVEL = "src/core/Travel.cpp"
@@ -107,7 +146,6 @@ REST = "src/core/Rest.cpp"
 ORIGIN = "src/core/Origin.cpp"
 LOGTAIL = "src/core/LogTail.cpp"
 EVENTLOG = "src/core/EventLog.cpp"
-ERF = "src/core/Erf.cpp"
 ARGS = "src/core/Args.cpp"
 REGISTRY = "src/core/ToolRegistry.cpp"
 LEVELUP = "src/core/LevelUp.cpp"
@@ -118,6 +156,7 @@ GFXLIST = "src/core/GfxList.cpp"
 GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
 SIGHT = "src/core/Sight.cpp"
+STDIO = "src/core/Stdio.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
 # characters here: "\\r\\n" is the source's "\r\n". An edit that leaves a
@@ -983,42 +1022,36 @@ MUTANTS = [
         "std::ios::binary | std::ios::trunc",
         "std::ios::binary | std::ios::app",
     ),
+    # MCP over stdio (Stdio.cpp, #128): a message a line, each answered.
+    Mutant(
+        "stdio reads a line's carriage return as part of the message",
+        STDIO,
+        "(line.back() == '\\r' || line.back() == ' '",
+        "(line.back() == ' '",
+    ),
+    Mutant(
+        "stdio answers a blank line",
+        STDIO,
+        'if (line.find_first_not_of(" \\t") == std::string_view::npos)',
+        "if (false)",
+    ),
+    Mutant(
+        "stdio throws on a reply holding text that is not UTF-8",
+        STDIO,
+        "return value.dump(-1, ' ', false, Json::error_handler_t::replace);",
+        "return value.dump(-1, ' ', false, Json::error_handler_t::strict);",
+    ),
+    Mutant(
+        "mcp fails a tool's answer holding text that is not UTF-8",
+        MCP,
+        "answer.data.dump(-1, ' ', false, Json::error_handler_t::replace)",
+        "answer.data.dump(-1, ' ', false, Json::error_handler_t::strict)",
+    ),
     Mutant(
         "the event log keeps a line in a buffer, not the file",
         EVENTLOG,
         "out_.flush();",
         "",
-    ),
-    # The archives' indexes (Erf.cpp).
-    Mutant(
-        "erf reads V2.0's entries at V2.2's size",
-        ERF,
-        "constexpr Layout kV20{32, 72};",
-        "constexpr Layout kV20{32, 76};",
-    ),
-    Mutant(
-        "erf reads the index's length from the wrong count",
-        ERF,
-        "Word(head, 16)",
-        "Word(head, 20)",
-    ),
-    Mutant(
-        "erf does not read the last name",
-        ERF,
-        "const std::size_t count = Word(index, 16);",
-        "const std::size_t count = Word(index, 16) - 1;",
-    ),
-    Mutant(
-        "erf reads an index cut short past its end",
-        ERF,
-        "if (at + kNameBytes > index.size())",
-        "if (at > index.size())",
-    ),
-    Mutant(
-        "erf keeps a letter beyond ASCII as a byte",
-        ERF,
-        "text += unit < 0x80 ? static_cast<char>(unit) : '?';",
-        "text += static_cast<char>(unit);",
     ),
     # Arguments (Args.cpp).
     Mutant(
@@ -2706,6 +2739,149 @@ MUTANTS = [
         "return std::clamp(pitch, kPi / 6, kPi * 5 / 6);",
         "return std::clamp(pitch, 0.0F, kPi);",
     ),
+    # Ghilana's own (src/ghilana, #128): the copy the game takes, a table as
+    # the game merges it, what conflicts and query count, and the text and
+    # files ghilana writes. `--suite ghilana`.
+    Mutant(
+        "ghilana taken: the copy the game takes is one it has, else none",
+        "src/ghilana/GameFiles.cpp",
+        "return !copies.empty() && copies.front().unused == dao::core::install::Unused::No ? &copies.front() : nullptr;",
+        "return !copies.empty() ? &copies.front() : nullptr;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana cell: a number matches only an equal number",
+        "src/ghilana/Tables.cpp",
+        "return cell.get<double>() == wanted.get<double>();",
+        "return true;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana cell: text matches without case",
+        "src/ghilana/Tables.cpp",
+        "return Lower(TextOf(cell)) == Lower(TextOf(wanted));",
+        "return TextOf(cell) == TextOf(wanted);",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana table: its files in the game's order",
+        "src/ghilana/ToolsData.cpp",
+        "files.Installed().SortFiles(taken);",
+        "(void)taken;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana table: a row after an unreadable file is unsure",
+        "src/ghilana/ToolsData.cpp",
+        "            unreadableBefore = true;\n",
+        "",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana table: the copies a file's game copy shadows are said",
+        "src/ghilana/ToolsData.cpp",
+        "        for (std::size_t i = 1; i < copies.size(); ++i)\n        {\n            read.shadowed",
+        "        for (std::size_t i = 2; i < copies.size(); ++i)\n        {\n            read.shadowed",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana table: the rows the game drops are left out unless asked",
+        "src/ghilana/ToolsData.cpp",
+        "if (!dropped && !row.taken)",
+        "if (dropped && !row.taken)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana table: the merge is given each part's source",
+        "src/ghilana/Tables.cpp",
+        "return dao::core::m2da::Merge(tables, sources);",
+        "return dao::core::m2da::Merge(tables);",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana conflicts: copies of one source are no conflict across sources",
+        "src/ghilana/ToolsFiles.cpp",
+        "if (count < 2 || (across && sources.size() < 2))",
+        "if (count < 2 || (across && sources.empty()))",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana conflicts: a source loses where another's copy is taken",
+        "src/ghilana/ToolsFiles.cpp",
+        "taken->source != *source",
+        "taken->source == *source",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana query: the game's copy of each resource unless all are asked",
+        "src/ghilana/ToolsData.cpp",
+        "const bool game = &copy == GameFiles::Taken(copies);",
+        "const bool game = true;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana extract: never into the game's folder",
+        "src/ghilana/ToolsFiles.cpp",
+        "if (Inside(to, files.Where().game))",
+        "if (false)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana extract: all_copies keeps two copies of one source apart",
+        "src/ghilana/ToolsFiles.cpp",
+        "(copy.archive == kLoose ? relative.parent_path() : relative)",
+        "relative.parent_path()",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana json: a GFF3 struct past the depth is its field count",
+        "src/ghilana/FileJson.cpp",
+        "if (depth > limits.depth)",
+        "if (false)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana json: a column is named by its hash where a name is known",
+        "src/ghilana/FileJson.cpp",
+        "    if (!name.empty())\n    {\n        return std::string(name);",
+        "    if (false)\n    {\n        return std::string(name);",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana text: a pattern matches without case",
+        "src/ghilana/Text.cpp",
+        "(pattern[p] == '?' || LowerChar(pattern[p]) == LowerChar(text[t]))",
+        "(pattern[p] == '?' || pattern[p] == text[t])",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana text: a path's backslashes are slashes",
+        "src/ghilana/Text.cpp",
+        "        if (c == '\\\\')",
+        "        if (false)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana text: a surrogate pair is one character",
+        "src/ghilana/Text.cpp",
+        "Append(out, 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00));",
+        "Append(out, kReplacement);",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana names: #label is read as the label it writes",
+        "src/ghilana/Names.cpp",
+        "std::from_chars(name.data() + 1, end, label)",
+        "std::from_chars(name.data(), end, label)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana png: eight bits a channel",
+        "src/ghilana/Png.cpp",
+        "header.bit_depth = 8;",
+        "header.bit_depth = 16;",
+        "ghilana",
+    ),
 ]
 
 
@@ -2751,12 +2927,12 @@ def run(
     )
 
 
-def sync(worker: Path) -> None:
+def sync(worker: Path, suite: Suite) -> None:
     """Brings a worker's copy up to the tree: a file is written only where it
     differs, so what did not change is not built again."""
     wanted: set[Path] = set()
     sources = [REPO / name for name in FILES if (REPO / name).exists()]
-    for tree in TREES:
+    for tree in suite.trees:
         sources += [f for f in (REPO / tree).rglob("*") if f.is_file()]
     for source in sources:
         target = worker / source.relative_to(REPO)
@@ -2765,15 +2941,15 @@ def sync(worker: Path) -> None:
         if not target.exists() or target.read_bytes() != data:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
-    for tree in TREES:
+    for tree in suite.trees:
         for stale in (worker / tree).rglob("*"):
             if stale.is_file() and stale not in wanted:
                 stale.unlink()
 
 
-def made_with() -> str:
-    """The build program the tree's own core build was configured with."""
-    cache = REPO / "build" / "core" / "CMakeCache.txt"
+def made_with(suite: Suite) -> str:
+    """The build program the tree's own build of the suite's preset was configured with."""
+    cache = REPO / "build" / suite.preset / "CMakeCache.txt"
     if cache.exists():
         for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.startswith("CMAKE_MAKE_PROGRAM:"):
@@ -2781,42 +2957,44 @@ def made_with() -> str:
     return ""
 
 
-def tests_of(worker: Path) -> Path:
-    return worker / "build" / "core" / "tests" / "el_tests.exe"
+def tests_of(worker: Path, suite: Suite) -> list[str]:
+    return [str(worker / "build" / suite.preset / suite.tests), *suite.args]
 
 
-def prepare(worker: Path, jobs: int) -> str:
+def prepare(worker: Path, jobs: int, suite: Suite) -> str:
     """A worker's copy, configured and built as the tree is. Answers what went
     wrong, or nothing."""
-    sync(worker)
-    if not (worker / "build" / "core" / "build.ninja").exists():
+    sync(worker, suite)
+    if not (worker / "build" / suite.preset / "build.ninja").exists():
         command = [
             "cmake",
             "--preset",
-            "core",
-            f"-DVCPKG_INSTALLED_DIR={PACKAGES.as_posix()}",
+            suite.preset,
+            f"-DVCPKG_INSTALLED_DIR={suite.packages.as_posix()}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
+            *suite.configure,
         ]
         # Ninja as the tree's own build found it: it need not be on the path
         # of the shell this runs in.
-        if ninja := made_with():
+        if ninja := made_with(suite):
             command.append(f"-DCMAKE_MAKE_PROGRAM={ninja}")
         configured = run(command, worker)
         if configured.returncode != 0:
             return (configured.stdout + configured.stderr)[-2000:]
-    built = build(worker, jobs)
+    built = build(worker, jobs, suite)
     if built.returncode != 0:
         return (built.stdout + built.stderr)[-2000:]
     return ""
 
 
-def build(worker: Path, jobs: int) -> subprocess.CompletedProcess[str]:
-    return run(
-        ["cmake", "--build", "--preset", "core", "--parallel", str(jobs)], worker
-    )
+def build(worker: Path, jobs: int, suite: Suite) -> subprocess.CompletedProcess[str]:
+    command = ["cmake", "--build", "--preset", suite.preset, "--parallel", str(jobs)]
+    if suite.target:
+        command += ["--target", suite.target]
+    return run(command, worker)
 
 
-def test(mutant: Mutant, worker: Path) -> str:
+def test(mutant: Mutant, worker: Path, suite: Suite) -> str:
     """One mutant, in a worker's copy, from the copy as it was made: an edit to
     the tree while mutants run is not taken up half way (it was, read from the
     tree each time: a run whose mutants "did not compile" by the dozen,
@@ -2828,10 +3006,10 @@ def test(mutant: Mutant, worker: Path) -> str:
     try:
         path.write_text(original.replace(mutant.old, mutant.new), encoding="utf-8")
         # One file changed: one compiler.
-        if build(worker, 1).returncode != 0:
+        if build(worker, 1, suite).returncode != 0:
             return "did not compile"
         try:
-            result = run([str(tests_of(worker))], worker, timeout=TIMEOUT_S)
+            result = run(tests_of(worker, suite), worker, timeout=TIMEOUT_S)
         except subprocess.TimeoutExpired:
             return "caught (the tests hung)"
         return "caught" if result.returncode != 0 else "SURVIVED"
@@ -2851,9 +3029,19 @@ def main() -> int:
         default=os.cpu_count() or 2,
         help="how many mutants at a time (by default one a core)",
     )
+    parser.add_argument(
+        "--suite",
+        choices=sorted(SUITES),
+        default="core",
+        help="core (src/core, the default) or ghilana (src/ghilana, built 64-bit)",
+    )
     args = parser.parse_args()
+    suite = SUITES[args.suite]
     chosen = [
-        m for m in MUTANTS if not args.names or any(w in m.name for w in args.names)
+        m
+        for m in MUTANTS
+        if m.suite == args.suite
+        and (not args.names or any(w in m.name for w in args.names))
     ]
     if not chosen:
         print("no mutant's name contains any of those")
@@ -2861,13 +3049,14 @@ def main() -> int:
     if wrong := unapplied(chosen):
         print("\n".join(wrong))
         return 1
-    if not PACKAGES.exists():
+    if not suite.packages.exists():
         print(
-            f"no {PACKAGES}: build the core preset once (tools\\build.ps1 -Preset core)"
+            f"no {suite.packages}: build the {suite.preset} preset once "
+            f"(tools\\build.ps1 -Preset {suite.preset})"
         )
         return 1
     count = max(1, min(args.jobs, len(chosen)))
-    workers = [WORK / f"w{n}" for n in range(count)]
+    workers = [WORK / suite.work / f"w{n}" for n in range(count)]
     started = time.monotonic()
 
     # The copies, built side by side: each with its share of the cores.
@@ -2875,7 +3064,7 @@ def main() -> int:
     problems: dict[Path, str] = {}
 
     def ready(worker: Path) -> None:
-        problems[worker] = prepare(worker, share)
+        problems[worker] = prepare(worker, share, suite)
 
     threads = [threading.Thread(target=ready, args=(w,)) for w in workers]
     for thread in threads:
@@ -2886,8 +3075,8 @@ def main() -> int:
         if problem:
             print(f"{worker.name} does not configure or build:\n{problem}")
             return 1
-    if run([str(tests_of(workers[0]))], workers[0]).returncode != 0:
-        print("the unmutated core does not pass its tests; fix that first")
+    if run(tests_of(workers[0], suite), workers[0]).returncode != 0:
+        print(f"the unmutated {args.suite} does not pass its tests; fix that first")
         return 1
     print(
         f"{count} at a time, in {WORK} ({time.monotonic() - started:.0f} s to make ready)",
@@ -2909,7 +3098,7 @@ def main() -> int:
             start = time.monotonic()
             # Whatever goes wrong is said, and counted as not caught.
             try:
-                verdict = test(mutant, worker)
+                verdict = test(mutant, worker, suite)
             except Exception as error:  # noqa: BLE001
                 verdict = f"failed: {error}"
             with said:

@@ -26,6 +26,11 @@
     core-cov    the same built 64-bit with clang-cl and instrumented for
                 coverage (LLVM ships the profile runtime for x64 only);
                 with -Coverage, the report. Catch2 is fetched, not vcpkg's.
+    ghilana     ghilana.exe (dev/GHILANA.md), 64-bit, with its tests and the
+                core's, over DAOLib's core alone: no plugin. The debug preset
+                builds and tests it too, 32-bit, and formats and lints it.
+    ghilana-release
+                the same, optimized, with its symbols: what is released.
 
 .PARAMETER Coverage
     After building (and testing, with -Test), run the tests once more under
@@ -53,10 +58,11 @@
     .\tools\build.ps1 -Preset release
     .\tools\build.ps1 -Preset core -Test
     .\tools\build.ps1 -Preset core-cov -Coverage
+    .\tools\build.ps1 -Preset ghilana -Test
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('debug', 'release', 'debug-asan', 'debug-analyze', 'core', 'core-asan', 'core-cov')]
+    [ValidateSet('debug', 'release', 'debug-asan', 'debug-analyze', 'core', 'core-asan', 'core-cov', 'ghilana', 'ghilana-release')]
     [string] $Preset = 'debug',
     [switch] $Test,
     [switch] $Coverage,
@@ -68,15 +74,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'console.ps1')
-if (($Lint -or $Format) -and $Preset -like 'core*') {
+if (($Lint -or $Format) -and ($Preset -like 'core*' -or $Preset -like 'ghilana*')) {
     throw 'the format and lint targets are the plugin presets''; use -Preset debug.'
 }
 if ($Coverage -and $Preset -ne 'core-cov') {
     throw '-Coverage needs -Preset core-cov, the one built with the instrumentation.'
 }
-# core-cov is the one 64-bit build (the profile runtime); everything else
+# core-cov (the profile runtime) and ghilana's are 64-bit; everything else
 # targets the game's x86.
-$hostTarget = if ($Preset -eq 'core-cov') { 'amd64' } else { 'amd64_x86' }
+$hostTarget = if ($Preset -eq 'core-cov' -or $Preset -like 'ghilana*') { 'amd64' } else { 'amd64_x86' }
 if ($Lint -and $Preset -eq 'debug-analyze') {
     throw 'clang-tidy cannot read a compile database holding /analyze; lint with -Preset debug.'
 }

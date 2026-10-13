@@ -1,19 +1,20 @@
 // `resources`: the game's resources by name, read from the
-// index of every archive in the game's folder (core/Erf.h): creature
+// index of every archive in the game's folder (DAOLib's dao/core/Erf.h,
+// which reads the add-ins' ERF V2.2 too since DAOLib #106; this repo's
+// own core/Erf was the second reader of it until then): creature
 // templates for `stage_spawn`, items for `stage_equip`, plots for
 // `plot`, cutscenes for `stage_cutscene`. Files only, never game
 // memory, so it answers on the listener's thread; the index is read once,
 // on the first call (some ten thousand archives), and kept.
 #include "game/Shared.h"
 
-#include "core/Erf.h"
+#include <dao/core/Erf.h>
 
 #include <Windows.h>
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <mutex>
 
@@ -39,25 +40,28 @@ fs::path GameFolder()
     return fs::path(path).parent_path().parent_path();
 }
 
+// The names, as ASCII: the game's are, and a letter beyond is kept as '?'.
 std::vector<std::string> NamesIn(const fs::path &archive)
 {
-    std::ifstream in(archive, std::ios::binary);
-    std::vector<std::byte> head(kErfHeadBytes);
-    if (!in.read(reinterpret_cast<char *>(head.data()), static_cast<std::streamsize>(head.size())))
+    std::vector<std::string> names;
+    const auto opened = dao::core::erf::Archive::Open(archive);
+    if (!opened)
     {
-        return {};
+        return names;
     }
-    const auto length = ErfIndexBytes(head);
-    constexpr std::size_t kMostIndex = 64U << 20;
-    if (!length || *length > kMostIndex)
+    for (const auto &entry : opened->Entries())
     {
-        return {};
+        std::string name;
+        for (const wchar_t letter : entry.name)
+        {
+            name += letter < 0x80 ? static_cast<char>(letter) : '?';
+        }
+        if (!name.empty())
+        {
+            names.push_back(std::move(name));
+        }
     }
-    std::vector<std::byte> index(*length);
-    in.seekg(0);
-    in.read(reinterpret_cast<char *>(index.data()), static_cast<std::streamsize>(index.size()));
-    index.resize(static_cast<std::size_t>(in.gcount()));
-    return ErfNames(index);
+    return names;
 }
 
 struct Catalog

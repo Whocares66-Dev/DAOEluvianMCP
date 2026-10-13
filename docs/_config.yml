@@ -1,8 +1,8 @@
 # The docs site (#109): Just the Docs, as SkyrimFollowerTactics' is, in the eluvian's
-# colors (_sass), with DAOLib's typefaces. Its pages are
-# made by tools/build_docs.py from README.md, dev/PLAYBOOK.md, the header of the C
-# interface and _data/eluvian.json (what eluvian_describe prints); this folder holds
-# only what they are dressed in.
+# colors (_sass), with DAOLib's typefaces. Its reference pages are made by
+# tools/build_docs.py from the header of the C interface, _data/eluvian.json (what
+# eluvian_describe prints) and _data/ghilana.json (what ghilana --describe prints);
+# this folder holds the front pages, the guides and what they are dressed in.
 title: Eluvian
 description: A test bench inside Dragon Age Origins for AI agents and scripts, served over MCP and HTTP.
 url: https://whocares66-dev.github.io
@@ -34,6 +34,16 @@ back_to_top: true
 back_to_top_text: Back to top
 aux_links:
   GitHub: https://github.com/Whocares66-Dev/DAOEluvianMCP
+# Ghilana, the second server (dev/GHILANA.md): its pages a collection of their
+# own, which the sidebar shows after Eluvian's under its own heading.
+collections:
+  ghilana:
+    output: true
+    permalink: /ghilana/:path/
+just_the_docs:
+  collections:
+    ghilana:
+      name: Ghilana
 defaults:
   - scope:
       path: ""
@@ -44,3 +54,4 @@ exclude:
   - Gemfile
   - Gemfile.lock
   - _data/eluvian.json
+  - _data/ghilana.json

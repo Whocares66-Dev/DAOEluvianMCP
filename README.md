@@ -46,18 +46,30 @@ curl http://127.0.0.1:8930/api/health
 curl -X POST http://127.0.0.1:8930/api/tool/creatures -d '{"side":"hostile"}'
 ```
 
+## Ghilana: the game's files, without the game
+
+This repository also builds a second MCP server, `ghilana.exe`. It reads the game's archives, data tables, talk tables, templates and textures straight from disk, so the game doesn't need to be running ([dev/GHILANA.md](dev/GHILANA.md)). It's a 64-bit program that your MCP client starts, and it finds the install and your Documents folder on its own:
+
+```sh
+claude mcp add ghilana -- "C:\path\to\ghilana.exe"
+claude mcp add ghilana -- "C:\path\to\ghilana.exe" --game "E:\SteamLibrary\steamapps\common\Dragon Age Ultimate Edition"
+```
+
+Use `--documents`, `--instance`, `--language` and `--cache` to point it elsewhere. Use `--campaign` and `--textures` to say what the game is doing (the default is Origins at high texture quality), since that changes which copies of a file the game uses. `ghilana.exe --call environment` runs one tool from a shell, and `--describe` lists all of them. The tools are `environment`, `resources`, `resource`, `conflicts`, `table`, `strings`, `query`, `references`, `extract` and `texture`. When a file has several copies, Ghilana tells you which one the game uses, following the game's own load order (DAOLib's [dev/FILES.md](https://github.com/Whocares66-Dev/DAOLib/blob/master/dev/FILES.md)). It never writes to the game's folders.
+
 ## What is here
 
 - `src/core`: the bench without the game (HTTP, MCP, the tool registry, the event bus, and the tools that decide over other tools' answers), tested.
 - `src/game`: the tools that read and drive the game, through DAOLib.
 - `src/plugin`, `src/api`: the plugin itself, and the C interface other plugins include.
+- `src/ghilana`: Ghilana's tools, built on DAOLib's core (`extern/DAOLib/src/dao/core`), which parses the game's file formats.
 - `tools/`: building, deploying, packaging and releasing, the bridge, `smoke.py` (every tool once in the game) and `build_docs.py` (the docs site).
 - `docs/`: the docs site's theme and the reference it is built from (`_data/eluvian.json`, what `eluvian_describe` prints).
 - `dev/`: the docs above.
 
 ## Building
 
-Only to work on Eluvian: to use it, install a release. Visual Studio 2022 with the C++ workload, [vcpkg](https://github.com/microsoft/vcpkg) with `VCPKG_ROOT` set, and Python 3. Everything is 32-bit, as the game is.
+Only to work on Eluvian: to use it, install a release. Visual Studio 2022 with the C++ workload, [vcpkg](https://github.com/microsoft/vcpkg) with `VCPKG_ROOT` set, and Python 3. Everything that loads into the game is 32-bit, like the game itself. Ghilana is 64-bit.
 
 ```powershell
 git submodule update --init --recursive   # DAOLib, and its address library
@@ -66,6 +78,7 @@ git submodule update --init --recursive   # DAOLib, and its address library
 .\tools\deploy.ps1                        # the release build into the game (with the game closed)
 .\tools\deploy.ps1 -Remove                # take it out again
 .\tools\package.ps1                       # the release build as the zip a release carries
+.\tools\build.ps1 -Preset ghilana -Test   # ghilana.exe, 64-bit, and its tests (ghilana-release: what ships)
 ```
 
 [dev/RELEASING.md](dev/RELEASING.md) is how a release is cut.

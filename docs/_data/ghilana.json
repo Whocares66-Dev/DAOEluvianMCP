@@ -1,0 +1,440 @@
+{
+ "version": "0.1.0",
+ "tools": [
+  {
+   "name": "conflicts",
+   "description": "Says which copy of a resource the game takes, and every copy of it in the order the game looks for it (with each copy's priority, and why the game does not have one where it does not), for one resource (`name`) or every resource more than one source has. The order is the game's, read in the exe, for the campaign, language and texture quality ghilana was started with. Use it to see what an add-in or a mod overrides and what overrides it (`source`: `lost` counts those it does not win), or where a resource comes from.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "One resource: every copy of it. Default: every resource with more than one copy."
+     },
+     "source": {
+      "type": "string",
+      "description": "Only resources one of whose copies is in this source: one add-in's or mod's conflicts."
+     },
+     "type": {
+      "type": "string",
+      "description": "Only resources of this extension."
+     },
+     "across_sources": {
+      "type": "boolean",
+      "description": "Only resources whose copies are in more than one source. Default true; false adds a source's own repeats (a core file and its patch)."
+     },
+     "unused": {
+      "type": "boolean",
+      "description": "Count and list copies the game does not have too (another campaign's, language's or texture quality's, a disabled add-in's). Default false."
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "The most to return. Default 100."
+     },
+     "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many to skip first, to page through a long answer. Default 0."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "environment",
+   "description": "What ghilana is serving: the game install read (and every install found on the machine), the exe's build, the Documents folder and instance, the language, DAOLib and its plugins if installed, and each source of resources (the core, the campaign, every add-in and offer with whether AddIns.xml enables it, the override folders, DAOLib plugins' overrides) with how many archives and files it holds and how many cannot be read. Call it first. The first call reads every archive's directory (some ten thousand) and says how long that took; later calls are fast.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "sources": {
+      "type": "boolean",
+      "description": "List every source. Default true; false for the summary alone."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "extract",
+   "description": "Writes resources out of the game's archives into a folder of yours, by name or pattern, for a tool that wants the files themselves. Answers each file written with its path and the copy it came from, and what could not be (an enciphered add-in's copy). Writes nothing in the game's folders.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "names": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "Resource names, with extensions."
+     },
+     "pattern": {
+      "type": "string",
+      "description": "A name pattern with * and ?: \"abi_*.gda\"."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     },
+     "all_copies": {
+      "type": "boolean",
+      "description": "Write every copy, each into a folder named for its source and then its archive's path. Default false: the copy the game takes."
+     },
+     "most": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The most resources a pattern may match. Default 1000."
+     }
+    },
+    "required": [
+     "to"
+    ]
+   }
+  },
+  {
+   "name": "query",
+   "description": "Searches every resource of a type across the install by its fields: every creature template with Appearance_Type 80, every item of a base type. GFF3 templates (.utc, .uti, .utp, .utt, .are) and GFF4 files (.plo, .dlg, ...) are read: of each resource the copy the game takes, or every copy with `copies` all. Answers the matches with the fields asked and the copy each is in, a count of all, and with `group_by` the counts by a field's value. Copies in enciphered add-in archives are counted, not searched. `resource` on a match shows its every field.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "description": "The files' extension: utc (creatures), uti (items), utp, plo, dlg, ..."
+     },
+     "where": {
+      "type": "object",
+      "description": "Fields and the values they must have: {\"Appearance_Type\": 80}. A bare name is found at the top or in the nearest struct below that has it; a dotted path names one (\"Appearance Data.Appearance_Type\"). A localised name matches its string id; an array matches any of its values. Default: every file."
+     },
+     "fields": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "Fields to answer each match with."
+     },
+     "group_by": {
+      "type": "string",
+      "description": "A field: count the matches by its value."
+     },
+     "source": {
+      "type": "string",
+      "description": "Only copies in this source."
+     },
+     "copies": {
+      "type": "string",
+      "enum": [
+       "game",
+       "all"
+      ],
+      "description": "game (default): of each resource the copy the game takes; all: every copy, the ones it shadows and does not have too."
+     },
+     "depth": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How deep nested fields are read. Default 6."
+     },
+     "items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The most elements of a list read. Default 100."
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "The most to return. Default 50."
+     },
+     "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many to skip first, to page through a long answer. Default 0."
+     }
+    },
+    "required": [
+     "type"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "references",
+   "description": "What a resource names and what names it. `uses`: every field of the resource (a template, a conversation, a plot, a data table's cells) whose text is another resource's name, with or without its extension, and the string ids it holds. `used_by`: with `used_by_types`, every file of those types with a field naming this resource. Follows a creature to its conversation and scripts, a table row to its models.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The resource, with its extension: \"ogre_default.utc\"."
+     },
+     "used_by_types": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "Search every file of these types for what names this resource: [\"utc\", \"dlg\"]. Default: none, which only answers what it names."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy, by its source."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy, by its archive's path."
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The most of each list. Default 100."
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "resource",
+   "description": "Reads one resource and answers what it holds: a GFF4 file (conversation, plot, model, ...) or a GFF3 template (.utc, .uti, .utp) as JSON with its fields named, a data table as columns and rows, a talk table's strings, a texture's size and format, a text file (.mao, .xml, .nss) as text, anything else as its first bytes. Of several copies it reads the one the game takes, and says so with the others; `source` and `archive` name another. A copy in an enciphered add-in archive cannot be read here; the answer says so.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The resource, with its extension: \"ogre_default.utc\"."
+     },
+     "depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "How deep to follow nested structs and lists. Default 12."
+     },
+     "items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The most elements of any one list (and rows of a table). Default 200."
+     },
+     "chars": {
+      "type": "integer",
+      "minimum": 100,
+      "description": "The most bytes of a text file. Default 20000."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy, by its source as answers name it (\"core\", \"addin:dao_prc_cp_1\", \"plugin:mymod\"). Default: the copy the game takes."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy, by its archive's path (or a loose file's) as answers give it."
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "resources",
+   "description": "Finds resources by name across every source of the install: core, campaign, add-ins, offers, override folders and DAOLib plugins' overrides. Answers each name with every copy of it (its source, archive or file, size, and whether it can be read), sorted by name, with the count of all matches. Use it to find a name to pass to `resource`, `texture`, `table` or Eluvian's tools (a creature template for stage_spawn).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "match": {
+      "type": "string",
+      "description": "Words that must all be in the name, in any case (\"ogre default\"), or a pattern with * and ? (\"abi_*.gda\"). Default: every name."
+     },
+     "type": {
+      "type": "string",
+      "description": "An extension: utc, uti, gda, dlg, dds, tlk... Default: all."
+     },
+     "source": {
+      "type": "string",
+      "description": "Only resources with a copy in this source (\"addin:dao_prc_cp_2\"); `environment` lists them."
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "The most to return. Default 100."
+     },
+     "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many to skip first, to page through a long answer. Default 0."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "strings",
+   "description": "Turns string ids (strrefs, as templates, tables and conversations hold them) into the game's text, and text into string ids, across every talk table of a language: the core's, the campaign's and each add-in's. With neither, lists the talk tables read.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": [
+       "integer",
+       "array"
+      ],
+      "items": {
+       "type": "integer"
+      },
+      "description": "A string id (strref), or an array of them: their text."
+     },
+     "text": {
+      "type": "string",
+      "description": "Text to find, without case: the ids of the strings holding it."
+     },
+     "exact": {
+      "type": "boolean",
+      "description": "`text` is the whole string, not part of it. Default false."
+     },
+     "language": {
+      "type": "string",
+      "description": "en-us, fr-fr, de-de, ... Default: the server's (--language)."
+     },
+     "female": {
+      "type": "boolean",
+      "description": "The talk tables a female player's character is spoken to with (_f). Default false."
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "The most to return. Default 50."
+     },
+     "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many to skip first, to page through a long answer. Default 0."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "table",
+   "description": "Reads one of the game's data tables as the game merges it (M2DA): every GDA file whose name starts with the table's worksheet prefix, from every source (the core's abi_base.gda, an add-in's or a mod's abi_*.gda), of each the copy the game takes, in the order the game lists its files; of an ID's rows the game keeps the first file's (read in the exe, DAOLib's dev/FILES.md). Answers the table as the game has it, each row with the file and source it comes from and `_over` naming the files whose rows of its ID it overrides. Filter by `id` or `where`; `overrides_only` for what mods and add-ins change; page with `limit`/`offset`.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "table": {
+      "type": [
+       "string",
+       "integer"
+      ],
+      "description": "The table: its number (m2da_base.gda's ID, as the scripts' TABLE_* constants: 1 is Abilities), its worksheet prefix (\"abi\"), its label (\"Abilities\"), or a GDA file's name (\"abi_base\")."
+     },
+     "id": {
+      "type": [
+       "integer",
+       "array"
+      ],
+      "items": {
+       "type": "integer"
+      },
+      "description": "Only the rows of this ID, or these IDs."
+     },
+     "where": {
+      "type": "object",
+      "description": "Only rows whose columns have these values: {\"Label\": \"Flurry\"}. Text without case."
+     },
+     "columns": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "Only these columns. Default: all."
+     },
+     "overrides_only": {
+      "type": "boolean",
+      "description": "Only the IDs that files give different rows, the row the game keeps of each (with `dropped`, the others too). Default false."
+     },
+     "dropped": {
+      "type": "boolean",
+      "description": "Also the rows the game drops: a later file's row of an ID an earlier file has, marked _dropped. Default false: the table as the game has it."
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "The most to return. Default 100."
+     },
+     "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many to skip first, to page through a long answer. Default 0."
+     }
+    },
+    "required": [
+     "table"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "texture",
+   "description": "Shows a DDS texture as a PNG image you can look at, with its size and the copy it came from: one picture of its mip chain no larger than `size`, all its channels or one as grey. DXT1, DXT3, DXT5 and uncompressed 24 and 32 bits are read.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The texture, with its extension: \"tb_gold_selparty.dds\"."
+     },
+     "size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096,
+      "description": "The most pixels a side: the largest of the texture's pictures (mip levels) no larger. Default 512."
+     },
+     "channel": {
+      "type": "string",
+      "enum": [
+       "rgba",
+       "rgb",
+       "alpha",
+       "red",
+       "green",
+       "blue"
+      ],
+      "description": "Which channels: rgba (default), rgb without alpha, or one of them as grey (alpha as grey shows a mask)."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy, by its source as answers name it (\"core\", \"addin:dao_prc_cp_1\", \"plugin:mymod\"). Default: the copy the game takes."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy, by its archive's path (or a loose file's) as answers give it."
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  }
+ ]
+}

@@ -193,41 +193,91 @@ def mutex_of(instance: str) -> str:
 SEED_PARTS = ("Settings", "addins", "Offers", "packages")
 
 
+def save_slot(profile: Path, save: dict) -> Path | None:
+    """The folder of a save as game_saves lists it (character, kind, number) in a profile, if
+    the kind is one; whether it is there is the caller's to ask."""
+    prefix = {kind: prefix for prefix, kind in SAVE_KINDS}.get(save.get("kind"))
+    if not prefix:
+        return None
+    return (
+        profile
+        / "Characters"
+        / str(save.get("character"))
+        / "Saves"
+        / f"{prefix}{save.get('number')}"
+    )
+
+
+def seed_problem(save: dict, default: Path, instance_profile: Path) -> str | None:
+    """Why a seed of `save` cannot give the instance that save: it is in neither the default
+    profile nor the instance's own. None where it can."""
+    slot = save_slot(default, save)
+    if slot is None:
+        return f"`load`'s kind is manual, auto or quick, not {save.get('kind')!r}"
+    own = save_slot(instance_profile, save)
+    if slot.is_dir() or (own is not None and own.is_dir()):
+        return None
+    return (
+        f"no save {save.get('character')} {save.get('kind')} {save.get('number')} in the default "
+        f"profile ({default}) or the instance's; game_saves lists them"
+    )
+
+
 def seed_instance(
     instance: str, save: dict | None, default: Path, root: Path
 ) -> dict | None:
-    """Gives a new instance a profile with the settings and one save, in place of the whole
-    of the default profile's saves the loader would copy. Only for an instance that has no
-    folder yet: one that has is left as it is, and nothing is answered. `save` is as
-    game_saves lists it (character, kind, number), or None for no save at all. The file
-    `seeded` beside the profile is the loader's own mark that there is nothing left to copy."""
+    """Gives an instance a profile with the settings and one save, in place of the whole of the
+    default profile's saves the loader would copy. A new instance gets the settings and the save;
+    one that has a folder keeps its own settings and saves, and is given the save only where it
+    has none of that slot: a save it made itself is never replaced. `save` is as game_saves lists
+    it (character, kind, number), or None for no save. The file `seeded` beside a new profile is
+    the loader's own mark that there is nothing left to copy. None where there was nothing to do.
+
+    It once left an instance that had a folder as it was, saying nothing: launched with a save
+    to seed, lib-agent's instance kept only an autosave of its own, and the load of the save
+    asked for failed with "no such save to load" (2026-10-12)."""
     home = root / instance
-    if home.exists():
-        return None
     profile = home / "BioWare" / "Dragon Age"
-    profile.mkdir(parents=True)
-    copied = []
-    for part in SEED_PARTS:
-        if (default / part).is_dir():
-            shutil.copytree(default / part, profile / part)
-            copied.append(part)
+    fresh = not home.exists()
+    if not fresh and not save:
+        return None
+    copied: list[str] = []
+    answer: dict = {"profile": str(profile)}
+    if fresh:
+        profile.mkdir(parents=True)
+        for part in SEED_PARTS:
+            if (default / part).is_dir():
+                shutil.copytree(default / part, profile / part)
+                copied.append(part)
+    else:
+        answer["kept"] = [
+            "the instance had a folder: its settings and saves are its own and kept"
+        ]
     if save:
-        character = default / "Characters" / str(save.get("character"))
-        prefix = {kind: prefix for prefix, kind in SAVE_KINDS}.get(save.get("kind"))
-        slot = character / "Saves" / f"{prefix}{save.get('number')}"
-        if prefix and slot.is_dir():
-            target = profile / "Characters" / character.name
-            (target / "Saves").mkdir(parents=True)
-            # The character's own files, its portrait and its sheet, beside the one save.
+        slot = save_slot(default, save)
+        own = save_slot(profile, save)
+        if own is not None and own.is_dir():
+            answer.setdefault("kept", []).append(
+                f"its own Characters\\{own.parent.parent.name}\\Saves\\{own.name}, which is "
+                "the one loaded"
+            )
+        elif slot is not None and slot.is_dir() and own is not None:
+            character = slot.parent.parent
+            target = own.parent.parent
+            (target / "Saves").mkdir(parents=True, exist_ok=True)
+            # The character's own files, its portrait and its sheet, beside the one save,
+            # where the instance has none of them.
             for file in character.iterdir():
-                if file.is_file():
+                if file.is_file() and not (target / file.name).exists():
                     shutil.copy2(file, target / file.name)
-            shutil.copytree(slot, target / "Saves" / slot.name)
+            shutil.copytree(slot, own)
             copied.append(f"Characters\\{character.name}\\Saves\\{slot.name}")
         else:
             copied.append(f"no save {save} in {default}")
-    (home / "seeded").write_text("seeded\n", encoding="utf-8")
-    return {"profile": str(profile), "copied": copied}
+    if fresh:
+        (home / "seeded").write_text("seeded\n", encoding="utf-8")
+    answer["copied"] = copied
+    return answer
 
 
 class Unreachable(Exception):
@@ -741,10 +791,13 @@ BRIDGE_TOOLS = [
                 "seed": {
                     "type": "string",
                     "enum": ["profile", "save"],
-                    "description": "For an instance started for the first time. profile (the "
-                    "default): the loader copies the whole default profile, every save of every "
-                    "character, which takes as long as they are large. save: only the settings "
-                    "and the one save in `load`, for a copy made for a test",
+                    "description": "For an instance. profile (the default): an instance "
+                    "started for the first time is given the whole default profile by the "
+                    "loader, every save of every character, which takes as long as they are "
+                    "large. save: the save in `load` from the default profile, with the "
+                    "settings for a new instance; an instance that has a folder keeps its own "
+                    "settings and saves and is given the save only where it has none of that "
+                    "slot. `seeded` in the answer says what was copied and kept",
                 },
                 "load": {
                     "type": "object",
@@ -1308,11 +1361,22 @@ class Bridge:
             seeded = None
             if self.instance and seed == "save":
                 load = arguments.get("load")
+                root = self.game.folder.parents[3]
+                if isinstance(load, dict):
+                    problem = seed_problem(
+                        load,
+                        self.default,
+                        root / self.instance / "BioWare" / "Dragon Age",
+                    )
+                    if problem:
+                        return text_result(
+                            f"game_launch: NOT launched. {problem}", is_error=True
+                        )
                 seeded = seed_instance(
                     self.instance,
                     load if isinstance(load, dict) else None,
                     self.default,
-                    self.game.folder.parents[3],
+                    root,
                 )
             started = time.time() - 2  # the logs of this start are no older
             pid = self.processes.start(environment)
