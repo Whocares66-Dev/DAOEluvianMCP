@@ -668,18 +668,6 @@ std::string SafeFolderName(std::string text)
     return text;
 }
 
-bool Inside(const fs::path &folder, const fs::path &root)
-{
-    if (root.empty())
-    {
-        return false;
-    }
-    std::error_code error;
-    const std::string f = Lower(PathText(fs::weakly_canonical(folder, error))) + "/";
-    const std::string r = Lower(PathText(fs::weakly_canonical(root, error))) + "/";
-    return f.starts_with(r);
-}
-
 // The names a call asked for: `names`, and those `pattern` matches.
 std::vector<std::string> NamesToExtract(const Args &args, const GameFiles &files)
 {

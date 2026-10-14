@@ -74,6 +74,7 @@ void RegisterTools(Bench &bench, Ghilana &ghilana)
 {
     detail::RegisterFileTools(bench, ghilana);
     detail::RegisterDataTools(bench, ghilana);
+    detail::RegisterModelTools(bench, ghilana);
 }
 
 std::string Instructions()
@@ -135,6 +136,18 @@ std::optional<std::uint32_t> SourceArg(const GameFiles &files, const Args &args,
         throw ToolError(std::string(tool) + ": no source \"" + id + "\"; `environment` lists them");
     }
     return source;
+}
+
+bool Inside(const fs::path &folder, const fs::path &root)
+{
+    if (root.empty())
+    {
+        return false;
+    }
+    std::error_code error;
+    const std::string f = Lower(PathText(fs::weakly_canonical(folder, error))) + "/";
+    const std::string r = Lower(PathText(fs::weakly_canonical(root, error))) + "/";
+    return f.starts_with(r);
 }
 
 namespace

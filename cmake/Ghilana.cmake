@@ -66,6 +66,9 @@ add_library(
     src/ghilana/Folders.cpp
     src/ghilana/GameFiles.cpp
     src/ghilana/Ghilana.cpp
+    src/ghilana/Gltf.cpp
+    src/ghilana/GltfImport.cpp
+    src/ghilana/GltfMath.cpp
     src/ghilana/Names.cpp
     src/ghilana/Png.cpp
     src/ghilana/Steam.cpp
@@ -73,6 +76,7 @@ add_library(
     src/ghilana/Text.cpp
     src/ghilana/ToolsData.cpp
     src/ghilana/ToolsFiles.cpp
+    src/ghilana/ToolsModels.cpp
 )
 el_apply_warnings(gh_lib)
 target_include_directories(gh_lib PRIVATE "${CMAKE_BINARY_DIR}/ghilana")

@@ -87,6 +87,7 @@ namespace detail
 {
 void RegisterFileTools(Bench &bench, Ghilana &ghilana);
 void RegisterDataTools(Bench &bench, Ghilana &ghilana);
+void RegisterModelTools(Bench &bench, Ghilana &ghilana);
 // The `limit` and `offset` a paged tool takes, in its schema.
 Json PageProperties(int defaultLimit, int mostLimit);
 
@@ -111,6 +112,9 @@ class Page
 
 // The source a call's `source` names, if it names one; a ToolError for none such.
 std::optional<std::uint32_t> SourceArg(const GameFiles &files, const Args &args, std::string_view tool);
+// Whether `folder` is `root` or inside it, compared without case; false for
+// no root.
+bool Inside(const fs::path &folder, const fs::path &root);
 // A copy's name and where it is, with the copies passed over when one was
 // chosen of several.
 Json Chosen(const GameFiles &files, const std::string &name, const std::vector<Copy> &copies, const Copy &copy);

@@ -2878,6 +2878,51 @@ MUTANTS = [
         "header.bit_depth = 16;",
         "ghilana",
     ),
+    # A model as glTF and back (#132): the axes turned and turned back, a
+    # blend index made the model's joint, a joint's inverse bind matrix, a
+    # node placed under its parent, a weight to no bone refused.
+    Mutant(
+        "ghilana gltf: the game's Z up is glTF's Y up",
+        "src/ghilana/GltfMath.cpp",
+        "return {x, z, -y};",
+        "return {x, y, z};",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana gltf: glTF's Y up turned back to the game's Z up",
+        "src/ghilana/GltfMath.cpp",
+        "return {v[0], -v[2], v[1]};",
+        "return {v[0], v[2], v[1]};",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana gltf: a node is placed under its parent",
+        "src/ghilana/GltfMath.cpp",
+        "? Times(world[static_cast<std::size_t>(node.parent)], local)",
+        "? local",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana gltf: a blend index is the joint of its slot's bone",
+        "src/ghilana/Gltf.cpp",
+        "return static_cast<std::uint16_t>(of[static_cast<std::size_t>(bone)]);",
+        "return static_cast<std::uint16_t>(bone);",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana gltf: a joint's inverse bind matrix starts at the mesh node",
+        "src/ghilana/Gltf.cpp",
+        "const Mat4 m = Times(Inverse(world_[static_cast<std::size_t>(joint)]), meshPlace);",
+        "const Mat4 m = Inverse(world_[static_cast<std::size_t>(joint)]);",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana import: a weight to no bone of the model is refused",
+        "src/ghilana/GltfImport.cpp",
+        "        if (bone < 0)\n        {\n            std::string message = label;",
+        "        if (bone < -1)\n        {\n            std::string message = label;",
+        "ghilana",
+    ),
 ]
 
 

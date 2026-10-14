@@ -97,6 +97,100 @@
    }
   },
   {
+   "name": "model",
+   "description": "Says what a model is made of, from its hierarchy (.mmh) and the mesh file (.msh) it names: its nodes by kind, its bones, and each mesh node's chunk with its material (.mao), vertex and triangle counts, vertex elements, bounds, and whether it is skinned and over how many bones. `tree` lists the nodes. Use `model_export` to open it in Blender.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The model's hierarchy, \"cn_bdy_ogra_0.mmh\" (the extension may be left off). `resources` with type mmh finds one; it names its mesh file (.msh) itself."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy of the .mmh, by its source (\"core\", \"addin:...\"). Default: the copy the game takes. Its mesh file is always the game's copy."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy of the .mmh, by its archive's path."
+     },
+     "tree": {
+      "type": "boolean",
+      "description": "List every node too: its name, kind, parent and bone index. Default false."
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "model_export",
+   "description": "Writes a model as glTF 2.0 (<name>.gltf and <name>.bin) into a folder of yours, for Blender's built-in glTF import: its node tree, each mesh with normals, tangents, texture coordinates and colours, and its bones as one skin with each vertex's weights. Z up is made glTF's Y up. The game's names and kinds are kept in each node's and mesh's `extras` (\"dao\"), which Blender keeps as custom properties. Answers the paths, the counts, and `notes` on anything left out. Textures are not written yet. Writes nothing in the game's folders.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The model's hierarchy, \"cn_bdy_ogra_0.mmh\" (the extension may be left off). `resources` with type mmh finds one; it names its mesh file (.msh) itself."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy of the .mmh, by its source (\"core\", \"addin:...\"). Default: the copy the game takes. Its mesh file is always the game's copy."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy of the .mmh, by its archive's path."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     }
+    },
+    "required": [
+     "name",
+     "to"
+    ]
+   }
+  },
+  {
+   "name": "model_import",
+   "description": "Writes a model edited in Blender back as the game's files: the glTF's meshes put into the original .msh in place of their chunks (matched by the custom properties `model_export` wrote, else by name), each vertex where the glTF has it at rest, with its normal, tangent and binormal, texture coordinates and its bones by name, and the .mmh with each mesh node's bones and material made to match and its bounding boxes made again. Vertices and triangles may be added, moved or removed; bones may not be added, and one chunk takes at most 67 (the game's skinning shaders). Bone moves and textures are not taken. Answers each chunk's counts before and after, the files written, `notes`, and where to put the files for the game to take them. Writes nothing in the game's folders.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The model the glTF was made from, its hierarchy (.mmh): the one `model_export` wrote it from. Its files are the base the meshes are written into."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy of the .mmh, by its source (\"core\", \"addin:...\"). Default: the copy the game takes. Its mesh file is always the game's copy."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy of the .mmh, by its archive's path."
+     },
+     "gltf": {
+      "type": "string",
+      "description": "The edited model, a .gltf (with its .bin beside it) or .glb, full path. Export from Blender with custom properties on (export_extras=True), so each mesh still says its chunk."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write the .msh and .mmh into, a full path; made if missing. Never inside the game's folder."
+     }
+    },
+    "required": [
+     "name",
+     "gltf",
+     "to"
+    ]
+   }
+  },
+  {
    "name": "query",
    "description": "Searches every resource of a type across the install by its fields: every creature template with Appearance_Type 80, every item of a base type. GFF3 templates (.utc, .uti, .utp, .utt, .are) and GFF4 files (.plo, .dlg, ...) are read: of each resource the copy the game takes, or every copy with `copies` all. Answers the matches with the fields asked and the copy each is in, a count of all, and with `group_by` the counts by a field's value. Copies in enciphered add-in archives are counted, not searched. `resource` on a match shows its every field.",
    "inputSchema": {

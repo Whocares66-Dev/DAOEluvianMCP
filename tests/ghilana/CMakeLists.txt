@@ -6,6 +6,7 @@ add_executable(
     ../quiet_crt.cpp
     test_formats.cpp
     test_install.cpp
+    test_models.cpp
     test_tools.cpp
 )
 el_apply_warnings(gh_tests)
