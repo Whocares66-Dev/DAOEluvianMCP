@@ -225,7 +225,10 @@ Json Environment(Ghilana &ghilana, const Json &raw)
         out["listed_without_folder"] = std::move(missing);
     }
     const auto &set = files.Installed().Set();
+    // The packages folders the campaign's .cif loads ahead of the core
+    // (Awakening's core_ep1), where the game reads them (DAOLib #113, #129).
     out["game_state"] = {{"campaign", set.campaign.empty() ? Json(nullptr) : Json(set.campaign)},
+                         {"packages", files.Installed().Packages()},
                          {"language", set.language},
                          {"textures", set.textures},
                          {"note", "what ghilana takes the game to be doing, which decides some of the copies it has "
@@ -893,7 +896,8 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
                    "What ghilana is serving: the game install read (and every install found on the machine), the "
                    "exe's build, the Documents folder and instance, the language, DAOLib and its plugins if "
                    "installed, and each source of resources (the core, the campaign, every add-in and offer with "
-                   "whether AddIns.xml enables it, the override folders, DAOLib plugins' overrides) with how many "
+                   "whether AddIns.xml enables it, the packages a campaign loads ahead of the core such as "
+                   "Awakening's core_ep1, the override folders, DAOLib plugins' overrides) with how many "
                    "archives and files it holds and how many cannot be read. Call it first. The first call reads "
                    "every archive's directory (some ten thousand) and says how long that took; later calls are "
                    "fast.",

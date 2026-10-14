@@ -73,6 +73,43 @@ TEST_CASE("environment: the sources found, their archives and files, the add-ins
     CHECK_FALSE(served.Call("environment").contains("index"));
 }
 
+TEST_CASE("a package a campaign loads is a source of that campaign, ahead of the core", "[ghilana][tools]")
+{
+    // packages\core_ep1 was no source at all, so Awakening's copies were
+    // missing from every answer and the core's taken (lib-agent, 2026-10-13,
+    // #129). Its campaign's .cif names it; the main campaign's does not.
+    Served origins;
+    Json env = origins.Call("environment");
+    CHECK(env["game_state"]["packages"].empty());
+    REQUIRE(SourceIn(env["sources"], "package:core_ep1") != nullptr);
+    const Json golem = origins.Call("conflicts", {{"name", "golem.utc"}});
+    CHECK(golem["taken"].is_null());
+    CHECK_THAT(golem["why"].get<std::string>(), ContainsSubstring("another campaign"));
+    Json read = origins.Call("resource", {{"name", "hurlock.utc"}});
+    CHECK(read["copy"]["source"] == "override:documents");
+
+    Served awakening("DAO_PRC_EP_1");
+    env = awakening.Call("environment");
+    CHECK(env["game_state"]["packages"] == Json::array({"core_ep1"}));
+    read = awakening.Call("resource", {{"name", "golem.utc"}});
+    CHECK(read["copy"]["source"] == "package:core_ep1");
+    CHECK(read["taken"] == true);
+    // Ahead of the core's copy, behind Documents' loose override.
+    const Json c = awakening.Call("conflicts", {{"name", "hurlock.utc"}});
+    CHECK(c["taken"]["source"] == "override:documents");
+    std::vector<std::string> order;
+    for (const auto &copy : c["copies"])
+    {
+        order.push_back(copy["source"].get<std::string>());
+    }
+    const auto ep1 = std::ranges::find(order, "package:core_ep1");
+    const auto core = std::ranges::find(order, "core");
+    REQUIRE(ep1 != order.end());
+    REQUIRE(core != order.end());
+    CHECK(ep1 < core);
+    CHECK(order.front() == "override:documents");
+}
+
 TEST_CASE("resources: by words or a pattern, with every copy and whether it reads", "[ghilana][tools]")
 {
     Served served;
@@ -275,12 +312,12 @@ TEST_CASE("query: templates by a field's value, the fields asked, counts by a fi
     CHECK(q["count"] == 1);
     CHECK(q["matches"][0]["copy"]["source"] == "override:documents");
     q = served.Call("query", {{"type", "utc"}, {"where", {{"LocName", 101}}}, {"copies", "all"}});
-    CHECK(q["count"] == 2);
+    CHECK(q["count"] == 4); // and core_ep1's hurlock and golem, another campaign's
     q = served.Call("query", {{"type", "utc"}, {"group_by", "Appearance_Type"}});
     CHECK(q["files_read"] == 2);
     CHECK(q["groups"].size() == 2);
     q = served.Call("query", {{"type", "utc"}, {"copies", "all"}});
-    CHECK(q["files_read"] == 4); // and the disabled add-in's ogre
+    CHECK(q["files_read"] == 6); // and the disabled add-in's ogre, and core_ep1's two
     q = served.Call("query", {{"type", "utc"}, {"where", {{"appearance_type", Json::array({80, 82})}}}});
     CHECK(q["count"] == 2);
     q = served.Call("query", {{"type", "utc"}, {"where", {{"Tag", "OGRE"}}}, {"source", "core"}});

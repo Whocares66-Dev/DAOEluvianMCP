@@ -114,13 +114,40 @@ struct Install
                      "<AddInItem UID=\"DAO_PRC_OFF\" Name=\"Off\" Priority=\"7\" Enabled=\"0\"></AddInItem>\n"
                      "</AddInsList>\n"));
         root.Write(L"documents/packages/core/override/hurlock.utc", Creature(82, "hurlock_mod", 101, ""));
+        // A package a campaign loads ahead of the core, as Awakening's .cif
+        // names core_ep1 (#129); the main campaign's names none.
+        root.Write(L"game/packages/core_ep1/data/designercreatures.erf",
+                   Erf({{"hurlock.utc", Creature(83, "hurlock_ep1", 101, "")},
+                        {"golem.utc", Creature(84, "golem", 101, "")}}));
+        root.Write(L"game/modules/single player/singleplayer.cif", Cif({}));
+        root.Write(L"game/Addins/dao_prc_ep_1/module/dao_prc_ep_1.cif", Cif({"core_ep1"}));
     }
 
-    eluvian::ghilana::Paths Paths() const
+    // A campaign's .cif whose CampaignCIFPackagesList names these packages
+    // (DAOLib's tests/test_install.cpp writes it the same way).
+    static Bytes Cif(const std::vector<std::string> &packages)
+    {
+        constexpr std::uint32_t kPackagesList = 17124;
+        constexpr std::uint16_t kString = 14;
+        constexpr std::uint16_t kList = 0x8000;
+        Gff4 cif("CIF ", "V0.1", {{"CIF ", 4, {{kPackagesList, kString, kList, 0}}}});
+        const std::uint32_t top = cif.Reserve(4);
+        const std::uint32_t list = cif.Reserve(4 + (4 * packages.size()));
+        cif.Set32(list, static_cast<std::uint32_t>(packages.size()));
+        for (std::size_t i = 0; i < packages.size(); ++i)
+        {
+            cif.Set32(list + 4 + static_cast<std::uint32_t>(4 * i), cif.String(packages[i]));
+        }
+        cif.Set32(top, list);
+        return cif.bytes;
+    }
+
+    eluvian::ghilana::Paths Paths(std::string campaign = "Single Player") const
     {
         eluvian::ghilana::Paths paths;
         paths.game = game;
         paths.documents = documents;
+        paths.campaign = std::move(campaign);
         return paths;
     }
 };
@@ -129,10 +156,11 @@ struct Install
 struct Served
 {
     Install install;
-    eluvian::ghilana::Ghilana ghilana{install.Paths(), {}, install.root.path / L"cache", "test"};
+    eluvian::ghilana::Ghilana ghilana;
     eluvian::Bench bench;
 
-    Served()
+    explicit Served(const std::string &campaign = "Single Player")
+        : ghilana{install.Paths(campaign), {}, install.root.path / L"cache", "test"}
     {
         eluvian::ghilana::RegisterTools(bench, ghilana);
     }
