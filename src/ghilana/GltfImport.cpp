@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -20,6 +21,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <set>
 #include <stdexcept>
 
 namespace eluvian::ghilana
@@ -571,20 +573,78 @@ std::vector<Value> UvTangents(const std::vector<Vec3> &p, const std::vector<Vec3
     return out;
 }
 
+// Names taken, without case, and a new one made from a wish: letters, digits
+// and _ kept, the rest _, and _2, _3 ... after one taken.
+class Names
+{
+  public:
+    std::string Take(const std::string &wish)
+    {
+        std::string base;
+        for (const char c : wish)
+        {
+            base += std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' ? c : '_';
+        }
+        if (base.empty())
+        {
+            base = "Mesh";
+        }
+        std::string name = base;
+        for (int n = 2; taken_.contains(Lower(name)); ++n)
+        {
+            name = base + "_" + std::to_string(n);
+        }
+        taken_.insert(Lower(name));
+        return name;
+    }
+
+  private:
+    std::set<std::string> taken_;
+};
+
 // One glTF mesh node made a chunk's data.
 class ChunkImport
 {
   public:
-    ChunkImport(const GltfFile &gltf, const model::Hierarchy &tree, const std::vector<Mat4> &gltfWorlds,
-                const std::multimap<std::string, int> &byName, Imported &out)
+    ChunkImport(const GltfFile &gltf, const model::Hierarchy &tree, const model::Mesh &mesh,
+                const std::vector<Mat4> &gltfWorlds, const std::multimap<std::string, int> &byName, Imported &out)
         : gltf_(gltf), tree_(tree), gltfWorlds_(gltfWorlds), byName_(byName), out_(out)
     {
+        for (const auto &chunk : mesh.chunks)
+        {
+            chunkNames_.Take(Utf8(chunk.name));
+        }
+        for (const auto &node : tree.nodes)
+        {
+            nodeNames_.Take(Utf8(node.name));
+        }
     }
 
-    // The chunk's data, with `daoNode` the model's mesh node it is drawn by.
-    model::ChunkData Make(std::size_t gltfNode, const model::Chunk &chunk, std::size_t chunkIndex, int daoNode,
-                          const std::string &label)
+    // A new chunk's name and its mesh node's, none the model has.
+    std::pair<std::wstring, std::wstring> NewNames(const std::string &chunk, const std::string &node)
     {
+        return {Wide(chunkNames_.Take(chunk)), Wide(nodeNames_.Take(node))};
+    }
+
+    // What a glTF mesh is made: one of the model's chunks, in place, or a new
+    // chunk like `chunk` under a new mesh node like `daoNode`.
+    struct Target
+    {
+        const model::Chunk &chunk; // the chunk replaced, or the one the new chunk is like
+        std::optional<std::size_t> index;
+        int daoNode;        // the mesh node that draws it, or the one the new node is like
+        std::wstring added; // the new chunk's name (and its node's), empty for a chunk in place
+        std::wstring addedNode;
+    };
+
+    // The chunk's data: one chunk, or, where its vertices are weighted to more
+    // bones than one chunk takes, several, the first in its place and the
+    // rest added under mesh nodes like its own.
+    std::vector<model::ChunkData> Make(std::size_t gltfNode, const Target &target, const std::string &label)
+    {
+        const model::Chunk &chunk = target.chunk;
+        const int daoNode = target.daoNode;
+        const bool added = !target.added.empty();
         const Json &node = gltf_.document["nodes"][gltfNode];
         const Json &mesh = gltf_.document["meshes"][node["mesh"].get<std::size_t>()];
         const model::MeshRef &ref = *tree_.nodes[static_cast<std::size_t>(daoNode)].mesh;
@@ -611,7 +671,8 @@ class ChunkImport
             gatherer.HasTangents()
                 ? placed.tangents
                 : UvTangents(placed.places, normals, g.uvs.empty() ? std::vector<Value>{} : g.uvs[0], g.indices);
-        std::vector<std::int32_t> bonesUsed = ref.bonesUsed;
+        // A new chunk counts in only the bones its own vertices use.
+        std::vector<std::int32_t> bonesUsed = added ? std::vector<std::int32_t>{} : ref.bonesUsed;
         std::vector<Value> slots;
         std::vector<Value> weights;
         if (wantsBones)
@@ -619,8 +680,13 @@ class ChunkImport
             Bones(node, g, bonesUsed, slots, weights, label);
         }
         model::ChunkData data;
-        data.name = chunk.name;
-        data.index = chunkIndex;
+        data.name = added ? target.added : chunk.name;
+        data.index = target.index;
+        data.added = added;
+        if (added)
+        {
+            data.declaration = chunk.declaration;
+        }
         data.indices = g.indices;
         if (Turned(mesh))
         {
@@ -634,22 +700,83 @@ class ChunkImport
         {
             data.values.push_back(Stream(element, streams, label));
         }
-        Edits(daoNode, ref, bonesUsed, g.material);
-        out_.changes.push_back(Json{{"chunk", Utf8(chunk.name)},
-                                    {"vertices", {{"before", chunk.vertexCount}, {"after", placed.places.size()}}},
-                                    {"triangles", {{"before", chunk.indexCount / 3}, {"after", g.indices.size() / 3}}},
-                                    {"bones_used", {{"before", ref.bonesUsed.size()}, {"after", bonesUsed.size()}}}});
-        if (placed.places.size() != chunk.vertexCount)
+        std::vector<BonePiece> pieces;
+        if (wantsBones && bonesUsed.size() > model::kMostBonesInChunk)
+        {
+            pieces = SplitByBones(data, chunk.declaration, bonesUsed, model::kMostBonesInChunk);
+            out_.notes.push_back(label + ": its vertices are weighted to " + std::to_string(bonesUsed.size()) +
+                                 " bones, and the game's skinning shaders take at most " +
+                                 std::to_string(model::kMostBonesInChunk) + " for one chunk; split into " +
+                                 std::to_string(pieces.size()) + " chunks");
+        }
+        else
+        {
+            pieces.push_back({std::move(data), bonesUsed});
+        }
+        std::vector<model::ChunkData> out;
+        out.reserve(pieces.size());
+        for (std::size_t p = 0; p < pieces.size(); ++p)
+        {
+            out.push_back(Record(pieces[p], p, target, ref, g.material));
+        }
+        if (!added && placed.places.size() != chunk.vertexCount)
         {
             out_.notes.push_back(label + ": its vertex count changed (" + std::to_string(chunk.vertexCount) + " to " +
                                  std::to_string(placed.places.size()) +
                                  "); a head's morphs (.mor) replace every vertex by its place, so a head's no longer "
                                  "fit");
         }
-        return data;
+        return out;
     }
 
   private:
+    // One piece of a glTF mesh as the chunk it is: the chunk in place (its
+    // node's edits), the new chunk (its node), or a piece past the first,
+    // which is a new chunk and mesh node like the chunk's own. Its change
+    // goes in the answer.
+    model::ChunkData Record(BonePiece &piece, std::size_t p, const Target &target, const model::MeshRef &ref,
+                            const std::string &material)
+    {
+        const model::Chunk &chunk = target.chunk;
+        const bool added = !target.added.empty();
+        Json change = {
+            {"chunk", Utf8(piece.data.name)},
+            {"vertices", {{"before", 0}, {"after", piece.data.values.empty() ? 0 : piece.data.values[0].size()}}},
+            {"triangles", {{"before", 0}, {"after", piece.data.indices.size() / 3}}},
+            {"bones_used", {{"before", 0}, {"after", piece.bones.size()}}}};
+        if (p > 0)
+        {
+            const std::wstring &node =
+                added ? target.addedNode : tree_.nodes[static_cast<std::size_t>(target.daoNode)].name;
+            const std::string n = "_" + std::to_string(p + 1);
+            const auto [chunkName, nodeName] = NewNames(Utf8(piece.data.name) + n, Utf8(node) + n);
+            piece.data.name = chunkName;
+            piece.data.index.reset();
+            piece.data.added = true;
+            piece.data.declaration = chunk.declaration;
+            change["chunk"] = Utf8(chunkName);
+            Add({chunk, std::nullopt, target.daoNode, chunkName, nodeName}, ref, piece.bones, material);
+        }
+        else if (added)
+        {
+            Add(target, ref, piece.bones, material);
+        }
+        else
+        {
+            Edits(target.daoNode, ref, piece.bones, material);
+            change["vertices"]["before"] = chunk.vertexCount;
+            change["triangles"]["before"] = chunk.indexCount / 3;
+            change["bones_used"]["before"] = ref.bonesUsed.size();
+        }
+        if (p > 0 || added)
+        {
+            change["added"] = true;
+            change["like"] = Utf8(chunk.name);
+        }
+        out_.changes.push_back(std::move(change));
+        return std::move(piece.data);
+    }
+
     struct Placed
     {
         std::vector<Vec3> places;
@@ -800,6 +927,9 @@ class ChunkImport
     // Each vertex's blend indices, slots in the mesh node's bones, and their
     // weights: a glTF joint is the model's bone of the same name; a bone the
     // mesh node does not list yet is added to its list.
+    // Past kMostBonesInChunk bones (the skinning shaders' palette, float4
+    // bsm_bones[201], three rows a bone: lib-agent, 2026-10-14, DAOLib #117),
+    // Make splits the chunk.
     void Bones(const Json &node, const Gathered &g, std::vector<std::int32_t> &bonesUsed, std::vector<Value> &slots,
                std::vector<Value> &weights, const std::string &label)
     {
@@ -829,15 +959,6 @@ class ChunkImport
             }
             slots.push_back(slot);
             weights.push_back(weight);
-        }
-        if (bonesUsed.size() > model::kMostBonesInChunk)
-        {
-            // The skinning shaders' palette, float4 bsm_bones[201], three
-            // rows a bone (lib-agent, 2026-10-14, DAOLib #117).
-            throw std::runtime_error(label + ": its vertices are weighted to " + std::to_string(bonesUsed.size()) +
-                                     " bones, and the game's skinning shaders take at most " +
-                                     std::to_string(model::kMostBonesInChunk) +
-                                     " for one chunk; weight it to fewer bones");
         }
     }
 
@@ -931,11 +1052,42 @@ class ChunkImport
         }
     }
 
+    // The new chunk's mesh node: where the node it is like is, under the same
+    // parent, so the vertices placed in that node's space stay where they are.
+    void Add(const Target &target, const model::MeshRef &ref, const std::vector<std::int32_t> &bonesUsed,
+             const std::string &material)
+    {
+        const model::Node &like = tree_.nodes[static_cast<std::size_t>(target.daoNode)];
+        model::MeshNode node;
+        node.parent = like.parent;
+        node.like = target.daoNode;
+        node.name = target.addedNode;
+        node.translation = like.translation;
+        node.rotation = like.rotation;
+        node.mesh = ref;
+        node.mesh.chunk = target.added;
+        node.mesh.bonesUsed = bonesUsed;
+        const std::string stem = Unnumbered(material);
+        if (!stem.empty())
+        {
+            node.mesh.material = Wide(stem);
+        }
+        if (like.scale && std::abs(*like.scale - 1) > 1e-6F)
+        {
+            // MeshNode keeps no scale (DAOLib #118).
+            out_.notes.push_back("mesh node " + Utf8(node.name) + " is like " + Utf8(like.name) +
+                                 ", which is scaled; the new node is not, so its mesh is drawn at another size");
+        }
+        out_.added.push_back(std::move(node));
+    }
+
     const GltfFile &gltf_;
     const model::Hierarchy &tree_;
     const std::vector<Mat4> &gltfWorlds_;
     const std::multimap<std::string, int> &byName_;
     Imported &out_;
+    Names chunkNames_;
+    Names nodeNames_;
 };
 
 // The chunk a glTF mesh node is: by the export's extras, else the mesh's
@@ -1005,7 +1157,153 @@ std::optional<int> MeshNodeOf(const model::Hierarchy &tree, const model::Chunk &
     return std::nullopt;
 }
 
+// The first chunk a mesh node draws, past the chunks for none.
+std::size_t FirstDrawn(const model::Hierarchy &tree, const model::Mesh &mesh)
+{
+    for (std::size_t c = 0; c < mesh.chunks.size(); ++c)
+    {
+        if (MeshNodeOf(tree, mesh.chunks[c]))
+        {
+            return c;
+        }
+    }
+    return mesh.chunks.size();
+}
+
 } // namespace
+
+namespace
+{
+
+// A chunk's blend indices and weights, and the bones its indices count in.
+struct Skin
+{
+    const std::vector<Value> &slots;
+    const std::vector<Value> &weights;
+    const std::vector<std::int32_t> &bonesUsed;
+
+    // A vertex's bones: those its weights are on.
+    void BonesOf(std::uint32_t v, std::set<std::int32_t> &into) const
+    {
+        for (std::size_t k = 0; k < 4; ++k)
+        {
+            if (weights[v][k] > 0)
+            {
+                into.insert(bonesUsed.at(static_cast<std::size_t>(slots[v][k])));
+            }
+        }
+    }
+};
+
+// Triangles that go together, and their bones.
+struct BoneGroup
+{
+    std::vector<std::int32_t> bones;    // a vector, whose move cannot throw as a set's may
+    std::vector<std::size_t> triangles; // where each starts in the indices
+};
+
+// Each triangle, in the file's order, in the first group its bones fit in
+// with the bones that group has, else a new one.
+std::vector<BoneGroup> GroupByBones(const std::vector<std::uint32_t> &indices, const Skin &skin, std::size_t most)
+{
+    std::vector<BoneGroup> groups;
+    for (std::size_t t = 0; t + 2 < indices.size(); t += 3)
+    {
+        std::set<std::int32_t> need;
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            skin.BonesOf(indices[t + c], need);
+        }
+        const auto fits = [&](const BoneGroup &group) {
+            const auto more = static_cast<std::size_t>(std::ranges::count_if(
+                need, [&](std::int32_t bone) { return std::ranges::find(group.bones, bone) == group.bones.end(); }));
+            return group.bones.size() + more <= most;
+        };
+        auto into = std::ranges::find_if(groups, fits);
+        BoneGroup &group = into != groups.end() ? *into : groups.emplace_back();
+        for (const std::int32_t bone : need)
+        {
+            if (std::ranges::find(group.bones, bone) == group.bones.end())
+            {
+                group.bones.push_back(bone);
+            }
+        }
+        group.triangles.push_back(t);
+    }
+    return groups;
+}
+
+// One group's triangles as a chunk's data of their own vertices, each
+// vertex's blend indices counting in the group's bones.
+BonePiece CutPiece(const model::ChunkData &whole, const BoneGroup &group, const Skin &skin, std::size_t slotsAt)
+{
+    BonePiece piece;
+    piece.data.name = whole.name;
+    piece.data.index = whole.index;
+    piece.data.added = whole.added;
+    piece.data.declaration = whole.declaration;
+    piece.data.values.resize(whole.values.size());
+    piece.bones = group.bones;
+    std::ranges::sort(piece.bones);
+    const auto slotOf = [&](std::int32_t bone) {
+        return static_cast<float>(std::ranges::find(piece.bones, bone) - piece.bones.begin());
+    };
+    std::map<std::uint32_t, std::uint32_t> placeOf;
+    for (const std::size_t t : group.triangles)
+    {
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            const std::uint32_t v = whole.indices[t + c];
+            auto [at, isNew] = placeOf.try_emplace(v, static_cast<std::uint32_t>(placeOf.size()));
+            piece.data.indices.push_back(at->second);
+            if (!isNew)
+            {
+                continue;
+            }
+            for (std::size_t e = 0; e < whole.values.size(); ++e)
+            {
+                piece.data.values[e].push_back(whole.values[e][v]);
+            }
+            Value &slot = piece.data.values[slotsAt].back();
+            for (std::size_t k = 0; k < 4; ++k)
+            {
+                slot[k] =
+                    skin.weights[v][k] > 0 ? slotOf(skin.bonesUsed.at(static_cast<std::size_t>(skin.slots[v][k]))) : 0;
+            }
+        }
+    }
+    return piece;
+}
+
+} // namespace
+
+// A chunk over too many bones cut into pieces of at most `most` (the game's
+// kMostBonesInChunk). A vertex two pieces share is in each; its blend
+// indices count in its piece's bones, in their index order.
+std::vector<BonePiece> SplitByBones(const model::ChunkData &whole, const std::vector<model::Element> &declaration,
+                                    const std::vector<std::int32_t> &bonesUsed, std::size_t most)
+{
+    std::size_t slotsAt = 0;
+    std::size_t weightsAt = 0;
+    for (std::size_t e = 0; e < declaration.size(); ++e)
+    {
+        if (declaration[e].usage == model::Usage::BlendIndices)
+        {
+            slotsAt = e;
+        }
+        else if (declaration[e].usage == model::Usage::BlendWeight)
+        {
+            weightsAt = e;
+        }
+    }
+    const Skin skin{whole.values[slotsAt], whole.values[weightsAt], bonesUsed};
+    std::vector<BonePiece> out;
+    for (const BoneGroup &group : GroupByBones(whole.indices, skin, most))
+    {
+        out.push_back(CutPiece(whole, group, skin, slotsAt));
+    }
+    return out;
+}
 
 GltfFile ReadGltf(const std::filesystem::path &path)
 {
@@ -1074,8 +1372,12 @@ Imported ModelFromGltf(const GltfFile &gltf, const model::Hierarchy &tree, const
     const Json &meshes = gltf.document.value("meshes", Json::array());
     const std::vector<Mat4> worlds = SceneWorlds(nodes);
     const auto byName = NodesByName(tree);
-    ChunkImport import(gltf, tree, worlds, byName, out);
+    ChunkImport import(gltf, tree, mesh, worlds, byName, out);
     std::vector<bool> given(mesh.chunks.size(), false);
+    const auto take = [&](std::vector<model::ChunkData> pieces) {
+        std::ranges::move(pieces, std::back_inserter(out.chunks));
+    };
+    bool anyInPlace = false;
     for (std::size_t i = 0; i < nodes.size(); ++i)
     {
         const Json &node = nodes[i];
@@ -1087,26 +1389,33 @@ Imported ModelFromGltf(const GltfFile &gltf, const model::Hierarchy &tree, const
         const std::string label =
             "mesh " + gm.value("name", std::string("?")) + " (node " + node.value("name", std::string("?")) + ")";
         const auto chunk = ChunkOf(node, gm, tree, mesh, byName);
-        if (!chunk)
+        if (chunk && !given[*chunk])
         {
-            out.notes.push_back(label + ": is none of the model's chunks; left out");
+            const auto daoNode = MeshNodeOf(tree, mesh.chunks[*chunk]);
+            if (!daoNode)
+            {
+                out.notes.push_back(label + ": its chunk is drawn by no node of the model; left out");
+                continue;
+            }
+            take(import.Make(i, {mesh.chunks[*chunk], *chunk, *daoNode, {}, {}}, label));
+            given[*chunk] = true;
+            anyInPlace = true;
             continue;
         }
-        if (given[*chunk])
+        // A new chunk: like the one the mesh claims, else the first drawn.
+        const auto like = chunk ? *chunk : FirstDrawn(tree, mesh);
+        const auto likeNode = like < mesh.chunks.size() ? MeshNodeOf(tree, mesh.chunks[like]) : std::nullopt;
+        if (!likeNode)
         {
-            out.notes.push_back(label + ": its chunk is given by another mesh already; left out");
+            out.notes.push_back(label + ": is none of the model's chunks, and no chunk is drawn to make it like; "
+                                        "left out");
             continue;
         }
-        const auto daoNode = MeshNodeOf(tree, mesh.chunks[*chunk]);
-        if (!daoNode)
-        {
-            out.notes.push_back(label + ": its chunk is drawn by no node of the model; left out");
-            continue;
-        }
-        out.chunks.push_back(import.Make(i, mesh.chunks[*chunk], *chunk, *daoNode, label));
-        given[*chunk] = true;
+        const std::string base = gm.value("name", node.value("name", std::string("Mesh")));
+        const auto [chunkName, nodeName] = import.NewNames(base, node.value("name", base));
+        take(import.Make(i, {mesh.chunks[like], std::nullopt, *likeNode, chunkName, nodeName}, label));
     }
-    if (out.chunks.empty())
+    if (!anyInPlace)
     {
         throw std::runtime_error("none of the glTF's meshes is one of the model's chunks (by the extras `model_export` "
                                  "wrote, or by name)");

@@ -7,7 +7,10 @@
 //
 // Meshes are matched to chunks by what the export put in their extras
 // ("dao": chunk, chunk_index), which Blender keeps as custom properties, and
-// failing that by the mesh's or its node's name. Bones are matched by name.
+// failing that by the mesh's or its node's name. A mesh that is none of the
+// chunks, or a second one claiming a chunk (Blender's duplicate keeps the
+// extras), is a new chunk with a new mesh node, like the chunk it claims or
+// else the first one drawn (#136). Bones are matched by name.
 // A vertex is put back where the glTF has it in its rest pose, in the space
 // of the mesh node it belongs to, whatever Blender did to the transforms
 // between.
@@ -18,6 +21,7 @@
 #include <dao/core/Model.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -40,15 +44,34 @@ struct Imported
 {
     std::vector<dao::core::model::ChunkData> chunks;
     std::vector<dao::core::model::NodeEdit> edits;
+    // The mesh nodes of the chunks added, each like the mesh node of the
+    // chunk its mesh was made from (#136, DAOLib #118).
+    std::vector<dao::core::model::MeshNode> added;
     // Per chunk given back: its name, vertices and triangles before and after.
     Json changes = Json::array();
     // What was left out, made up or refused in part, in an answer's words.
     std::vector<std::string> notes;
 };
 
+// A chunk's data and the bones its blend indices count in.
+struct BonePiece
+{
+    dao::core::model::ChunkData data;
+    std::vector<std::int32_t> bones;
+};
+
+// A chunk whose blend indices (slots in `bonesUsed`) count in more than
+// `most` bones, cut into pieces of at most `most`, each a chunk's data with
+// its own bones: a triangle goes to the first piece its bones fit in. The
+// first piece keeps the chunk's name and index.
+std::vector<BonePiece> SplitByBones(const dao::core::model::ChunkData &whole,
+                                    const std::vector<dao::core::model::Element> &declaration,
+                                    const std::vector<std::int32_t> &bonesUsed, std::size_t most);
+
 // The chunks and node edits of a glTF made of this model. Throws
 // std::runtime_error for a glTF none of whose meshes is one of the model's,
-// or a mesh that cannot be written (a bone the model does not have).
+// or a mesh that cannot be written (a bone the model does not have). A mesh
+// over kMostBonesInChunk bones is split (SplitByBones).
 Imported ModelFromGltf(const GltfFile &gltf, const dao::core::model::Hierarchy &tree,
                        const dao::core::model::Mesh &mesh);
 

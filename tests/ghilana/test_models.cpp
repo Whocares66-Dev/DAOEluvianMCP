@@ -6,6 +6,7 @@
 #include "model_builder.h"
 
 #include "ghilana/Gltf.h"
+#include "ghilana/GltfImport.h"
 #include "ghilana/GltfMath.h"
 #include "ghilana/Text.h"
 
@@ -345,6 +346,105 @@ TEST_CASE("model_import: a model's own glTF comes back as it was; an edit in it 
     const WrittenMesh moved(edited / L"slab.msh");
     const auto places = model::Floats(moved.mesh.chunks[0], *moved.mesh.chunks[0].Find(model::Usage::Position));
     CHECK(places[2][0] == Approx(4));
+}
+
+TEST_CASE("model_import: a mesh copied in the glTF is a new chunk under a new mesh node like its own",
+          "[ghilana][models]")
+{
+    Served served;
+    served.install.root.Write(L"documents/packages/core/override/slab.mmh", SlabModel());
+    served.install.root.Write(L"documents/packages/core/override/slab.msh", SlabMesh());
+    const auto out = served.install.root.path / L"out";
+    served.Call("model_export", {{"name", "slab"}, {"to", ghilana::PathText(out)}});
+    // Blender's duplicate: a second node of the same mesh, its extras and all,
+    // with another material.
+    Json doc = Json::parse(std::ifstream(out / L"slab.gltf"));
+    Json copy = doc["nodes"][3];
+    copy["name"] = "Mesh1.001";
+    copy.erase("children");
+    doc["nodes"].push_back(copy);
+    doc["scenes"][0]["nodes"].push_back(doc["nodes"].size() - 1);
+    doc["meshes"].push_back(doc["meshes"][0]);
+    doc["meshes"].back()["name"] = "Body.001";
+    doc["meshes"].back()["primitives"][0]["material"] = doc["materials"].size();
+    doc["materials"].push_back({{"name", "troll"}});
+    doc["nodes"].back()["mesh"] = doc["meshes"].size() - 1;
+    // The copy's own skin, both its joints Bone1 (node 2, bone 0): its
+    // vertices weigh on bone 0 alone.
+    Json skin = doc["skins"][0];
+    skin["joints"] = Json::array({2, 2});
+    doc["skins"].push_back(skin);
+    doc["nodes"].back()["skin"] = doc["skins"].size() - 1;
+    std::ofstream(out / L"slab.gltf") << doc.dump();
+
+    const auto back = served.install.root.path / L"back";
+    const Json answer = served.Call(
+        "model_import",
+        {{"name", "slab"}, {"gltf", ghilana::PathText(out / L"slab.gltf")}, {"to", ghilana::PathText(back)}});
+    REQUIRE(answer["nodes_added"].size() == 1);
+    CHECK(answer["nodes_added"][0]["node"] == "Mesh1_001");
+    CHECK(answer["nodes_added"][0]["chunk"] == "Body_001");
+    CHECK(answer["nodes_added"][0]["material"] == "troll");
+    CHECK(answer["nodes_added"][0]["like"] == "Mesh1");
+    CHECK(answer["chunks"][1]["added"] == true);
+
+    const WrittenMesh written(back / L"slab.msh");
+    REQUIRE(written.mesh.chunks.size() == 3);
+    const model::Chunk &body = written.mesh.chunks[0];
+    const model::Chunk &added = written.mesh.chunks[2];
+    CHECK(added.name == L"Body_001");
+    CHECK(added.vertexCount == body.vertexCount);
+    CHECK(model::Indices(added) == model::Indices(body));
+    CHECK(added.declaration.size() == body.declaration.size());
+
+    std::ifstream in(back / L"slab.mmh", std::ios::binary);
+    const std::vector<char> chars{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    std::vector<std::byte> treeBytes(chars.size());
+    std::memcpy(treeBytes.data(), chars.data(), chars.size());
+    const auto treeFile = dao::core::gff4::File::Parse(treeBytes);
+    REQUIRE(treeFile);
+    const auto tree = model::HierarchyOf(*treeFile);
+    REQUIRE(tree);
+    const auto node = std::ranges::find(tree->nodes, std::wstring(L"Mesh1_001"), &model::Node::name);
+    REQUIRE(node != tree->nodes.end());
+    REQUIRE(node->mesh);
+    CHECK(node->mesh->chunk == L"Body_001");
+    CHECK(node->mesh->material == L"troll");
+    // Its own bones only, not the original's [1, 0].
+    CHECK(node->mesh->bonesUsed == std::vector<std::int32_t>{0});
+}
+
+TEST_CASE("a chunk over too many bones is split, each triangle in the first piece its bones fit", "[ghilana][models]")
+{
+    // Bones [10, 11, 12] and at most two a piece. Vertices 0 and 2 on bone 10,
+    // 1 on 11, 3 on 12 (slot 2) with a weightless slot 1 left behind.
+    model::ChunkData whole;
+    whole.name = L"Body";
+    whole.index = 0;
+    std::vector<model::Element> declaration(3);
+    declaration[1].usage = model::Usage::BlendIndices;
+    declaration[2].usage = model::Usage::BlendWeight;
+    whole.values = {{{0, 0, 0, 1}, {1, 0, 0, 1}, {2, 0, 0, 1}, {3, 0, 0, 1}},
+                    {{0, 0, 0, 0}, {1, 0, 0, 0}, {0, 0, 0, 0}, {2, 1, 0, 0}},
+                    {{1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}}};
+    // A on bones 10 and 11; B on 10 and 12, which A's piece cannot take; C as A.
+    whole.indices = {0, 1, 2, 0, 2, 3, 1, 2, 0};
+    const auto pieces = ghilana::SplitByBones(whole, declaration, {10, 11, 12}, 2);
+    REQUIRE(pieces.size() == 2);
+    CHECK(pieces[0].bones == std::vector<std::int32_t>{10, 11});
+    CHECK(pieces[1].bones == std::vector<std::int32_t>{10, 12});
+    CHECK(pieces[0].data.name == L"Body");
+    CHECK(pieces[0].data.index == 0);
+    // A and C in the first piece, over its own three vertices.
+    CHECK(pieces[0].data.indices == std::vector<std::uint32_t>{0, 1, 2, 1, 2, 0});
+    REQUIRE(pieces[0].data.values[0].size() == 3);
+    CHECK(pieces[0].data.values[1][1][0] == 1); // vertex 1, bone 11, slot 1 here
+    // B in the second: vertices 0, 2 and 3 again, vertex 3's bone 12 at slot 1.
+    CHECK(pieces[1].data.indices == std::vector<std::uint32_t>{0, 1, 2});
+    REQUIRE(pieces[1].data.values[0].size() == 3);
+    CHECK(pieces[1].data.values[0][2][0] == 3); // its place came along
+    CHECK(pieces[1].data.values[1][2][0] == 1);
+    CHECK(pieces[1].data.values[1][0][0] == 0); // vertex 0, bone 10, slot 0
 }
 
 TEST_CASE("model_import: refuses a vertex weighted to a bone the model does not have", "[ghilana][models]")

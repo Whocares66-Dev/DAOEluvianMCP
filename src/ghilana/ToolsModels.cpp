@@ -363,7 +363,7 @@ Json Import(Ghilana &ghilana, const Json &raw)
     {
         throw ToolError("model_import: the mesh file written does not read back; nothing was written");
     }
-    const model::Written tree = model::WriteHierarchy(loaded->treeBytes, imported.edits, &*written);
+    const model::Written tree = model::WriteHierarchy(loaded->treeBytes, imported.edits, imported.added, &*written);
     if (!tree.error.empty())
     {
         throw ToolError("model_import: the model's hierarchy cannot be written: " + tree.error);
@@ -391,11 +391,20 @@ Json Import(Ghilana &ghilana, const Json &raw)
         edits.push_back(std::move(item));
     }
     out["node_edits"] = std::move(edits);
+    Json added = Json::array();
+    for (const auto &node : imported.added)
+    {
+        added.push_back({{"node", Utf8(node.name)},
+                         {"chunk", Utf8(node.mesh.chunk)},
+                         {"material", Utf8(node.mesh.material)},
+                         {"like", Utf8(loaded->tree.nodes[static_cast<std::size_t>(node.like)].name)}});
+    }
+    out["nodes_added"] = std::move(added);
     if (!imported.notes.empty())
     {
         out["notes"] = imported.notes;
     }
-    out["not_taken"] = "node transforms (bones moved in Blender), nodes added or removed, and textures: the files "
+    out["not_taken"] = "node transforms (bones moved in Blender), bones added, nodes removed, and textures: the files "
                        "keep the original's";
     out["into_the_game"] = "the game takes a loose file in " +
                            PathText(ghilana.Files().Where().documents / L"packages" / L"core" / L"override") +
@@ -452,7 +461,11 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
                    "else by name), each vertex where the glTF has it at rest, with its normal, tangent and binormal, "
                    "texture coordinates and its bones by name, and the .mmh with each mesh node's bones and material "
                    "made to match and its bounding boxes made again. Vertices and triangles may be added, moved or "
-                   "removed; bones may not be added, and one chunk takes at most 67 (the game's skinning shaders). "
+                   "removed. A mesh that is none of the model's chunks, or a copy of one (Blender's duplicate), is "
+                   "added as a new chunk under a new mesh node like the one it was copied from (else the first), "
+                   "with the glTF's material. Bones may not be added. A mesh weighted to more than 67 bones (the "
+                   "most the game's skinning shaders take for one chunk) is split into chunks of at most 67, the "
+                   "rest under new mesh nodes like its own. "
                    "Bone moves and textures are not taken. Answers each chunk's counts before and after, the files "
                    "written, `notes`, and where to put the files for the game to take them. Writes nothing in the "
                    "game's folders.",

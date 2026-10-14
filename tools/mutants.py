@@ -2923,6 +2923,35 @@ MUTANTS = [
         "        if (bone < -1)\n        {\n            std::string message = label;",
         "ghilana",
     ),
+    # New meshes, and a chunk over too many bones split (#136).
+    Mutant(
+        "ghilana import: a second mesh claiming a chunk is a new chunk",
+        "src/ghilana/GltfImport.cpp",
+        "if (chunk && !given[*chunk])",
+        "if (chunk)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana import: a new chunk counts in only its own bones",
+        "src/ghilana/GltfImport.cpp",
+        "std::vector<std::int32_t> bonesUsed = added ? std::vector<std::int32_t>{} : ref.bonesUsed;",
+        "std::vector<std::int32_t> bonesUsed = ref.bonesUsed;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana split: a piece takes as many bones as allowed",
+        "src/ghilana/GltfImport.cpp",
+        "return group.bones.size() + more <= most;",
+        "return group.bones.size() + more < most;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana split: a vertex's blend indices count in its piece's bones",
+        "src/ghilana/GltfImport.cpp",
+        "? slotOf(skin.bonesUsed.at(static_cast<std::size_t>(skin.slots[v][k]))) : 0;",
+        "? skin.slots[v][k] : 0;",
+        "ghilana",
+    ),
 ]
 
 
