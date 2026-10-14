@@ -44,9 +44,12 @@ struct Imported
 {
     std::vector<dao::core::model::ChunkData> chunks;
     std::vector<dao::core::model::NodeEdit> edits;
-    // The mesh nodes of the chunks added, each like the mesh node of the
-    // chunk its mesh was made from (#136, DAOLib #118).
-    std::vector<dao::core::model::MeshNode> added;
+    // The nodes added: first the new bones, a joint of the glTF's skin that
+    // is no bone of the model each (#137, DAOLib #119), then the mesh nodes
+    // of the chunks added, each like the mesh node of the chunk its mesh was
+    // made from (#136, DAOLib #118). A new node's index in the hierarchy is
+    // the model's node count and its place here.
+    std::vector<dao::core::model::NewNode> added;
     // Per chunk given back: its name, vertices and triangles before and after.
     Json changes = Json::array();
     // What was left out, made up or refused in part, in an answer's words.

@@ -32,6 +32,9 @@ Mat4 Transform(const Vec3 &t, const dao::core::model::Quaternion &q, float s);
 Mat4 Times(const Mat4 &a, const Mat4 &b);
 // The inverse of an affine matrix; the identity for one that has none.
 Mat4 Inverse(const Mat4 &m);
+
+// The turn of an affine matrix, its scale taken out, as a quaternion.
+dao::core::model::Quaternion Rotation(const Mat4 &m);
 // A point moved by a matrix.
 Vec3 Apply(const Mat4 &m, const Vec3 &v);
 // A direction turned (and scaled) by a matrix, its translation left out.

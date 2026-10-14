@@ -136,6 +136,61 @@ Mat4 Inverse(const Mat4 &m)
     return out;
 }
 
+model::Quaternion Rotation(const Mat4 &m)
+{
+    // Each column of the 3x3 part made a unit, then Shepperd's method: the
+    // largest of w, x, y, z found first, so nothing is divided by near zero.
+    std::array<double, 9> r{}; // r[row * 3 + col]
+    for (int col = 0; col < 3; ++col)
+    {
+        const double length = std::sqrt((m[col * 4] * m[col * 4]) + (m[(col * 4) + 1] * m[(col * 4) + 1]) +
+                                        (m[(col * 4) + 2] * m[(col * 4) + 2]));
+        for (int row = 0; row < 3; ++row)
+        {
+            const double unit = row == col ? 1 : 0; // a column of no length: the identity's
+            r[(row * 3) + col] = length > 1e-12 ? m[(col * 4) + row] / length : unit;
+        }
+    }
+    const double trace = r[0] + r[4] + r[8];
+    double x = 0;
+    double y = 0;
+    double z = 0;
+    double w = 1;
+    if (trace > 0)
+    {
+        const double s = std::sqrt(trace + 1) * 2;
+        w = s / 4;
+        x = (r[7] - r[5]) / s;
+        y = (r[2] - r[6]) / s;
+        z = (r[3] - r[1]) / s;
+    }
+    else if (r[0] > r[4] && r[0] > r[8])
+    {
+        const double s = std::sqrt(1 + r[0] - r[4] - r[8]) * 2;
+        w = (r[7] - r[5]) / s;
+        x = s / 4;
+        y = (r[1] + r[3]) / s;
+        z = (r[2] + r[6]) / s;
+    }
+    else if (r[4] > r[8])
+    {
+        const double s = std::sqrt(1 + r[4] - r[0] - r[8]) * 2;
+        w = (r[2] - r[6]) / s;
+        x = (r[1] + r[3]) / s;
+        y = s / 4;
+        z = (r[5] + r[7]) / s;
+    }
+    else
+    {
+        const double s = std::sqrt(1 + r[8] - r[0] - r[4]) * 2;
+        w = (r[3] - r[1]) / s;
+        x = (r[2] + r[6]) / s;
+        y = (r[5] + r[7]) / s;
+        z = s / 4;
+    }
+    return {static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), static_cast<float>(w)};
+}
+
 Vec3 Back(const Vec3 &v)
 {
     return {v[0], -v[2], v[1]};

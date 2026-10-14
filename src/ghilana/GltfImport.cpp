@@ -620,6 +620,111 @@ class ChunkImport
         }
     }
 
+    // A new bone for each joint of the glTF's skins that is no bone of the
+    // model: under the nearest node above it the model has (or a new bone
+    // made first), placed where the glTF has it at rest, relative to that
+    // node as the model has it. No animation names it, so it moves with its
+    // parent (lib-agent, DAOLib #119). Call before any Make.
+    void NewBones()
+    {
+        const Json &nodes = gltf_.document.value("nodes", Json::array());
+        parents_.assign(nodes.size(), -1);
+        for (std::size_t i = 0; i < nodes.size(); ++i)
+        {
+            for (const auto &child : nodes[i].value("children", Json::array()))
+            {
+                if (child.get<std::size_t>() < parents_.size())
+                {
+                    parents_[child.get<std::size_t>()] = static_cast<int>(i);
+                }
+            }
+        }
+        daoWorlds_ = Worlds(tree_);
+        for (const auto &skin : gltf_.document.value("skins", Json::array()))
+        {
+            for (const auto &j : skin.value("joints", Json::array()))
+            {
+                joints_.insert(j.get<std::size_t>());
+            }
+        }
+        for (const std::size_t j : joints_)
+        {
+            MakeBone(j, 0);
+        }
+    }
+
+    // What a new bone hangs from: the node's index (an old one, or a new
+    // one's past them; -1 the model's top), the bone it is like, and the
+    // node's world matrix.
+    struct Anchor
+    {
+        int under = -1;
+        int like = -1;
+        Mat4 world = Transform({0, 0, 0}, {0, 0, 0, 1}, 1);
+    };
+
+    // The nearest node above a joint that the model has, or a new bone,
+    // which is made first.
+    Anchor AnchorOf(std::size_t j, int depth)
+    {
+        const Json &nodes = gltf_.document["nodes"];
+        for (int p = parents_[j]; p >= 0; p = parents_[static_cast<std::size_t>(p)])
+        {
+            const auto pj = static_cast<std::size_t>(p);
+            const std::string name = nodes[pj].value("name", std::string());
+            if (joints_.contains(pj) && !IsBone(name))
+            {
+                MakeBone(pj, depth + 1);
+                return made_.at(pj);
+            }
+            if (const auto known = NodeNamed(byName_, name, [](int) { return true; }))
+            {
+                const int like = tree_.nodes[static_cast<std::size_t>(*known)].bone ? *known : -1;
+                return {*known, like, daoWorlds_[static_cast<std::size_t>(*known)]};
+            }
+        }
+        return {};
+    }
+
+    // A node's name, old or new.
+    [[nodiscard]] std::string NameOf(int node) const
+    {
+        if (node < 0)
+        {
+            return "the model's top";
+        }
+        const auto i = static_cast<std::size_t>(node);
+        return i < tree_.nodes.size() ? Utf8(tree_.nodes[i].name) : Utf8(out_.added[i - tree_.nodes.size()].name);
+    }
+
+    // A joint that is no bone of the model made one, after what it hangs from.
+    void MakeBone(std::size_t j, int depth)
+    {
+        const std::string name = gltf_.document["nodes"].at(j).value("name", std::string());
+        if (made_.contains(j) || depth > 1000 || IsBone(name))
+        {
+            return;
+        }
+        const Anchor anchor = AnchorOf(j, depth);
+        const Mat4 local = Times(Inverse(anchor.world), gltfWorlds_.at(j));
+        const model::Quaternion turn = Rotation(local);
+        const Vec3 at =
+            Back({static_cast<float>(local[12]), static_cast<float>(local[13]), static_cast<float>(local[14])});
+        const Vec3 axis = Back({turn[0], turn[1], turn[2]});
+        model::NewNode bone;
+        bone.parent = anchor.under;
+        bone.like = anchor.like;
+        bone.name = Wide(nodeNames_.Take(name.empty() ? "Bone" : name));
+        bone.translation = {at[0], at[1], at[2]};
+        bone.rotation = {axis[0], axis[1], axis[2], turn[3]};
+        const auto boneIndex = static_cast<std::int32_t>(tree_.totalBones + newBones_.size());
+        newBones_[j] = boneIndex;
+        made_[j] = {static_cast<int>(tree_.nodes.size() + out_.added.size()), anchor.like, gltfWorlds_.at(j)};
+        out_.notes.push_back("joint " + name + " is no bone of the model: added as bone " + std::to_string(boneIndex) +
+                             ", node " + Utf8(bone.name) + ", under " + NameOf(anchor.under));
+        out_.added.push_back(std::move(bone));
+    }
+
     // A new chunk's name and its mesh node's, none the model has.
     std::pair<std::wstring, std::wstring> NewNames(const std::string &chunk, const std::string &node)
     {
@@ -893,6 +998,12 @@ class ChunkImport
         for (const auto &j : joints)
         {
             const std::string name = gltf_.document["nodes"].at(j.get<std::size_t>()).value("name", std::string());
+            if (const auto made = newBones_.find(j.get<std::size_t>()); made != newBones_.end())
+            {
+                out.bones.push_back(made->second);
+                out.names.push_back(name);
+                continue;
+            }
             const auto found = NodeNamed(
                 byName_, name, [&](int i) { return tree_.nodes[static_cast<std::size_t>(i)].bone.has_value(); });
             out.bones.push_back(found ? tree_.nodes[static_cast<std::size_t>(*found)].bone.value_or(-1) : -1);
@@ -912,7 +1023,7 @@ class ChunkImport
             std::string message = label;
             message += ": a vertex is weighted to \"";
             message += joint < boneOf.names.size() ? boneOf.names[joint] : std::to_string(joint);
-            message += "\", which is no bone of the model; bones cannot be added";
+            message += "\", which is no bone of the model and no node of the glTF";
             throw std::runtime_error(message);
         }
         auto at = std::ranges::find(bonesUsed, bone);
@@ -1058,23 +1169,23 @@ class ChunkImport
              const std::string &material)
     {
         const model::Node &like = tree_.nodes[static_cast<std::size_t>(target.daoNode)];
-        model::MeshNode node;
+        model::NewNode node;
         node.parent = like.parent;
         node.like = target.daoNode;
         node.name = target.addedNode;
         node.translation = like.translation;
         node.rotation = like.rotation;
         node.mesh = ref;
-        node.mesh.chunk = target.added;
-        node.mesh.bonesUsed = bonesUsed;
+        node.mesh->chunk = target.added;
+        node.mesh->bonesUsed = bonesUsed;
         const std::string stem = Unnumbered(material);
         if (!stem.empty())
         {
-            node.mesh.material = Wide(stem);
+            node.mesh->material = Wide(stem);
         }
         if (like.scale && std::abs(*like.scale - 1) > 1e-6F)
         {
-            // MeshNode keeps no scale (DAOLib #118).
+            // NewNode keeps no scale (DAOLib #118).
             out_.notes.push_back("mesh node " + Utf8(node.name) + " is like " + Utf8(like.name) +
                                  ", which is scaled; the new node is not, so its mesh is drawn at another size");
         }
@@ -1088,6 +1199,19 @@ class ChunkImport
     Imported &out_;
     Names chunkNames_;
     Names nodeNames_;
+    std::set<std::size_t> joints_;                 // every skin's joints, by glTF node
+    std::map<std::size_t, std::int32_t> newBones_; // a joint made a new bone, its bone index
+    std::map<std::size_t, Anchor> made_;           // and what a bone under it hangs from
+    std::vector<int> parents_;                     // each glTF node's parent, -1 for none
+    std::vector<Mat4> daoWorlds_;                  // the model's nodes' world matrices
+
+    // Whether a name is one of the model's bones'.
+    [[nodiscard]] bool IsBone(const std::string &name) const
+    {
+        return NodeNamed(byName_, name,
+                         [&](int i) { return tree_.nodes[static_cast<std::size_t>(i)].bone.has_value(); })
+            .has_value();
+    }
 };
 
 // The chunk a glTF mesh node is: by the export's extras, else the mesh's
@@ -1373,6 +1497,7 @@ Imported ModelFromGltf(const GltfFile &gltf, const model::Hierarchy &tree, const
     const std::vector<Mat4> worlds = SceneWorlds(nodes);
     const auto byName = NodesByName(tree);
     ChunkImport import(gltf, tree, mesh, worlds, byName, out);
+    import.NewBones();
     std::vector<bool> given(mesh.chunks.size(), false);
     const auto take = [&](std::vector<model::ChunkData> pieces) {
         std::ranges::move(pieces, std::back_inserter(out.chunks));

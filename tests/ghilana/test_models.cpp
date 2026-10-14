@@ -447,19 +447,50 @@ TEST_CASE("a chunk over too many bones is split, each triangle in the first piec
     CHECK(pieces[1].data.values[1][0][0] == 0); // vertex 0, bone 10, slot 0
 }
 
-TEST_CASE("model_import: refuses a vertex weighted to a bone the model does not have", "[ghilana][models]")
+TEST_CASE("model_import: a joint that is no bone of the model is a new bone under its parent", "[ghilana][models]")
 {
     Served served;
     served.install.root.Write(L"documents/packages/core/override/slab.mmh", SlabModel());
     served.install.root.Write(L"documents/packages/core/override/slab.msh", SlabMesh());
     const auto out = served.install.root.path / L"out";
     served.Call("model_export", {{"name", "slab"}, {"to", ghilana::PathText(out)}});
+    // Bone1 (joint 0, under Bone0) renamed: to the model, a joint it has not.
     Json doc = Json::parse(std::ifstream(out / L"slab.gltf"));
-    doc["nodes"][2]["name"] = "Nope"; // Bone1, joint 0
+    doc["nodes"][2]["name"] = "Nope";
     std::ofstream(out / L"slab.gltf") << doc.dump();
-    const std::string gltf = ghilana::PathText(out / L"slab.gltf");
-    CHECK_THAT(ImportRefusal(served, {{"name", "slab"}, {"gltf", gltf}, {"to", ghilana::PathText(out / L"x")}}),
-               ContainsSubstring("\"Nope\", which is no bone of the model"));
+    const auto back = served.install.root.path / L"back";
+    const Json answer = served.Call(
+        "model_import",
+        {{"name", "slab"}, {"gltf", ghilana::PathText(out / L"slab.gltf")}, {"to", ghilana::PathText(back)}});
+    REQUIRE(answer["nodes_added"].size() == 1);
+    CHECK(answer["nodes_added"][0]["node"] == "Nope");
+    CHECK(answer["nodes_added"][0]["bone"] == true);
+    CHECK(answer["nodes_added"][0]["parent"] == "Bone0");
+    CHECK(answer["nodes_added"][0]["like"] == "Bone0");
+
+    std::ifstream in(back / L"slab.mmh", std::ios::binary);
+    const std::vector<char> chars{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    std::vector<std::byte> treeBytes(chars.size());
+    std::memcpy(treeBytes.data(), chars.data(), chars.size());
+    const auto treeFile = dao::core::gff4::File::Parse(treeBytes);
+    REQUIRE(treeFile);
+    const auto tree = model::HierarchyOf(*treeFile);
+    REQUIRE(tree);
+    const auto nope = std::ranges::find(tree->nodes, std::wstring(L"Nope"), &model::Node::name);
+    REQUIRE(nope != tree->nodes.end());
+    // The bone after the model's three, where Bone1 is: (0, 1, 0) from Bone0, not turned.
+    CHECK(nope->bone == 3);
+    CHECK(tree->nodes[static_cast<std::size_t>(nope->parent)].name == L"Bone0");
+    CHECK(nope->translation[0] == Approx(0).margin(1e-4));
+    CHECK(nope->translation[1] == Approx(1).margin(1e-4));
+    CHECK(nope->translation[2] == Approx(0).margin(1e-4));
+    CHECK(nope->rotation[3] == Approx(1).margin(1e-4));
+    // The mesh node counts in it: vertex 0's joint 0 is bone 3 now.
+    const auto mesh = std::ranges::find(tree->nodes, std::wstring(L"Mesh1"), &model::Node::name);
+    REQUIRE(mesh != tree->nodes.end());
+    REQUIRE(mesh->mesh);
+    CHECK(std::ranges::find(mesh->mesh->bonesUsed, 3) != mesh->mesh->bonesUsed.end());
+
     CHECK_THAT(ImportRefusal(served, {{"name", "slab"},
                                       {"gltf", ghilana::PathText(out / L"none.gltf")},
                                       {"to", ghilana::PathText(out / L"x")}}),

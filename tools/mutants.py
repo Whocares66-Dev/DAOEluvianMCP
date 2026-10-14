@@ -2952,6 +2952,35 @@ MUTANTS = [
         "? skin.slots[v][k] : 0;",
         "ghilana",
     ),
+    # New bones (#137).
+    Mutant(
+        "ghilana bones: a joint that is no bone of the model is a new bone",
+        "src/ghilana/GltfImport.cpp",
+        "if (made_.contains(j) || depth > 1000 || IsBone(name))",
+        "if (true)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana bones: a new bone goes under the nearest node the model has",
+        "src/ghilana/GltfImport.cpp",
+        "return {*known, like, daoWorlds_[static_cast<std::size_t>(*known)]};",
+        "return {-1, like, daoWorlds_[static_cast<std::size_t>(*known)]};",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana bones: a new bone's index follows the model's bones",
+        "src/ghilana/GltfImport.cpp",
+        "static_cast<std::int32_t>(tree_.totalBones + newBones_.size())",
+        "static_cast<std::int32_t>(newBones_.size())",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana bones: a new bone is placed relative to its parent",
+        "src/ghilana/GltfImport.cpp",
+        "const Mat4 local = Times(Inverse(anchor.world), gltfWorlds_.at(j));",
+        "const Mat4 local = gltfWorlds_.at(j);",
+        "ghilana",
+    ),
 ]
 
 

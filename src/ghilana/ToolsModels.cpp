@@ -328,6 +328,35 @@ Json Export(Ghilana &ghilana, const Json &raw)
 
 // ---------------------------------------------------------------- model_import
 
+// The farther versions of a model ending _0: models of their own, with their
+// own meshes and smaller skeletons (lib-agent, 2026-10-14: cn_bdy_ogra_2's 30
+// bones to _0's 99), which the game draws in its place at a distance. Null
+// for none.
+Json FarVersions(Ghilana &ghilana, const std::string &treeName)
+{
+    const std::string stem = Stem(treeName);
+    if (stem.size() <= 2 || !stem.ends_with("_0"))
+    {
+        return nullptr;
+    }
+    Json lods = Json::array();
+    for (const char lod : {'1', '2', '3'})
+    {
+        const std::string far = stem.substr(0, stem.size() - 1) + lod + ".mmh";
+        if (ghilana.Files().Find(far) != nullptr)
+        {
+            lods.push_back(far);
+        }
+    }
+    if (lods.empty())
+    {
+        return nullptr;
+    }
+    return {{"models", lods},
+            {"note", "the game draws these in place of this model farther away; they stay as they were unless "
+                     "exported, edited and imported too"}};
+}
+
 Json Import(Ghilana &ghilana, const Json &raw)
 {
     const Args args(raw, "model_import");
@@ -392,20 +421,40 @@ Json Import(Ghilana &ghilana, const Json &raw)
     }
     out["node_edits"] = std::move(edits);
     Json added = Json::array();
+    const auto nameOf = [&](int i) {
+        const auto count = static_cast<int>(loaded->tree.nodes.size());
+        if (i < 0)
+        {
+            return std::string();
+        }
+        return i < count ? Utf8(loaded->tree.nodes[static_cast<std::size_t>(i)].name)
+                         : Utf8(imported.added.at(static_cast<std::size_t>(i - count)).name);
+    };
     for (const auto &node : imported.added)
     {
-        added.push_back({{"node", Utf8(node.name)},
-                         {"chunk", Utf8(node.mesh.chunk)},
-                         {"material", Utf8(node.mesh.material)},
-                         {"like", Utf8(loaded->tree.nodes[static_cast<std::size_t>(node.like)].name)}});
+        Json item = {{"node", Utf8(node.name)}, {"parent", nameOf(node.parent)}, {"like", nameOf(node.like)}};
+        if (node.mesh)
+        {
+            item["chunk"] = Utf8(node.mesh->chunk);
+            item["material"] = Utf8(node.mesh->material);
+        }
+        else
+        {
+            item["bone"] = true;
+        }
+        added.push_back(std::move(item));
     }
     out["nodes_added"] = std::move(added);
     if (!imported.notes.empty())
     {
         out["notes"] = imported.notes;
     }
-    out["not_taken"] = "node transforms (bones moved in Blender), bones added, nodes removed, and textures: the files "
-                       "keep the original's";
+    if (Json lods = FarVersions(ghilana, loaded->treeName); !lods.is_null())
+    {
+        out["lods"] = std::move(lods);
+    }
+    out["not_taken"] = "node transforms (bones moved in Blender), nodes removed, and textures: the files keep the "
+                       "original's";
     out["into_the_game"] = "the game takes a loose file in " +
                            PathText(ghilana.Files().Where().documents / L"packages" / L"core" / L"override") +
                            " ahead of its archives (`conflicts` shows the copies); copy both files there, and take "
@@ -455,22 +504,25 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
     importProperties["to"] = {{"type", "string"},
                               {"description", "The folder to write the .msh and .mmh into, a full path; made if "
                                               "missing. Never inside the game's folder."}};
-    tools.Add(Spec("model_import",
-                   "Writes a model edited in Blender back as the game's files: the glTF's meshes put into the "
-                   "original .msh in place of their chunks (matched by the custom properties `model_export` wrote, "
-                   "else by name), each vertex where the glTF has it at rest, with its normal, tangent and binormal, "
-                   "texture coordinates and its bones by name, and the .mmh with each mesh node's bones and material "
-                   "made to match and its bounding boxes made again. Vertices and triangles may be added, moved or "
-                   "removed. A mesh that is none of the model's chunks, or a copy of one (Blender's duplicate), is "
-                   "added as a new chunk under a new mesh node like the one it was copied from (else the first), "
-                   "with the glTF's material. Bones may not be added. A mesh weighted to more than 67 bones (the "
-                   "most the game's skinning shaders take for one chunk) is split into chunks of at most 67, the "
-                   "rest under new mesh nodes like its own. "
-                   "Bone moves and textures are not taken. Answers each chunk's counts before and after, the files "
-                   "written, `notes`, and where to put the files for the game to take them. Writes nothing in the "
-                   "game's folders.",
-                   std::move(importProperties), {"name", "gltf", "to"}, false),
-              [&ghilana](const Json &args) -> ToolResult { return Import(ghilana, args); });
+    tools.Add(
+        Spec("model_import",
+             "Writes a model edited in Blender back as the game's files: the glTF's meshes put into the "
+             "original .msh in place of their chunks (matched by the custom properties `model_export` wrote, "
+             "else by name), each vertex where the glTF has it at rest, with its normal, tangent and binormal, "
+             "texture coordinates and its bones by name, and the .mmh with each mesh node's bones and material "
+             "made to match and its bounding boxes made again. Vertices and triangles may be added, moved or "
+             "removed. A mesh that is none of the model's chunks, or a copy of one (Blender's duplicate), is "
+             "added as a new chunk under a new mesh node like the one it was copied from (else the first), "
+             "with the glTF's material. A joint that is none of the model's bones is added as a new bone under the "
+             "nearest node above it, where the glTF has it at rest; no animation moves it, so it follows its "
+             "parent. A mesh weighted to more than 67 bones (the "
+             "most the game's skinning shaders take for one chunk) is split into chunks of at most 67, the "
+             "rest under new mesh nodes like its own. "
+             "Bone moves and textures are not taken. Answers each chunk's counts before and after, the files "
+             "written, `notes`, and where to put the files for the game to take them. Writes nothing in the "
+             "game's folders.",
+             std::move(importProperties), {"name", "gltf", "to"}, false),
+        [&ghilana](const Json &args) -> ToolResult { return Import(ghilana, args); });
 }
 
 } // namespace eluvian::ghilana::detail
