@@ -77,6 +77,7 @@ add_library(
     src/ghilana/ToolsData.cpp
     src/ghilana/ToolsFiles.cpp
     src/ghilana/ToolsModels.cpp
+    src/ghilana/ToolsTextures.cpp
 )
 el_apply_warnings(gh_lib)
 target_include_directories(gh_lib PRIVATE "${CMAKE_BINARY_DIR}/ghilana")

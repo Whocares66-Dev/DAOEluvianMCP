@@ -4,6 +4,10 @@
     "version-string": "0.1.0",
     "dependencies": [
         "detours",
+        {
+            "name": "directxtex",
+            "default-features": false
+        },
         "libspng",
         "nlohmann-json",
         "spdlog"

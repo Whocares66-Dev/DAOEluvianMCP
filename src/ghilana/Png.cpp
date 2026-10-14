@@ -27,11 +27,11 @@ struct ContextFree
     }
 };
 
-void Check(int error, const char *what)
+void Check(int error, const char *what, const char *who = "EncodePng")
 {
     if (error != 0)
     {
-        throw std::runtime_error(std::string("EncodePng: ") + what + ": " + spng_strerror(error));
+        throw std::runtime_error(std::string(who) + ": " + what + ": " + spng_strerror(error));
     }
 }
 
@@ -70,6 +70,28 @@ std::vector<std::byte> EncodePng(std::uint32_t width, std::uint32_t height, int 
     const std::unique_ptr<void, decltype(&std::free)> owned(buffer, &std::free);
     const auto *bytes = static_cast<const std::byte *>(buffer);
     return {bytes, bytes + size};
+}
+
+PngImage DecodePng(std::span<const std::byte> file)
+{
+    const std::unique_ptr<spng_ctx, ContextFree> context(spng_ctx_new(0));
+    if (!context)
+    {
+        throw std::runtime_error("DecodePng: libspng made no decoder");
+    }
+    Check(spng_set_png_buffer(context.get(), file.data(), file.size()), "the file", "DecodePng");
+    spng_ihdr header{};
+    Check(spng_get_ihdr(context.get(), &header), "the header", "DecodePng");
+    std::size_t size = 0;
+    Check(spng_decoded_image_size(context.get(), SPNG_FMT_RGBA8, &size), "the picture's size", "DecodePng");
+    PngImage image;
+    image.width = header.width;
+    image.height = header.height;
+    image.rgba.resize(size);
+    // SPNG_DECODE_TRNS: a palette's or grey's transparent colour made alpha.
+    Check(spng_decode_image(context.get(), image.rgba.data(), size, SPNG_FMT_RGBA8, SPNG_DECODE_TRNS), "the picture",
+          "DecodePng");
+    return image;
 }
 
 } // namespace eluvian::ghilana

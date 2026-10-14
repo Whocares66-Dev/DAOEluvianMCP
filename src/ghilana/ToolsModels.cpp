@@ -253,38 +253,6 @@ Json Model(Ghilana &ghilana, const Json &raw)
 
 // ---------------------------------------------------------------- model_export
 
-void WriteFile(const fs::path &path, std::span<const std::byte> bytes, const std::string &tool)
-{
-    std::ofstream out(path, std::ios::binary);
-    out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!out)
-    {
-        throw ToolError(tool + ": could not write " + PathText(path));
-    }
-}
-
-// The folder a call's `to` names, made: a full path, not in the game's folder.
-fs::path OutputFolder(Ghilana &ghilana, const Args &args, const std::string &tool)
-{
-    const fs::path to = fs::path(Wide(args.String("to")));
-    if (!to.is_absolute())
-    {
-        throw ToolError(tool + R"(: `to` is a folder's full path ("C:\\work\\models"))");
-    }
-    if (Inside(to, ghilana.Files().Where().game))
-    {
-        throw ToolError(tool + ": `to` is inside the game's folder, which ghilana never writes into; name a folder "
-                               "of your own");
-    }
-    std::error_code error;
-    fs::create_directories(to, error);
-    if (error)
-    {
-        throw ToolError(tool + ": cannot make " + PathText(to) + ": " + error.message());
-    }
-    return to;
-}
-
 Json Export(Ghilana &ghilana, const Json &raw)
 {
     const Args args(raw, "model_export");

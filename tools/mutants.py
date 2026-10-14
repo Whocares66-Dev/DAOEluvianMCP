@@ -2981,6 +2981,21 @@ MUTANTS = [
         "const Mat4 local = gltfWorlds_.at(j);",
         "ghilana",
     ),
+    # A texture's round trip (#135).
+    Mutant(
+        "ghilana textures: a normal map is written in the game's layout",
+        "src/ghilana/ToolsTextures.cpp",
+        "if (asked.empty() && normal)",
+        "if (asked.empty() && !normal)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana textures: a side that is no power of two is refused, saying so",
+        "src/ghilana/ToolsTextures.cpp",
+        "if (!PowerOfTwo(image.width) || !PowerOfTwo(image.height))",
+        "if (false)",
+        "ghilana",
+    ),
 ]
 
 

@@ -18,6 +18,7 @@
 
 #include <map>
 #include <mutex>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -88,6 +89,7 @@ namespace detail
 void RegisterFileTools(Bench &bench, Ghilana &ghilana);
 void RegisterDataTools(Bench &bench, Ghilana &ghilana);
 void RegisterModelTools(Bench &bench, Ghilana &ghilana);
+void RegisterTextureTools(Bench &bench, Ghilana &ghilana);
 // The `limit` and `offset` a paged tool takes, in its schema.
 Json PageProperties(int defaultLimit, int mostLimit);
 
@@ -115,6 +117,11 @@ std::optional<std::uint32_t> SourceArg(const GameFiles &files, const Args &args,
 // Whether `folder` is `root` or inside it, compared without case; false for
 // no root.
 bool Inside(const fs::path &folder, const fs::path &root);
+// The folder a call's `to` names, made: a full path, never inside the
+// game's folder. A ToolError otherwise.
+fs::path OutputFolder(Ghilana &ghilana, const Args &args, const std::string &tool);
+// Writes a file whole; a ToolError if it cannot.
+void WriteFile(const fs::path &path, std::span<const std::byte> bytes, const std::string &tool);
 // A copy's name and where it is, with the copies passed over when one was
 // chosen of several.
 Json Chosen(const GameFiles &files, const std::string &name, const std::vector<Copy> &copies, const Copy &copy);

@@ -529,6 +529,92 @@
    "annotations": {
     "readOnlyHint": true
    }
+  },
+  {
+   "name": "texture_export",
+   "description": "Writes a texture (.dds) as a PNG of its largest picture into a folder of yours, for an image editor: red, green, blue and alpha as the game draws them, and a normal map with x, y, z in red, green and blue as an editor shows one. Answers the PNG's path, the original's format and size, and the game's smaller copies for its farther models. `texture_import` puts it back.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The texture, \"cn_bdy_ogra_0d.dds\" (the extension may be left off). A material (.mao, `resource` shows one as text) names its textures; `resources` with type dds finds more."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy, by its source (\"core\", \"addin:...\"). Default: the copy the game takes."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy, by its archive's path."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     },
+     "normal": {
+      "type": "boolean",
+      "description": "Whether it is a normal map, x, y, z in the PNG's red, green and blue. Default: its name ends in n, as the game's do (cn_bdy_ogra_0n)."
+     }
+    },
+    "required": [
+     "name",
+     "to"
+    ]
+   }
+  },
+  {
+   "name": "texture_import",
+   "description": "Writes a PNG edited from `texture_export` back as the game's texture (.dds): in the original's format with every halving of the picture down to a pixel, as the game's own are, and the game's smaller copies for its farther models too. The picture's sides must be powers of two. Answers the files written and where to put them for the game to take them. Writes nothing in the game's folders.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The texture the PNG replaces, \"cn_bdy_ogra_0d.dds\": its format is the one written, and its name the file's."
+     },
+     "source": {
+      "type": "string",
+      "description": "Which copy, by its source (\"core\", \"addin:...\"). Default: the copy the game takes."
+     },
+     "archive": {
+      "type": "string",
+      "description": "Which copy, by its archive's path."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     },
+     "png": {
+      "type": "string",
+      "description": "The edited picture, a PNG's full path."
+     },
+     "normal": {
+      "type": "boolean",
+      "description": "Whether it is a normal map, x, y, z in the PNG's red, green and blue. Default: its name ends in n, as the game's do (cn_bdy_ogra_0n)."
+     },
+     "format": {
+      "type": "string",
+      "enum": [
+       "dxt1",
+       "dxt5",
+       "dxt5_normal",
+       "a4r4g4b4",
+       "a8r8g8b8"
+      ],
+      "description": "The DDS format to write. Default: the original's (DXT3 becomes DXT5, 24 bits 32)."
+     },
+     "far_copies": {
+      "type": "boolean",
+      "description": "Also write the game's smaller copies for its farther models (..._0dl2, _0dl3), from the picture halved. Default true."
+     }
+    },
+    "required": [
+     "name",
+     "png",
+     "to"
+    ]
+   }
   }
  ]
 }
