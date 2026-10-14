@@ -16,7 +16,9 @@
 
 #include <dao/core/Gff4.h>
 
+#include <bit>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 
@@ -71,6 +73,34 @@ std::vector<std::uint16_t> Shorts(const ghilana::Gltf &gltf, int accessor)
 bool Noted(const ghilana::Gltf &gltf, std::string_view text)
 {
     return std::ranges::any_of(gltf.notes, [&](const std::string &n) { return n.find(text) != std::string::npos; });
+}
+
+// A head's morph (.mor) laid out as the game's are (DAOLib's tests/test_morph.cpp):
+// parts naming `part`, and the mesh node "Mesh1" placed again at `count` vertices.
+std::vector<std::byte> SlabMorph(const char16_t *part, std::size_t count)
+{
+    dao::test::Builder b = dao::test::Start(
+        "MORP",
+        {{"morp",
+          16,
+          {{2, 14, 0, 0},
+           {23000, 14, dao::core::gff4::kList, 4},
+           {23001, 14, dao::core::gff4::kList, 8},
+           {23002, 1, dao::core::gff4::kList | dao::core::gff4::kStruct, 12}}},
+         {"node", 48, {{2, 14, 0, 16}, {4, 10, 0, 0}, {8013, 4, 0, 24}, {8024, 8, dao::core::gff4::kList, 20}}}});
+    const std::size_t root = dao::test::Struct(b, 16);
+    b.U32(root, b.String(u"slabface"));
+    b.U32(root + 4, b.Numbers({b.String(part)}));
+    b.U32(root + 8, b.Numbers({}));
+    const std::size_t list = b.bytes.size();
+    b.U32(list, 1);
+    const std::size_t face = dao::test::Struct(b, 48);
+    b.U32(root + 12, static_cast<std::uint32_t>(list - b.data));
+    b.U32(face + 16, b.String(u"Mesh1"));
+    b.U32(face + 24, static_cast<std::uint32_t>(count));
+    std::vector<std::uint32_t> places(count * 4, std::bit_cast<std::uint32_t>(1.0F));
+    b.U32(face + 20, b.Numbers(places));
+    return b.bytes;
 }
 
 } // namespace
@@ -495,4 +525,47 @@ TEST_CASE("model_import: a joint that is no bone of the model is a new bone unde
                                       {"gltf", ghilana::PathText(out / L"none.gltf")},
                                       {"to", ghilana::PathText(out / L"x")}}),
                ContainsSubstring("cannot open"));
+}
+
+namespace
+{
+
+// The slab beside a morph, exported, and imported back as it was: the
+// answer, or the refusal's text.
+std::pair<Json, std::string> ImportBesideMorph(const char16_t *part, std::size_t count)
+{
+    Served served;
+    served.install.root.Write(L"documents/packages/core/override/slab.mmh", SlabModel());
+    served.install.root.Write(L"documents/packages/core/override/slab.msh", SlabMesh());
+    served.install.root.Write(L"documents/packages/core/override/slabface.mor", SlabMorph(part, count));
+    const auto out = served.install.root.path / L"out";
+    served.Call("model_export", {{"name", "slab"}, {"to", ghilana::PathText(out)}});
+    const Json args = {
+        {"name", "slab"}, {"gltf", ghilana::PathText(out / L"slab.gltf")}, {"to", ghilana::PathText(out / L"back")}};
+    const std::string refused = ImportRefusal(served, args);
+    if (!refused.empty())
+    {
+        CHECK_FALSE(std::filesystem::exists(out / L"back" / L"slab.msh"));
+        return {Json(), refused};
+    }
+    return {served.Call("model_import", args), std::string()};
+}
+
+} // namespace
+
+TEST_CASE("model_import: a head's morph that names the model is said, and a vertex count it cannot follow refused",
+          "[ghilana][models]")
+{
+    // Mesh1's chunk, Body, has 3 vertices, and the morph places 3.
+    const auto [same, none] = ImportBesideMorph(u"SLAB", 3);
+    CHECK(none.empty());
+    REQUIRE(same.contains("morphs"));
+    CHECK(same["morphs"]["files"] == Json::array({"slabface.mor"}));
+    CHECK(same["morphs"]["nodes"] == Json::array({"Mesh1"}));
+    // A morph of 4: the 3 given back would break it.
+    CHECK_THAT(ImportBesideMorph(u"slab", 4).second, ContainsSubstring("slabface.mor, a head's morph"));
+    // A morph of another model is none of this one's.
+    const auto [other, fine] = ImportBesideMorph(u"other", 4);
+    CHECK(fine.empty());
+    CHECK_FALSE(other.contains("morphs"));
 }

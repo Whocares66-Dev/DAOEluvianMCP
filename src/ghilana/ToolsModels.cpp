@@ -13,12 +13,14 @@
 
 #include <dao/core/Gff4.h>
 #include <dao/core/Model.h>
+#include <dao/core/Morph.h>
 
 #include <algorithm>
 #include <fstream>
 #include <limits>
 #include <map>
 #include <memory>
+#include <set>
 
 namespace eluvian::ghilana::detail
 {
@@ -325,6 +327,84 @@ Json FarVersions(Ghilana &ghilana, const std::string &treeName)
                      "exported, edited and imported too"}};
 }
 
+// A head's morphs (.mor) that name this model among their parts, and the
+// mesh nodes they place again: each places every vertex of its node's chunk
+// by index, so a chunk given back with another vertex count would break
+// them all, and is refused; its positions they replace on a morphed head
+// (lib-agent, DAOLib #121, read over the game's files 2026-10-14: the
+// chamberlain's FaceM1 places 2,282, its chunk's count). Null for none.
+// A morph file's morph, where one of its parts is the model (a .mmh's stem,
+// in lower case).
+std::optional<dao::core::morph::Morph> MorphOfModel(const GameFiles &files, const std::vector<Copy> &copies,
+                                                    const std::string &model)
+{
+    const auto bytes = files.Read(GameFiles::Choose(copies));
+    const auto file = bytes ? gff4::File::Parse(*bytes) : std::nullopt;
+    auto read = file ? dao::core::morph::MorphOf(*file) : std::nullopt;
+    if (!read || std::ranges::none_of(read->parts, [&](const std::wstring &p) { return Lower(Utf8(p)) == model; }))
+    {
+        return std::nullopt;
+    }
+    return read;
+}
+
+Json GuardMorphs(Ghilana &ghilana, const Loaded &loaded, const Imported &imported)
+{
+    namespace morph = dao::core::morph;
+    const std::string model = Lower(Stem(loaded.treeName));
+    const GameFiles &files = ghilana.Files();
+    Json found = Json::array();
+    std::set<std::string> nodes;
+    for (const auto &[name, copies] : files.Resources())
+    {
+        if (Extension(name) != "mor" || copies.empty())
+        {
+            continue;
+        }
+        const auto read = MorphOfModel(files, copies, model);
+        if (!read)
+        {
+            continue;
+        }
+        found.push_back(name);
+        for (const morph::Node &node : read->nodes)
+        {
+            if (node.places.empty())
+            {
+                continue;
+            }
+            const auto at = std::ranges::find_if(loaded.tree.nodes, [&](const model::Node &n) {
+                return n.mesh && Lower(Utf8(n.name)) == Lower(Utf8(node.name));
+            });
+            if (at == loaded.tree.nodes.end())
+            {
+                continue;
+            }
+            nodes.insert(Utf8(at->name));
+            const auto given = std::ranges::find_if(imported.chunks, [&](const model::ChunkData &c) {
+                return !c.added && Lower(Utf8(c.name)) == Lower(Utf8(at->mesh->chunk));
+            });
+            if (given != imported.chunks.end() && !given->values.empty() &&
+                given->values[0].size() != node.places.size())
+            {
+                throw ToolError("model_import: " + name + ", a head's morph, places every one of mesh node " +
+                                Utf8(at->name) + "'s " + std::to_string(node.places.size()) +
+                                " vertices by index, and the glTF gives it " + std::to_string(given->values[0].size()) +
+                                "; keep its vertex count and order (edit positions, not topology), or the game's "
+                                "morphed heads break. Nothing was written");
+            }
+        }
+    }
+    if (found.empty())
+    {
+        return nullptr;
+    }
+    return {{"files", found},
+            {"nodes", nodes},
+            {"note", "these heads' morphs place the named mesh nodes' vertices themselves: on a morphed head a "
+                     "position edit there is replaced by the morph's, and UVs, normals and weights carry through"}};
+}
+
 Json Import(Ghilana &ghilana, const Json &raw)
 {
     const Args args(raw, "model_import");
@@ -349,6 +429,7 @@ Json Import(Ghilana &ghilana, const Json &raw)
     {
         throw ToolError(std::string("model_import: ") + error.what());
     }
+    const Json morphs = GuardMorphs(ghilana, *loaded, imported);
     const model::Written mesh = model::WriteMesh(loaded->meshBytes, imported.chunks);
     if (!mesh.error.empty())
     {
@@ -388,6 +469,10 @@ Json Import(Ghilana &ghilana, const Json &raw)
         edits.push_back(std::move(item));
     }
     out["node_edits"] = std::move(edits);
+    if (!morphs.is_null())
+    {
+        out["morphs"] = morphs;
+    }
     Json added = Json::array();
     const auto nameOf = [&](int i) {
         const auto count = static_cast<int>(loaded->tree.nodes.size());

@@ -824,13 +824,6 @@ class ChunkImport
         {
             out.push_back(Record(pieces[p], p, target, ref, g.material));
         }
-        if (!added && placed.places.size() != chunk.vertexCount)
-        {
-            out_.notes.push_back(label + ": its vertex count changed (" + std::to_string(chunk.vertexCount) + " to " +
-                                 std::to_string(placed.places.size()) +
-                                 "); a head's morphs (.mor) replace every vertex by its place, so a head's no longer "
-                                 "fit");
-        }
         return out;
     }
 

@@ -2996,6 +2996,21 @@ MUTANTS = [
         "if (false)",
         "ghilana",
     ),
+    # A head's morphs (#138).
+    Mutant(
+        "ghilana morphs: a morph names a model by one of its parts",
+        "src/ghilana/ToolsModels.cpp",
+        "return Lower(Utf8(p)) == model; }))",
+        "return Lower(Utf8(p)) != model; }))",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana morphs: a vertex count a morph cannot follow is refused",
+        "src/ghilana/ToolsModels.cpp",
+        "given->values[0].size() != node.places.size())",
+        "given->values[0].size() == 0)",
+        "ghilana",
+    ),
 ]
 
 
