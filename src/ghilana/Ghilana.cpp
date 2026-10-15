@@ -77,6 +77,7 @@ void RegisterTools(Bench &bench, Ghilana &ghilana)
     detail::RegisterDataTools(bench, ghilana);
     detail::RegisterModelTools(bench, ghilana);
     detail::RegisterTextureTools(bench, ghilana);
+    detail::RegisterModTools(bench, ghilana);
     detail::RegisterTemplateTools(bench, ghilana);
 }
 

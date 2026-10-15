@@ -3033,6 +3033,21 @@ MUTANTS = [
         "in = in;",
         "ghilana",
     ),
+    # A mod packed for players (#140).
+    Mutant(
+        "ghilana mods: a talk table goes in the add-in's talktables",
+        "src/ghilana/ToolsMods.cpp",
+        "const bool talk = Extension(file.name) == \"tlk\";",
+        "const bool talk = Extension(file.name) == \"none\";",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana mods: two files of one name are refused",
+        "src/ghilana/ToolsMods.cpp",
+        "if (!names.insert(given.name).second)",
+        "if (false)",
+        "ghilana",
+    ),
 ]
 
 

@@ -7,6 +7,7 @@ add_executable(
     test_formats.cpp
     test_install.cpp
     test_models.cpp
+    test_mods.cpp
     test_templates.cpp
     test_textures.cpp
     test_tools.cpp

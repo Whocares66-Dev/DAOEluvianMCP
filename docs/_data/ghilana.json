@@ -97,6 +97,67 @@
    }
   },
   {
+   "name": "mod_pack",
+   "description": "Packs files into one for the game: an .erf archive as the game's own, to put in an override folder, or a .dazip add-in package that the game's DAUpdater installs as Downloadable Content, listed on its screen to be turned on and off. Answers the file written and how it goes into the game. Writes nothing in the game's folders.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "format": {
+      "type": "string",
+      "enum": [
+       "erf",
+       "dazip"
+      ],
+      "description": "erf: one archive as the game's own, for an override folder. dazip: an add-in package for the game's DAUpdater, which installs it as Downloadable Content."
+     },
+     "files": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "The files, full paths: what texture_import and model_import wrote, or any. Each goes in by its own name, lower case; the game finds a file by its name alone."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     },
+     "name": {
+      "type": "string",
+      "description": "erf: the archive's name. Default mod.erf."
+     },
+     "uid": {
+      "type": "string",
+      "description": "dazip: the add-in's id, letters, digits and _ (\"MyName_RedOgre\"): its folder's name and the game's key for it. Required for dazip."
+     },
+     "title": {
+      "type": "string",
+      "description": "dazip: what the player sees. Default the uid."
+     },
+     "description": {
+      "type": "string",
+      "description": "dazip: a line on what it does."
+     },
+     "publisher": {
+      "type": "string",
+      "description": "dazip: who made it."
+     },
+     "version": {
+      "type": "string",
+      "description": "dazip: default 1.0."
+     },
+     "priority": {
+      "type": "integer",
+      "description": "dazip: of two add-ins with one file, the lower priority's wins. Default 1000."
+     }
+    },
+    "required": [
+     "format",
+     "files",
+     "to"
+    ]
+   }
+  },
+  {
    "name": "model",
    "description": "Says what a model is made of, from its hierarchy (.mmh) and the mesh file (.msh) it names: its nodes by kind, its bones, and each mesh node's chunk with its material (.mao), vertex and triangle counts, vertex elements, bounds, and whether it is skinned and over how many bones. `tree` lists the nodes. Use `model_export` to open it in Blender.",
    "inputSchema": {
@@ -545,6 +606,36 @@
      "table",
      "rows",
      "name",
+     "to"
+    ]
+   }
+  },
+  {
+   "name": "talk_table",
+   "description": "Writes a talk table of a mod's own strings, for the names of its creatures and items: <uid>_c_<language>.tlk, which the game loads for an enabled add-in of that uid. Pick string ids no other table uses (a mod's own range, 99000000 and up). Ship it in the add-in with mod_pack, and point a template's LocName at an id with template_edit.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "strings": {
+      "type": "object",
+      "description": "Each id and its text: {\"99000001\": \"Red Ogre\"}."
+     },
+     "uid": {
+      "type": "string",
+      "description": "The add-in's uid, as mod_pack's."
+     },
+     "language": {
+      "type": "string",
+      "description": "Default en-us."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path. Never inside the game's folder."
+     }
+    },
+    "required": [
+     "strings",
+     "uid",
      "to"
     ]
    }
