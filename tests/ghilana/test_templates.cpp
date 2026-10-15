@@ -158,3 +158,42 @@ TEST_CASE("model_copy: a model's files under a new name, each naming the new one
     CHECK_THAT(Refusal(served, "model_copy", {{"name", "slab"}, {"as", "bad name"}, {"to", ghilana::PathText(out)}}),
                ContainsSubstring("letters, digits and _"));
 }
+
+TEST_CASE("table_rows: a table of two words merges with its own name's files, not its first word's",
+          "[ghilana][templates]")
+{
+    Served served;
+    const std::vector<std::string> columns{"ID", "Label", "Cost"};
+    served.install.root.Write(L"documents/packages/core/override/abi_cost.gda",
+                              Gda(columns, {{1, std::string("One"), 1.0F}}, Hashes(columns)));
+    served.install.root.Write(L"documents/packages/core/override/abi_cost_x.gda",
+                              Gda(columns, {{5, std::string("Five"), 1.0F}}, Hashes(columns)));
+    const std::string to = ghilana::PathText(served.install.root.path / L"out");
+    const auto rows = [](int id) { return Json::array({{{"copy", 1}, {"set", {{"ID", id}}}}}); };
+    const Json answer =
+        served.Call("table_rows", {{"table", "abi_cost"}, {"rows", rows(9)}, {"name", "abi_cost_mine"}, {"to", to}});
+    CHECK(answer["merged_into"] == "abi_cost");
+    // 5 is a mod's abi_cost_x row; 3 is abi's (abi_mymod), another table.
+    CHECK_THAT(Refusal(served, "table_rows",
+                       {{"table", "abi_cost"}, {"rows", rows(5)}, {"name", "abi_cost_mine"}, {"to", to}}),
+               ContainsSubstring("is taken"));
+    CHECK(Refusal(served, "table_rows",
+                  {{"table", "abi_cost"}, {"rows", rows(3)}, {"name", "abi_cost_mine2"}, {"to", to}})
+              .empty());
+    CHECK_THAT(
+        Refusal(served, "table_rows", {{"table", "abi_cost"}, {"rows", rows(9)}, {"name", "abi_mine"}, {"to", to}}),
+        ContainsSubstring("abi_cost_<yours>"));
+}
+
+TEST_CASE("table_rows: an item variation's ID is a byte", "[ghilana][templates]")
+{
+    Served served;
+    const std::vector<std::string> columns{"ID", "Label", "Cost"};
+    served.install.root.Write(L"documents/packages/core/override/sword_variation.gda",
+                              Gda(columns, {{1, std::string("One"), 1.0F}}, Hashes(columns)));
+    const std::string to = ghilana::PathText(served.install.root.path / L"out");
+    const Json rows = Json::array({{{"copy", 1}, {"set", {{"ID", 256}}}}});
+    CHECK_THAT(Refusal(served, "table_rows",
+                       {{"table", "sword_variation"}, {"rows", rows}, {"name", "sword_variation_mine"}, {"to", to}}),
+               ContainsSubstring("0 to 255"));
+}

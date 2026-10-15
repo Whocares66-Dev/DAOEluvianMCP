@@ -88,7 +88,7 @@ std::set<std::int64_t> MergedIds(Ghilana &ghilana, const std::string &prefix)
     const GameFiles &files = ghilana.Files();
     for (const auto &[name, copies] : files.Resources())
     {
-        if (Extension(name) != "gda" || !name.starts_with(prefix + "_") || copies.empty())
+        if (Extension(name) != "gda" || (!name.starts_with(prefix + "_") && Stem(name) != prefix) || copies.empty())
         {
             continue;
         }
@@ -121,7 +121,14 @@ Json TableRows(Ghilana &ghilana, const Json &raw)
     {
         name += ".gda";
     }
-    const std::string prefix = Stem(table).substr(0, Stem(table).find('_'));
+    // The game merges X_base with every X_*, and a table with no _base, such
+    // as longsword_variation, with every file of its own name and _* (seen
+    // 2026-10-15: the longsword variation tables of the DLC).
+    std::string prefix = Stem(table);
+    if (prefix.ends_with("_base"))
+    {
+        prefix.resize(prefix.size() - 5);
+    }
     if (!Stem(name).starts_with(prefix + "_"))
     {
         throw ToolError("table_rows: the game merges " + prefix + "_*.gda into one table, so name it " + prefix +
@@ -167,6 +174,13 @@ Json TableRows(Ghilana &ghilana, const Json &raw)
             row[*at] = CellOf(value, row[*at], column);
         }
         const std::int64_t id = IdOf(row, *idColumn);
+        // An item's variation row is named by a template's ModelVariation, a
+        // byte (lib-agent, DAOLib #123, gen_im_wep_mel_lsw_lsw.uti).
+        if (prefix.ends_with("_variation") && (id < 0 || id > 255))
+        {
+            throw ToolError("table_rows: an item's ModelVariation is a byte, so a " + prefix +
+                            " row's ID is 0 to 255; `table` shows the ones taken");
+        }
         if (taken.contains(id) || std::ranges::any_of(rows, [&](const auto &r) { return IdOf(r, *idColumn) == id; }))
         {
             throw ToolError("table_rows: ID " + std::to_string(id) + " is taken in the " + prefix +

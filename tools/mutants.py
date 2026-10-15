@@ -3027,6 +3027,20 @@ MUTANTS = [
         "ghilana",
     ),
     Mutant(
+        "ghilana tables: the merged table is the name without _base",
+        "src/ghilana/ToolsTemplates.cpp",
+        "std::string prefix = Stem(table);",
+        "std::string prefix = Stem(table).substr(0, Stem(table).find('_'));",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana tables: an item variation's ID is a byte",
+        "src/ghilana/ToolsTemplates.cpp",
+        "(id < 0 || id > 255)",
+        "(id < 0 || id > 65535)",
+        "ghilana",
+    ),
+    Mutant(
         "ghilana templates: a field in a struct is found by its path",
         "src/ghilana/ToolsTemplates.cpp",
         "in = in ? in->Child(label.substr(0, slash)) : std::nullopt;",
@@ -3037,8 +3051,8 @@ MUTANTS = [
     Mutant(
         "ghilana mods: a talk table goes in the add-in's talktables",
         "src/ghilana/ToolsMods.cpp",
-        "const bool talk = Extension(file.name) == \"tlk\";",
-        "const bool talk = Extension(file.name) == \"none\";",
+        'const bool talk = Extension(file.name) == "tlk";',
+        'const bool talk = Extension(file.name) == "none";',
         "ghilana",
     ),
     Mutant(
