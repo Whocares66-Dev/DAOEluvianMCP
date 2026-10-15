@@ -443,6 +443,13 @@ The same day, after shaders-agent had used it on Lyna's manual 111 at Redcliffe 
 - **A pan of the tactical view does not hold, and there is none.** `SetFocusOffset` with a point 8 m east, then one 40 m north: the offset read back in the same call and as nothing in the next read, 60 ms on, eight tries of eight, the cursor held mid-picture or not, and the hero stayed at pixel (800, 551). What takes it back was not found: DAOLib's own pan writes the offset each frame, and the turn-based mod's copy of it was loaded beside. The action was taken out before the merge.
 - The smoke test: 77 of 77.
 
+One measure for every angle, 2026-10-15 (#143; DAOLib master `956056d`), on Lyna2's auto 4, the Dragonbone Wastes, loaded only, the game run with the build tree's plugins folder. The readings above are in the measures before it: a yaw from the focus to the camera, and a pitch from straight above.
+
+- **The game's facing:** SetFacing 0 on the hero, and GetOrientation read (0, -1, 0); a facing of -51.4 read (0.78, -0.62); walking east along a path dipping south, GetFacing read -71 on the way; walked south, 0 at the end. So 0 looks along -y, -90 along +x, and it grows clockwise seen from above. Photo cam's fly camera (another session's plugin) has 0 along +y: the two agree only at -90, which is why one reading of each had seemed to match.
+- `creature` read `facingDegrees` -51.41; `camera`'s `behind` then read `facingDegrees` -51.41, and the camera stood north-west of her, looking south-east as she does. `turn` to 180 and pitch 20 put the camera 2.8 m south of her and below the pivot: looking north and up. `turn` to her facing at pitch -10: the picture was over her back, the way she looks.
+- `pitchDegrees` 80 answered that the close view keeps -60 to 60 and shows 60; 100 was refused.
+- With photo cam's build in that folder too, `photocam_toggle` on started at `facingDegrees` -51.41, the same number, and `camera` refused, saying the game is in flycam mode and to use that plugin's tools; off, `camera` read again.
+
 A second copy beside the first, 2026-10-11 (#116; DAOLib master `36ce2d8`, whose loader was in the GOG game's `bin_ship` for this run only, the 0.1.0 loader put back after, the same file). Under a claim, both copies this session's own, on Lyna's manual 4:
 
 - The game as ever, started through the bridge, served on 8930 with the game folder's plugins (the Eluvian of #117 and the turn-based mod).

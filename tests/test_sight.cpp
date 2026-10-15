@@ -107,3 +107,36 @@ TEST_CASE("the close view keeps the tilt between 30 and 150 degrees", "[sight]")
     CHECK(Degrees(HeldPitch(128.0F * kPi / 180.0F)) == Approx(128).margin(0.01));
     CHECK(Degrees(HeldPitch(170.0F * kPi / 180.0F)) == Approx(150).margin(0.01));
 }
+
+TEST_CASE("a camera facing a point has the facing a creature looking at it has", "[sight]")
+{
+    // The game's facing f looks along -90 - f degrees from +x toward +y: 0 along
+    // -y, -90 along +x, as the hero read (2026-10-15).
+    for (const float facing : {0.0F, -90.0F, 90.0F, 179.0F, -51.4F, 102.9F})
+    {
+        const float way = (-90.0F - facing) * kPi / 180.0F;
+        const auto sight = SightTo({4, 5, 1.6F}, {4 + (10 * std::cos(way)), 5 + (10 * std::sin(way)), 1.6F});
+        REQUIRE(sight);
+        CHECK(FacingDegrees(sight->yaw) == Approx(facing).margin(0.01));
+        CHECK(std::remainder(Degrees(YawOfFacing(facing) - sight->yaw), 360.0F) == Approx(0).margin(0.01));
+    }
+    // A camera west of what it looks at faces east: -90.
+    CHECK(FacingDegrees(kPi) == Approx(-90).margin(0.01));
+}
+
+TEST_CASE("a facing is kept between -180 and 180 degrees", "[sight]")
+{
+    // A yaw of -150 degrees is a facing of 240, said as -120.
+    CHECK(FacingDegrees(-150.0F * kPi / 180.0F) == Approx(-120).margin(0.01));
+    CHECK(FacingDegrees(-80.0F * kPi / 180.0F) == Approx(170).margin(0.01));
+}
+
+TEST_CASE("pitchDegrees is 0 level and up positive", "[sight]")
+{
+    CHECK(PitchDegrees(kPi / 2) == Approx(0).margin(0.01));
+    // The sun of #117, 38 degrees up, and the tactical view's 45 down.
+    CHECK(PitchDegrees(128.0F * kPi / 180.0F) == Approx(38).margin(0.01));
+    CHECK(PitchDegrees(45.0F * kPi / 180.0F) == Approx(-45).margin(0.01));
+    CHECK(Degrees(PitchOfDegrees(38.0F)) == Approx(128).margin(0.01));
+    CHECK(Degrees(PitchOfDegrees(-60.0F)) == Approx(30).margin(0.01));
+}

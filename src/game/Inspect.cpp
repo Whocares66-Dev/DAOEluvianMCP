@@ -917,7 +917,7 @@ ToolResult KindCreature(const Watch &watch, const Json &raw)
     const ObjectId hero = api::GetHero();
     Json creature = Summary(id, hero, PartyOf(hero));
     creature["active"] = api::GetObjectActive(id) != 0;
-    creature["facing"] = api::GetFacing(id);
+    creature["facingDegrees"] = api::GetFacing(id);
     creature["appearance"] = api::GetAppearanceType(id);
     creature["effects"] = Effects(id);
     creature["abilities"] = Abilities(id);
@@ -1325,7 +1325,8 @@ void AddInspect(Bench &bench, const Watch &watch)
         Read("creature",
              "Returns one creature in full: the summary `creatures` gives (including the `command` it is "
              "carrying out), plus:\n\n"
-             "- `facing` and `appearance`.\n"
+             "- `facingDegrees`, the way it looks: 0 along -y, -90 along +x, 90 along -x, 180 along +y, as "
+             "`camera` and `stage_spawn` take it. And `appearance`.\n"
              "- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, "
              "out of how many).\n"
              "- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n"

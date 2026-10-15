@@ -420,7 +420,7 @@ ObjectId StageSpawn(const Args &args, Json &answer)
     {
         throw ToolError(args.Tool() + ": nobody is controlled, so there is no area to spawn in");
     }
-    const auto facing = static_cast<float>(args.Number("facing", 0));
+    const auto facing = static_cast<float>(args.Number("facingDegrees", 0));
     const auto spawn = [&](const std::string &resource) {
         return api::CreateObject(k::OBJECT_TYPE_CREATURE, dao::Resource{Wide(resource)},
                                  api::Location(api::GetArea(around), point, facing));
@@ -570,7 +570,10 @@ void AddStage(Bench &bench, const Watch &watch)
         "and the answer says whether it is `hostileToParty`.",
         Json{{"template", {{"type", "string"}, {"description", "The creature's template."}}},
              {"point", {{"description", "Where to create it: {x, y, z} or [x, y, z]."}}},
-             {"facing", {{"type", "number"}, {"description", "Which way it faces, in degrees. Default 0."}}},
+             {"facingDegrees",
+              {{"type", "number"},
+               {"description", "The way it looks, as `creature` reads it: 0 along -y, -90 along +x, 90 along "
+                               "-x, 180 along +y. Default 0."}}},
              {"group", {{"type", "integer"}, {"description", "The group to put it in, as `stage_group` does."}}}},
         {"template", "point"}, StageSpawn);
     add("stage_equip",

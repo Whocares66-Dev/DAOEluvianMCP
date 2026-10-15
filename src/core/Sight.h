@@ -46,4 +46,16 @@ float PivotHeight(const Point &position, const Point &focus, float pitch);
 // dao/Camera.h, SetPitch), so one set outside them is not what is seen.
 float HeldPitch(float pitch);
 
+// The angles every tool reads and writes (#143), one measure for a creature
+// and the camera alike, so a creature's facing given to the camera looks the
+// way it does. `facingDegrees` is the game's own facing, the scripts'
+// GetFacing: 0 looks along -y and it grows clockwise seen from above, -90
+// along +x, 90 along -x, 180 along +y (the hero turned by SetFacing and
+// walked, GetOrientation read with it, 2026-10-15). `pitchDegrees` is 0
+// level, up positive, -90 straight down. Facings are wrapped to -180..180.
+float FacingDegrees(float yaw);
+float YawOfFacing(float degrees);
+float PitchDegrees(float pitch);
+float PitchOfDegrees(float degrees);
+
 } // namespace eluvian

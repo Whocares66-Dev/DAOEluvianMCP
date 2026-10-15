@@ -109,7 +109,8 @@ If `game_launch` says the game is running but Eluvian is not serving, its `error
 | `camera {"action": "face", "target": "0x305"}` | Turns the camera to face it at once. Take the screenshot after this call. |
 | `camera {"action": "follow", "target": "0x305"}` | Moves the camera to a creature elsewhere and follows it. |
 | `camera {"action": "face", "point": [x, y, z], "tilt": true}` | Turns and tilts it, so a point above or below (the sky, a ledge) is in the middle of the picture. |
-| `camera {"action": "turn", "pitchDegrees": 120}` | Tilts it: 90 is level, more looks up, less looks down. Close in the game keeps it between 30 and 150. |
+| `camera {"action": "turn", "pitchDegrees": 30}` | Tilts it: 0 is level, up positive, -90 straight down. Close in the game keeps it between -60 and 60. |
+| `camera {"action": "turn", "facingDegrees": -90}` | Turns it to look along +x. Every angle is one measure (#143): a creature's `facingDegrees` (0 along -y, -90 along +x, 90 along -x, 180 along +y) given here looks the way it does. |
 | `camera {"action": "zoom", "zoom": -1}` | Zooms as the mouse wheel does: -1 is the tactical view, and 0.5 (farthest) to 1 (closest) the close view; the game has nothing between. It eases there, so read `zoom` again before the screenshot. |
 | `camera {"action": "behind", "target": "0x305"}` | Brings it round behind a creature, looking the way it faces. No `target`: behind what it follows. |
 | `pointer {"pixel": [800, 500], "seconds": 120}`, then `camera {"action": "follow", "target": "0x82"}` | In the tactical view: keeps the game from panning toward the real mouse at the picture's edge, then centres on a creature. Without the first the party sits in a corner. |

@@ -2739,6 +2739,37 @@ MUTANTS = [
         "return std::clamp(pitch, kPi / 6, kPi * 5 / 6);",
         "return std::clamp(pitch, 0.0F, kPi);",
     ),
+    # One measure for every angle (#143).
+    Mutant(
+        "the camera's facing is the way from it, not the way it looks",
+        SIGHT,
+        "return std::remainder(90.0F - (yaw * kDegrees), 360.0F);",
+        "return std::remainder((yaw * kDegrees) - 90.0F, 360.0F);",
+    ),
+    Mutant(
+        "a facing is said past -180 to 180",
+        SIGHT,
+        "return std::remainder(90.0F - (yaw * kDegrees), 360.0F);",
+        "return 90.0F - (yaw * kDegrees);",
+    ),
+    Mutant(
+        "a facing asked for turns the camera the other way",
+        SIGHT,
+        "return (90.0F - degrees) / kDegrees;",
+        "return (degrees - 90.0F) / kDegrees;",
+    ),
+    Mutant(
+        "pitchDegrees is read from straight above",
+        SIGHT,
+        "return (pitch * kDegrees) - 90.0F;",
+        "return pitch * kDegrees;",
+    ),
+    Mutant(
+        "a pitch asked for is taken from straight above",
+        SIGHT,
+        "return (degrees + 90.0F) / kDegrees;",
+        "return degrees / kDegrees;",
+    ),
     # Ghilana's own (src/ghilana, #128): the copy the game takes, a table as
     # the game merges it, what conflicts and query count, and the text and
     # files ghilana writes. `--suite ghilana`.

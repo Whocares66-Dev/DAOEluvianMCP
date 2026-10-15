@@ -9,7 +9,6 @@ namespace eluvian::game
 namespace
 {
 
-constexpr float kDegrees = 180.0F / std::numbers::pi_v<float>;
 // The close view's farthest zoom setting: below it the game is in the
 // tactical view (Zoom, below).
 constexpr float kCloseLeast = 0.5F;
@@ -31,8 +30,8 @@ Json CameraJson(const dao::CameraController &camera)
     if (const auto *scene = camera.Scene())
     {
         answer["position"] = VectorJson(scene->Position());
-        answer["yawDegrees"] = scene->Yaw() * kDegrees;
-        answer["pitchDegrees"] = scene->Pitch() * kDegrees;
+        answer["facingDegrees"] = FacingDegrees(scene->Yaw());
+        answer["pitchDegrees"] = PitchDegrees(scene->Pitch());
     }
     return answer;
 }
@@ -52,24 +51,23 @@ struct Aim
 // The angles `turn` asks for: either or both.
 Aim TurnOf(const Args &args, const dao::SceneCamera &scene)
 {
-    if (!args.Has("yawDegrees") && !args.Has("pitchDegrees"))
+    if (!args.Has("facingDegrees") && !args.Has("pitchDegrees"))
     {
-        throw ToolError("camera: turn needs `yawDegrees`, `pitchDegrees` or both");
+        throw ToolError("camera: turn needs `facingDegrees`, `pitchDegrees` or both");
     }
     Aim aim{scene.Yaw(), std::nullopt};
-    if (args.Has("yawDegrees"))
+    if (args.Has("facingDegrees"))
     {
-        aim.yaw = static_cast<float>(args.Number("yawDegrees")) / kDegrees;
+        aim.yaw = YawOfFacing(static_cast<float>(args.Number("facingDegrees")));
     }
     if (args.Has("pitchDegrees"))
     {
         const double pitch = args.Number("pitchDegrees");
-        if (pitch < 0 || pitch > 180)
+        if (pitch < -90 || pitch > 90)
         {
-            throw ToolError("camera: `pitchDegrees` is the angle from straight above, 0 to 180: 90 is level, "
-                            "less looks down, more looks up");
+            throw ToolError("camera: `pitchDegrees` is -90 to 90: 0 is level, up positive, -90 straight down");
         }
-        aim.pitch = static_cast<float>(pitch) / kDegrees;
+        aim.pitch = PitchOfDegrees(static_cast<float>(pitch));
     }
     return aim;
 }
@@ -94,14 +92,14 @@ Aim FaceOf(const Args &args, const dao::CameraController &camera, const dao::Sce
         if (!sight)
         {
             throw ToolError("camera: the camera looks at that point already, so there is no direction to "
-                            "face; follow another creature first, or turn to `yawDegrees` and `pitchDegrees`");
+                            "face; follow another creature first, or turn to `facingDegrees` and `pitchDegrees`");
         }
         return {sight->yaw, sight->pitch};
     }
     if (Distance(focus, to) < 0.1F)
     {
         throw ToolError("camera: the focus is on that point already, so there is no direction to "
-                        "face; follow another creature first, or turn to `yawDegrees`");
+                        "face; follow another creature first, or turn to `facingDegrees`");
     }
     // The yaw is the direction from the focus to the camera:
     // the far side of the focus from what is to be seen.
@@ -213,14 +211,14 @@ std::string Turn(const Aim &aim, const dao::CameraController &camera)
     if (camera.Tactical())
     {
         return "the turn shows from the next frame, the tilt does not: the tactical view keeps its own "
-               "tilt of 45 degrees. Zoom in first (`zoom` above 0) to tilt";
+               "pitch of -45 degrees. Zoom in first (`zoom` above 0) to tilt";
     }
     const float held = HeldPitch(*aim.pitch);
     if (std::abs(held - *aim.pitch) > 0.001F)
     {
-        return std::format("{}. Close in, the game keeps the tilt between 30 and 150 degrees, so this one "
+        return std::format("{}. Close in, the game keeps the pitch between -60 and 60 degrees, so this one "
                            "shows as {:.0f}",
-                           kNextFrame, held * kDegrees);
+                           kNextFrame, PitchDegrees(held));
     }
     return std::string(kNextFrame);
 }
@@ -232,6 +230,14 @@ ToolResult ToolCamera(const Watch &watch, const Json &raw)
     const Args args(raw, "camera");
     const auto action = args.Choice("action", {"read", "face", "follow", "turn", "behind", "zoom"}, "read");
     auto *camera = dao::camera::Current();
+    // A plugin's free view puts the game in its fly camera mode, where the
+    // camera is that plugin's to move (#143).
+    if (watch.Mode() == static_cast<std::int32_t>(dao::GameMode::FlyCam))
+    {
+        throw ToolError("camera: the game is in flycam mode, a free view another plugin's tools move; this "
+                        "tool moves the camera in explore and combat mode only. Use that plugin's tools (see "
+                        "health's `plugins`), or leave its view first");
+    }
     if (camera == nullptr)
     {
         throw ToolError("camera: there is no camera to move now: it moves in explore and combat mode, not "
@@ -276,7 +282,7 @@ void AddCamera(Bench &bench, const Watch &watch)
             "camera",
             "Reads or moves the camera, in explore or combat mode. `action`:\n\n"
             "- `read` (the default): returns what it is `following`, its `focus` and how far that is from "
-            "what it follows (`focusOffset`), its `position`, `yawDegrees` and `pitchDegrees`, whether it "
+            "what it follows (`focusOffset`), its `position`, `facingDegrees` and `pitchDegrees`, whether it "
             "is `tactical`, `zoom` (1 close in, -1 the tactical view) and `zoomSetting`, the zoom it is "
             "easing toward.\n"
             "- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, "
@@ -286,8 +292,8 @@ void AddCamera(Bench &bench, const Watch &watch)
             "- `follow`: makes it follow `target` and jump there at once, as selecting a party member does "
             "(nothing gets selected). Use it to look at a creature elsewhere, or to centre the tactical "
             "view on one.\n"
-            "- `turn`: turns it to `yawDegrees`, tilts it to `pitchDegrees`, or both. The tactical view "
-            "keeps its own tilt of 45 degrees, so tilt close in.\n"
+            "- `turn`: turns it to `facingDegrees`, tilts it to `pitchDegrees`, or both. The tactical view "
+            "keeps its own pitch of -45 degrees, so tilt close in.\n"
             "- `behind`: turns it to look the way `target` faces, from behind it, as the game's own camera "
             "reset does. Default: what it follows.\n"
             "- `zoom`: sets `zoom` as the mouse wheel does: -1 is the tactical view, high above, and 0.5 "
@@ -311,15 +317,15 @@ void AddCamera(Bench &bench, const Watch &watch)
                     {{"type", "boolean"},
                      {"description", "With `face`: also tilt, so the target is in the middle of the picture "
                                      "and not only ahead. Default false: the tilt stays as it is."}}},
-                   {"yawDegrees",
+                   {"facingDegrees",
                     {{"type", "number"},
-                     {"description", "With `turn`: the direction from the focus to the camera, in degrees, "
-                                     "measured from +x toward +y."}}},
+                     {"description", "With `turn`: the way the camera looks, measured as a creature's "
+                                     "`facingDegrees`, so a creature's turns the camera the way it looks: 0 "
+                                     "along -y, -90 along +x, 90 along -x, 180 along +y."}}},
                    {"pitchDegrees",
                     {{"type", "number"},
-                     {"description", "With `turn`: the camera's angle from straight above, 0 to 180. 90 is "
-                                     "level, less looks down, more looks up. Close in, the game keeps it "
-                                     "between 30 and 150."}}},
+                     {"description", "With `turn`: -90 to 90. 0 is level, up positive, -90 straight down. "
+                                     "Close in, the game keeps it between -60 and 60."}}},
                    {"zoom",
                     {{"type", "number"},
                      {"description", "With `zoom`: -1 for the tactical view, or 0.5 (farthest) to 1 (closest) "

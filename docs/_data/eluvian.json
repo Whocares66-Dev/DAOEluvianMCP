@@ -40,7 +40,7 @@
   },
   {
    "name": "camera",
-   "description": "Reads or moves the camera, in explore or combat mode. `action`:\n\n- `read` (the default): returns what it is `following`, its `focus` and how far that is from what it follows (`focusOffset`), its `position`, `yawDegrees` and `pitchDegrees`, whether it is `tactical`, `zoom` (1 close in, -1 the tactical view) and `zoomSetting`, the zoom it is easing toward.\n- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, for a screenshot that shows it. With `tilt` true it tilts as well, so the target is in the middle of the picture: use it for something above or below, such as the sky. A creature's point is at its feet, so one standing near is looked down on.\n- `follow`: makes it follow `target` and jump there at once, as selecting a party member does (nothing gets selected). Use it to look at a creature elsewhere, or to centre the tactical view on one.\n- `turn`: turns it to `yawDegrees`, tilts it to `pitchDegrees`, or both. The tactical view keeps its own tilt of 45 degrees, so tilt close in.\n- `behind`: turns it to look the way `target` faces, from behind it, as the game's own camera reset does. Default: what it follows.\n- `zoom`: sets `zoom` as the mouse wheel does: -1 is the tactical view, high above, and 0.5 (farthest) to 1 (closest) the close view. The game has no view between them. The camera eases there within about a second. In the tactical view the game pans the camera while the mouse is at the picture's edge or off it, so the party drifts to a corner (`focusOffset` grows): first hold the cursor inside the picture with `pointer` (a `pixel` near the middle), then `follow` a creature to centre on it.\n\nEvery action returns the camera as `read` does. A turn or tilt shows from the next frame, so take the screenshot after this call; after `zoom`, read until `zoom` has arrived. A mod that smooths camera moves treats a move from here as the player's and stops its own.",
+   "description": "Reads or moves the camera, in explore or combat mode. `action`:\n\n- `read` (the default): returns what it is `following`, its `focus` and how far that is from what it follows (`focusOffset`), its `position`, `facingDegrees` and `pitchDegrees`, whether it is `tactical`, `zoom` (1 close in, -1 the tactical view) and `zoomSetting`, the zoom it is easing toward.\n- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, for a screenshot that shows it. With `tilt` true it tilts as well, so the target is in the middle of the picture: use it for something above or below, such as the sky. A creature's point is at its feet, so one standing near is looked down on.\n- `follow`: makes it follow `target` and jump there at once, as selecting a party member does (nothing gets selected). Use it to look at a creature elsewhere, or to centre the tactical view on one.\n- `turn`: turns it to `facingDegrees`, tilts it to `pitchDegrees`, or both. The tactical view keeps its own pitch of -45 degrees, so tilt close in.\n- `behind`: turns it to look the way `target` faces, from behind it, as the game's own camera reset does. Default: what it follows.\n- `zoom`: sets `zoom` as the mouse wheel does: -1 is the tactical view, high above, and 0.5 (farthest) to 1 (closest) the close view. The game has no view between them. The camera eases there within about a second. In the tactical view the game pans the camera while the mouse is at the picture's edge or off it, so the party drifts to a corner (`focusOffset` grows): first hold the cursor inside the picture with `pointer` (a `pixel` near the middle), then `follow` a creature to centre on it.\n\nEvery action returns the camera as `read` does. A turn or tilt shows from the next frame, so take the screenshot after this call; after `zoom`, read until `zoom` has arrived. A mod that smooths camera moves treats a move from here as the player's and stops its own.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -66,13 +66,13 @@
       "type": "boolean",
       "description": "With `face`: also tilt, so the target is in the middle of the picture and not only ahead. Default false: the tilt stays as it is."
      },
-     "yawDegrees": {
+     "facingDegrees": {
       "type": "number",
-      "description": "With `turn`: the direction from the focus to the camera, in degrees, measured from +x toward +y."
+      "description": "With `turn`: the way the camera looks, measured as a creature's `facingDegrees`, so a creature's turns the camera the way it looks: 0 along -y, -90 along +x, 90 along -x, 180 along +y."
      },
      "pitchDegrees": {
       "type": "number",
-      "description": "With `turn`: the camera's angle from straight above, 0 to 180. 90 is level, less looks down, more looks up. Close in, the game keeps it between 30 and 150."
+      "description": "With `turn`: -90 to 90. 0 is level, up positive, -90 straight down. Close in, the game keeps it between -60 and 60."
      },
      "zoom": {
       "type": "number",
@@ -171,7 +171,7 @@
   },
   {
    "name": "creature",
-   "description": "Returns one creature in full: the summary `creatures` gives (including the `command` it is carrying out), plus:\n\n- `facing` and `appearance`.\n- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, out of how many).\n- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n- `effects`: every effect on it, with its type (an EFFECT_TYPE_* name), creator, ability (id and name) and time left in seconds (null for effects that do not expire).",
+   "description": "Returns one creature in full: the summary `creatures` gives (including the `command` it is carrying out), plus:\n\n- `facingDegrees`, the way it looks: 0 along -y, -90 along +x, 90 along -x, 180 along +y, as `camera` and `stage_spawn` take it. And `appearance`.\n- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, out of how many).\n- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n- `effects`: every effect on it, with its type (an EFFECT_TYPE_* name), creator, ability (id and name) and time left in seconds (null for effects that do not expire).",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1343,9 +1343,9 @@
      "point": {
       "description": "Where to create it: {x, y, z} or [x, y, z]."
      },
-     "facing": {
+     "facingDegrees": {
       "type": "number",
-      "description": "Which way it faces, in degrees. Default 0."
+      "description": "The way it looks, as `creature` reads it: 0 along -y, -90 along +x, 90 along -x, 180 along +y. Default 0."
      },
      "group": {
       "type": "integer",

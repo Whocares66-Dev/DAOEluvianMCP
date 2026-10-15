@@ -389,17 +389,17 @@ def checks(run: Run, owner: str) -> None:
     check(
         "camera face",
         tool("camera", {"action": "face", "target": wolf}),
-        lambda a: "yawDegrees" in a,
+        lambda a: "facingDegrees" in a,
     )
     check(
         "camera turn, a tilt",
-        tool("camera", {"action": "turn", "pitchDegrees": 100}),
-        lambda a: abs(a["pitchDegrees"] - 100) < 0.5,
+        tool("camera", {"action": "turn", "pitchDegrees": 10}),
+        lambda a: abs(a["pitchDegrees"] - 10) < 0.5,
     )
     check(
         "camera behind the hero",
         tool("camera", {"action": "behind"}),
-        lambda a: "yawDegrees" in a and "note" in a,
+        lambda a: "facingDegrees" in a and "note" in a,
     )
     check(
         "camera zoom",
