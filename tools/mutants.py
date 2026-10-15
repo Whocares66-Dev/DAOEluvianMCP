@@ -3011,6 +3011,28 @@ MUTANTS = [
         "given->values[0].size() == 0)",
         "ghilana",
     ),
+    # A creature of a mod's own (#141).
+    Mutant(
+        "ghilana tables: a new row's ID already in the merged table is refused",
+        "src/ghilana/ToolsTemplates.cpp",
+        "if (taken.contains(id) ||",
+        "if (false ||",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana tables: a row is copied from the one asked for",
+        "src/ghilana/ToolsTemplates.cpp",
+        "return IdOf(row, *idColumn) == copy; });",
+        "return IdOf(row, *idColumn) != copy; });",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana templates: a field in a struct is found by its path",
+        "src/ghilana/ToolsTemplates.cpp",
+        "in = in ? in->Child(label.substr(0, slash)) : std::nullopt;",
+        "in = in;",
+        "ghilana",
+    ),
 ]
 
 

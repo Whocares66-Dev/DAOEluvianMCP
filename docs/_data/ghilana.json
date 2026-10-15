@@ -128,6 +128,36 @@
    }
   },
   {
+   "name": "model_copy",
+   "description": "Writes a model under a new name: its hierarchy (.mmh), mesh (.msh) and physics (.phy), and its farther versions (_2, _3) beside a _0, each naming its own new mesh file, optionally with another material (.mao) on every mesh node; and its textures under the new name, which the game draws a creature's body with. For a creature or item of a mod's own: an appearance row's ModelName names it. Answers the files written and the name to give the row.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The game's model, \"cn_bdy_ogra_0\"."
+     },
+     "as": {
+      "type": "string",
+      "description": "Its new name, \"cn_bdy_rdoa_0\": letters, digits and _, ending _0 as the game's nearest versions do."
+     },
+     "material": {
+      "type": "string",
+      "description": "A material for every mesh node, \"cn_bdy_rdoa\" (a .mao, without the extension). Default: the model's own."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     }
+    },
+    "required": [
+     "name",
+     "as",
+     "to"
+    ]
+   }
+  },
+  {
    "name": "model_export",
    "description": "Writes a model as glTF 2.0 (<name>.gltf and <name>.bin) into a folder of yours, for Blender's built-in glTF import: its node tree, each mesh with normals, tangents, texture coordinates and colours, and its bones as one skin with each vertex's weights. Z up is made glTF's Y up. The game's names and kinds are kept in each node's and mesh's `extras` (\"dao\"), which Blender keeps as custom properties. Answers the paths, the counts, and `notes` on anything left out. Textures are not written yet. Writes nothing in the game's folders.",
    "inputSchema": {
@@ -483,6 +513,71 @@
    },
    "annotations": {
     "readOnlyHint": true
+   }
+  },
+  {
+   "name": "table_rows",
+   "description": "Writes a table of new rows for one the game merges from every file of its prefix (apr_base and apr_*, the appearances): each row copied from a row of `table` by its ID, with cells changed. A new ID already in the merged table, the game's, its DLC's or another mod's, is refused. Answers the file written; put it beside what uses the rows.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "table": {
+      "type": "string",
+      "description": "The game's table to copy rows from, \"apr_base\": its columns are the new file's."
+     },
+     "rows": {
+      "type": "array",
+      "items": {
+       "type": "object"
+      },
+      "description": "Each {\"copy\": the ID of a row to copy, \"set\": {column: value}}; set ID to a new one."
+     },
+     "name": {
+      "type": "string",
+      "description": "The file's name, the table's prefix and yours: \"apr_mymod\"."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     }
+    },
+    "required": [
+     "table",
+     "rows",
+     "name",
+     "to"
+    ]
+   }
+  },
+  {
+   "name": "template_edit",
+   "description": "Writes a template (.utc creature, .uti item, .utp placeable...) under a new name with fields changed: a number, a text (a String or ResRef), or a string reference for a name. A field in a struct is named by its path, \"Appearance Data/Appearance_Type\". `resource` shows a template's fields.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The game's template, \"ogre_default.utc\"."
+     },
+     "set": {
+      "type": "object",
+      "description": "Each field's path and its new value: {\"Tag\": \"red_ogre\", \"Appearance Data/Appearance_Type\": 7701}."
+     },
+     "save_as": {
+      "type": "string",
+      "description": "The new template's name, \"red_ogre\" (the extension is the original's)."
+     },
+     "to": {
+      "type": "string",
+      "description": "The folder to write into, a full path; made if missing. Never inside the game's folder."
+     }
+    },
+    "required": [
+     "name",
+     "set",
+     "save_as",
+     "to"
+    ]
    }
   },
   {

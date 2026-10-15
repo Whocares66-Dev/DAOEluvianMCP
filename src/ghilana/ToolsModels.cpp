@@ -16,6 +16,7 @@
 #include <dao/core/Morph.h>
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <limits>
 #include <map>
@@ -515,6 +516,117 @@ Json Import(Ghilana &ghilana, const Json &raw)
     return out;
 }
 
+// ---------------------------------------------------------------- model_copy
+
+// One model's hierarchy written under a new name (MMHName, and the mesh file
+// it names, MMHModelHierarchyModelDataName: lib-agent, DAOLib #123), with
+// another material on every mesh node if asked.
+void CopyOne(Ghilana &ghilana, const std::string &from, const std::string &as, const std::string &material,
+             const fs::path &to, Json &written)
+{
+    const auto loaded = Load(ghilana, Args(Json{{"name", from}}, "model_copy"), "model_copy");
+    std::vector<model::NodeEdit> edits;
+    if (!material.empty())
+    {
+        for (std::size_t i = 0; i < loaded->tree.nodes.size(); ++i)
+        {
+            if (loaded->tree.nodes[i].mesh)
+            {
+                model::NodeEdit edit;
+                edit.node = static_cast<int>(i);
+                edit.material = Wide(material);
+                edits.push_back(std::move(edit));
+            }
+        }
+    }
+    const model::Written tree = model::WriteHierarchy(loaded->treeBytes, edits);
+    if (!tree.error.empty())
+    {
+        throw ToolError("model_copy: " + from + " cannot be written: " + tree.error);
+    }
+    // Each file under its new name, as DAOLib names them (model::Renamed,
+    // DAOLib #123): the hierarchy's own name and its mesh file's, the mesh's,
+    // and the physics file's, whose name is its hierarchy's.
+    const auto renamed = [&](std::span<const std::byte> bytes, const std::string &name, const std::string &mesh) {
+        const model::Written out = model::Renamed(bytes, Wide(name), Wide(mesh));
+        if (!out.error.empty())
+        {
+            throw ToolError("model_copy: " + name + " cannot be written: " + out.error);
+        }
+        WriteFile(to / fs::path(Wide(name)), out.bytes, "model_copy");
+        written.push_back(name);
+    };
+    renamed(tree.bytes, as + ".mmh", as + ".msh");
+    renamed(loaded->meshBytes, as + ".msh", "");
+    const GameFiles &files = ghilana.Files();
+    if (const auto *copies = files.Find(from + ".phy"); copies != nullptr && !copies->empty())
+    {
+        if (const auto phy = files.Read(GameFiles::Choose(*copies)))
+        {
+            renamed(*phy, as + ".phy", "");
+        }
+    }
+}
+
+Json ModelCopy(Ghilana &ghilana, const Json &raw)
+{
+    const Args args(raw, "model_copy");
+    const fs::path to = OutputFolder(ghilana, args, "model_copy");
+    const std::string from = Stem(Lower(args.String("name")));
+    const std::string as = Lower(args.String("as"));
+    const std::string material = args.String("material", "");
+    for (const char c : as)
+    {
+        if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_')
+        {
+            throw ToolError("model_copy: `as` is letters, digits and _, as the game's model names are");
+        }
+    }
+    Json written = Json::array();
+    CopyOne(ghilana, from, as, material, to, written);
+    // The farther versions, _1 to _3 beside a _0, under the new name's.
+    Json lods = Json::array();
+    if (from.ends_with("_0") && as.ends_with("_0"))
+    {
+        for (const char lod : {'1', '2', '3'})
+        {
+            const std::string farFrom = from.substr(0, from.size() - 1) + lod;
+            if (ghilana.Files().Find(farFrom + ".mmh") != nullptr)
+            {
+                CopyOne(ghilana, farFrom, as.substr(0, as.size() - 1) + lod, material, to, written);
+                lods.push_back(farFrom);
+            }
+        }
+    }
+    // The textures under the new name too: a creature's body is drawn with
+    // textures named after its model, whatever its material names (seen in
+    // the game 2026-10-14: a copy whose textures kept the old name cast its
+    // shadow and drew no body).
+    if (from.ends_with("_0") && as.ends_with("_0"))
+    {
+        const GameFiles &files = ghilana.Files();
+        for (const char *suffix : {"d", "n", "s", "t", "e", "dl2", "dl3", "nl2", "nl3", "sl2", "sl3"})
+        {
+            const std::string texture = from + suffix + ".dds";
+            const auto *copies = files.Find(texture);
+            const auto bytes =
+                copies != nullptr && !copies->empty() ? files.Read(GameFiles::Choose(*copies)) : std::nullopt;
+            if (bytes)
+            {
+                const std::string name = as + suffix + ".dds";
+                WriteFile(to / fs::path(Wide(name)), *bytes, "model_copy");
+                written.push_back(name);
+            }
+        }
+    }
+    Json out = {{"written", written}, {"lods", lods}};
+    out["model_name"] = as.ends_with("_0") ? as.substr(0, as.size() - 2) : as;
+    out["next"] = "an appearance row whose ModelName is the model_name (`table_rows` on apr_base), and a template "
+                  "whose Appearance_Type is that row (`template_edit`); a material of your own is a .mao, XML text "
+                  "(`resource` shows the game's), naming your textures";
+    return out;
+}
+
 } // namespace
 
 void RegisterModelTools(Bench &bench, Ghilana &ghilana)
@@ -557,6 +669,29 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
     importProperties["to"] = {{"type", "string"},
                               {"description", "The folder to write the .msh and .mmh into, a full path; made if "
                                               "missing. Never inside the game's folder."}};
+    tools.Add(
+        Spec("model_copy",
+             "Writes a model under a new name: its hierarchy (.mmh), mesh (.msh) and physics (.phy), and its farther "
+             "versions (_2, _3) beside a _0, each naming its own new mesh file, optionally with another "
+             "material (.mao) on every mesh node; and its textures under the new name, which the game draws a "
+             "creature's body with. For a creature or item of a mod's own: an appearance row's "
+             "ModelName names it. Answers the files written and the name to give the row.",
+             {{"name", {{"type", "string"}, {"description", "The game's model, \"cn_bdy_ogra_0\"."}}},
+              {"as",
+               {{"type", "string"},
+                {"description", "Its new name, \"cn_bdy_rdoa_0\": letters, digits and _, ending _0 as the "
+                                "game's nearest versions do."}}},
+              {"material",
+               {{"type", "string"},
+                {"description", "A material for every mesh node, \"cn_bdy_rdoa\" (a .mao, without the "
+                                "extension). Default: the model's own."}}},
+              {"to",
+               {{"type", "string"},
+                {"description", "The folder to write into, a full path; made if missing. Never inside the "
+                                "game's folder."}}}},
+             {"name", "as", "to"}, false),
+        [&ghilana](const Json &args) -> ToolResult { return ModelCopy(ghilana, args); });
+
     tools.Add(
         Spec("model_import",
              "Writes a model edited in Blender back as the game's files: the glTF's meshes put into the "

@@ -77,6 +77,7 @@ add_library(
     src/ghilana/ToolsData.cpp
     src/ghilana/ToolsFiles.cpp
     src/ghilana/ToolsModels.cpp
+    src/ghilana/ToolsTemplates.cpp
     src/ghilana/ToolsTextures.cpp
 )
 el_apply_warnings(gh_lib)
