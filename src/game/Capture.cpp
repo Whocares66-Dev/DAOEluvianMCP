@@ -30,8 +30,31 @@ struct Search
 {
     DWORD process = 0;
     HWND window = nullptr;
-    long area = 0;
+    long area = -1;
 };
+
+// A minimised window's client area is 0 by 0, and the game's fullscreen
+// window minimises itself when it loses the display. Measured by its client
+// area alone, it was no window at all: elgara-agent, 2026-10-16, was told
+// "no window yet" by both screenshot and window while Get-Process listed
+// the game's window (#148). So a minimised window counts at its restored size.
+long Area(HWND window)
+{
+    if (IsIconic(window) != FALSE)
+    {
+        WINDOWPLACEMENT placement{};
+        placement.length = sizeof(placement);
+        if (GetWindowPlacement(window, &placement) == FALSE)
+        {
+            return 0;
+        }
+        const RECT &normal = placement.rcNormalPosition;
+        return (normal.right - normal.left) * (normal.bottom - normal.top);
+    }
+    RECT client{};
+    GetClientRect(window, &client);
+    return (client.right - client.left) * (client.bottom - client.top);
+}
 
 BOOL CALLBACK Consider(HWND window, LPARAM param)
 {
@@ -42,9 +65,7 @@ BOOL CALLBACK Consider(HWND window, LPARAM param)
     {
         return TRUE;
     }
-    RECT client{};
-    GetClientRect(window, &client);
-    const long area = (client.right - client.left) * (client.bottom - client.top);
+    const long area = Area(window);
     if (area > search.area)
     {
         search.window = window;
@@ -230,11 +251,13 @@ Picture CaptureGameWindow(float quality)
     HWND window = GameWindow();
     if (window == nullptr)
     {
-        throw ToolError("screenshot: the game has no window to take yet");
+        throw ToolError("screenshot: the game has no visible window: it has not made one yet, or hides it");
     }
     if (IsIconic(window) != FALSE)
     {
-        throw ToolError("screenshot: the game's window is minimized; restore it to take a picture");
+        throw ToolError(std::string("screenshot: ") + kMinimised +
+                        ". Source \"window\" has nothing to take while it is; source \"game\" takes the game's own "
+                        "picture wherever it draws");
     }
     RECT client{};
     GetClientRect(window, &client);

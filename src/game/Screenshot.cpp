@@ -92,6 +92,11 @@ std::filesystem::path GameScreenshot(Bench &bench, const Watch &watch)
         }
         lastSize = error ? 0 : size;
     }
+    if (GameWindowPlace().minimised)
+    {
+        throw ToolError(std::format("screenshot: the game wrote no picture to {} within 10 s, and {}", folder.string(),
+                                    kMinimised));
+    }
     throw ToolError(std::format("screenshot: the game wrote no picture to {} within 10 s; source \"window\" "
                                 "draws the window instead",
                                 folder.string()));

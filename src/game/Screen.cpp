@@ -40,7 +40,8 @@ Json PlaceJson(float x, float y, const dao::world::ViewSize &view, const WindowP
         const float fy = y / static_cast<float>(view.height);
         place["fx"] = fx;
         place["fy"] = fy;
-        if (window.found)
+        // A minimised window has no place on the desktop (#148).
+        if (window.found && !window.minimised)
         {
             const int dx = window.x + static_cast<int>(fx * static_cast<float>(window.width));
             const int dy = window.y + static_cast<int>(fy * static_cast<float>(window.height));

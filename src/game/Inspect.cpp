@@ -537,11 +537,17 @@ ToolResult KindWindow(const Json & /*args*/)
     const auto place = GameWindowPlace();
     if (!place.found)
     {
-        throw ToolError("window: the game has no window yet");
+        throw ToolError("window: the game has no visible window: it has not made one yet, or hides it");
     }
-    return Json{{"client", {{"x", place.x}, {"y", place.y}, {"width", place.width}, {"height", place.height}}},
+    Json answer{{"client", {{"x", place.x}, {"y", place.y}, {"width", place.width}, {"height", place.height}}},
                 {"minimised", place.minimised},
                 {"foreground", place.foreground}};
+    if (place.minimised)
+    {
+        answer["note"] =
+            std::string(kMinimised) + ". screenshot's source \"game\" takes the game's own picture wherever it draws";
+    }
+    return answer;
 }
 
 // The dialogue kind's handler, registered by AddInspect.

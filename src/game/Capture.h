@@ -25,7 +25,7 @@ struct Picture
 };
 
 // The game's main window's client area, as a JPEG of `quality` (0 to 1).
-// Throws ToolError saying why not: no window yet, minimised, or Windows
+// Throws ToolError saying why not: no visible window, minimised, or Windows
 // could not draw it.
 Picture CaptureGameWindow(float quality);
 
@@ -42,6 +42,15 @@ struct WindowPlace
     bool foreground = false; // it is the window the keyboard and mouse go to
 };
 WindowPlace GameWindowPlace();
+
+// What a tool says of the game's window minimised (#148). A fullscreen game
+// minimised itself on losing the display, and its own screenshot waited 10 s
+// for nothing (elgara-agent, 2026-10-16); a windowed one minimised by a
+// call drew on, its own screenshot whole (2026-10-16).
+inline constexpr const char *kMinimised =
+    "the game's window is minimised. A fullscreen game minimises itself when it loses the display (the "
+    "session locked, the display off or switched, another window taken to the front) and may draw nothing "
+    "until the window is restored on the desktop; a windowed one draws on";
 
 // What a real mouse at a desktop pixel would reach instead of the game: the
 // title (or class) of the window on top of the game's there, or nothing
