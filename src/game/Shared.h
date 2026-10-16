@@ -13,7 +13,7 @@
 #include "game/Health.h"
 
 #include "dao/Abilities.h"
-#include "dao/CameraMoves.h"
+#include "dao/Camera.h"
 #include "dao/ClientExoApp.h"
 #include "dao/CommandEvents.h"
 #include "dao/Dialogue.h"

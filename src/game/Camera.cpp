@@ -16,7 +16,7 @@ constexpr float kCloseLeast = 0.5F;
 // The camera, so a picture shows what a test means it to: a tester asked
 // for a way to turn it to a target before a screenshot (2026-10-01). The
 // turn is at once, not eased: a test wants the frame after to be the view.
-// DAOLib's eased moves are one plugin's (dao/CameraMoves.h); a turn from
+// DAOLib's eased moves are one plugin's (dao/Camera.h); a turn from
 // here looks to a mod easing the camera like the player's own, and stops
 // its move, as a player's would.
 Json CameraJson(const dao::CameraController &camera)
