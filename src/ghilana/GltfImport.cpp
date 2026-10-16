@@ -32,6 +32,9 @@ namespace
 
 namespace model = dao::core::model;
 using namespace math; // NOLINT(google-build-using-namespace): the vectors and matrices of glTF's space
+
+// A vertex with no place in the chunk exported (#139).
+constexpr std::uint32_t kNoOrder = 0xFFFFFFFF;
 using Value = model::Value;
 
 std::vector<std::byte> ReadBytes(const std::filesystem::path &path)
@@ -339,6 +342,9 @@ struct Gathered
     std::vector<Value> joints;
     std::vector<Value> weights;
     std::vector<std::uint32_t> indices;
+    // Each vertex's place in the chunk exported (_DAO_INDEX), where every
+    // primitive has it (#139); empty otherwise.
+    std::vector<std::uint32_t> order;
     std::string material;
 };
 
@@ -365,6 +371,7 @@ class Gatherer
         const Json &primitives = mesh.value("primitives", Json::array());
         // A set is kept only if every primitive has it, so every vertex has one.
         has_ = {true, true, true, true};
+        ordered_ = true;
         sets_ = 8;
         colourSets_ = 8;
         for (const auto &p : primitives)
@@ -373,6 +380,7 @@ class Gatherer
             has_[0] = has_[0] && a.contains("NORMAL");
             has_[1] = has_[1] && a.contains("TANGENT");
             has_[2] = has_[2] && a.contains("JOINTS_0") && a.contains("WEIGHTS_0");
+            ordered_ = ordered_ && a.contains(std::string(kOrderAttribute));
             sets_ = std::min(sets_, Count(a, "TEXCOORD_"));
             colourSets_ = std::min(colourSets_, Count(a, "COLOR_"));
             if (a.contains("JOINTS_1"))
@@ -452,6 +460,10 @@ class Gatherer
         {
             Append(out.colours[s], Values(gltf_, a["COLOR_" + std::to_string(s)].get<std::size_t>()), n, true);
         }
+        if (ordered_)
+        {
+            Order(a, n, out);
+        }
         if (has_[2])
         {
             Append(out.joints, Values(gltf_, a["JOINTS_0"].get<std::size_t>()), n, true);
@@ -487,6 +499,19 @@ class Gatherer
         }
     }
 
+    // Each vertex's place in the chunk exported, from _DAO_INDEX; one that
+    // is no whole number in range is as if none were given.
+    void Order(const Json &attributes, std::size_t n, Gathered &out) const
+    {
+        const auto order = Values(gltf_, attributes[std::string(kOrderAttribute)].get<std::size_t>());
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const double at = i < order.size() ? order[i][0] : -1.0;
+            out.order.push_back(at >= 0 && at == std::floor(at) && at < 4294967295.0 ? static_cast<std::uint32_t>(at)
+                                                                                     : kNoOrder);
+        }
+    }
+
     void Note(const std::string &text)
     {
         notes_.push_back(label_ + ": " + text);
@@ -496,9 +521,25 @@ class Gatherer
     std::vector<std::string> &notes_;
     const std::string &label_;
     std::array<bool, 4> has_{};
+    bool ordered_ = false;
     std::size_t sets_ = 0;
     std::size_t colourSets_ = 0;
 };
+
+// A triangle's corners turned so the least comes first, keeping the
+// winding: one triangle written from another corner is the same triangle.
+std::array<std::uint32_t, 3> Turned3(std::uint32_t a, std::uint32_t b, std::uint32_t c)
+{
+    if (b < a && b <= c)
+    {
+        return {b, c, a};
+    }
+    if (c < a && c < b)
+    {
+        return {c, a, b};
+    }
+    return {a, b, c};
+}
 
 // Normals from the triangles, each vertex's the sum of its faces', where the glTF has none.
 std::vector<Vec3> FaceNormals(const std::vector<Vec3> &p, const std::vector<std::uint32_t> &indices)
@@ -805,6 +846,10 @@ class ChunkImport
         {
             data.values.push_back(Stream(element, streams, label));
         }
+        if (!added && !g.order.empty())
+        {
+            Weld(data, g.order, chunk, label);
+        }
         std::vector<BonePiece> pieces;
         if (wantsBones && bonesUsed.size() > model::kMostBonesInChunk)
         {
@@ -828,6 +873,23 @@ class ChunkImport
     }
 
   private:
+    // The chunk in place joined back into the original's vertices (#139),
+    // or why not, in the notes.
+    void Weld(model::ChunkData &data, const std::vector<std::uint32_t> &order, const model::Chunk &chunk,
+              const std::string &label)
+    {
+        Original original{chunk.declaration, {}, model::Indices(chunk)};
+        for (const model::Element &element : chunk.declaration)
+        {
+            original.values.push_back(model::Floats(chunk, element));
+        }
+        const std::string why = WeldToOriginal(data, order, original);
+        out_.notes.push_back(label + (why.empty() ? ": Blender's split vertices joined back into the original " +
+                                                        std::to_string(chunk.vertexCount) +
+                                                        ", in their order, with the original's triangles"
+                                                  : ": kept as Blender wrote it, not the original layout: " + why));
+    }
+
     // One piece of a glTF mesh as the chunk it is: the chunk in place (its
     // node's edits), the new chunk (its node), or a piece past the first,
     // which is a new chunk and mesh node like the chunk's own. Its change
@@ -1420,6 +1482,197 @@ std::vector<BonePiece> SplitByBones(const model::ChunkData &whole, const std::ve
         out.push_back(CutPiece(whole, group, skin, slotsAt));
     }
     return out;
+}
+
+namespace
+{
+
+// How far a value read back may be from the original's and be no edit, only
+// rounding: Blender keeps a normal to 0.003 (its custom normals, the head of
+// 2026-10-16), a weight to 0.0001, positions and UVs as floats.
+float Rounding(model::Usage usage)
+{
+    switch (usage)
+    {
+    case model::Usage::Position:
+        return 1e-4F;
+    case model::Usage::Normal:
+    case model::Usage::BlendWeight:
+    case model::Usage::Color:
+        return 4e-3F;
+    default:
+        return 1e-5F;
+    }
+}
+
+bool Near(const Value &a, const Value &b, float by)
+{
+    for (std::size_t c = 0; c < a.size(); ++c)
+    {
+        if (std::abs(a[c] - b[c]) > by)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The place of the declaration's first element of a usage; -1 for none.
+int ElementOf(const std::vector<model::Element> &declaration, model::Usage usage)
+{
+    for (std::size_t e = 0; e < declaration.size(); ++e)
+    {
+        if (declaration[e].usage == usage)
+        {
+            return static_cast<int>(e);
+        }
+    }
+    return -1;
+}
+
+// A vertex's place, normal and UVs as they were: then Blender's own tangents
+// (MikkTSpace, signs turned at seams) are no edit of the game's.
+bool Shaped(const model::ChunkData &data, const Original &original, std::size_t v)
+{
+    for (std::size_t e = 0; e < original.declaration.size(); ++e)
+    {
+        const model::Usage usage = original.declaration[e].usage;
+        if ((usage == model::Usage::Position || usage == model::Usage::Normal || usage == model::Usage::TexCoord) &&
+            !Near(data.values[e][v], original.values[e][v], Rounding(usage)))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A vertex's weights as they were, and its bones where they weigh: a bone of
+// no weight Blender may drop or move, and one of 0.00004 it drops (six of the
+// head's vertices, 2026-10-16).
+bool Weighted(const model::ChunkData &data, const Original &original, std::size_t v)
+{
+    const int weights = ElementOf(original.declaration, model::Usage::BlendWeight);
+    const int slots = ElementOf(original.declaration, model::Usage::BlendIndices);
+    if (weights < 0 || slots < 0)
+    {
+        return false;
+    }
+    const float none = Rounding(model::Usage::BlendWeight);
+    const Value &was = original.values[static_cast<std::size_t>(weights)][v];
+    if (!Near(data.values[static_cast<std::size_t>(weights)][v], was, none))
+    {
+        return false;
+    }
+    const Value &bones = data.values[static_cast<std::size_t>(slots)][v];
+    const Value &bonesWere = original.values[static_cast<std::size_t>(slots)][v];
+    for (std::size_t c = 0; c < was.size(); ++c)
+    {
+        if (was[c] > none && bones[c] != bonesWere[c])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Each welded value that is the original's but for rounding becomes the
+// original's, so an unedited mesh is written back as it was read.
+void KeepUnedited(model::ChunkData &data, const Original &original)
+{
+    const std::size_t count = original.values.empty() ? 0 : original.values[0].size();
+    for (std::size_t v = 0; v < count; ++v)
+    {
+        const bool shaped = Shaped(data, original, v);
+        const bool weighted = Weighted(data, original, v);
+        for (std::size_t e = 0; e < original.declaration.size(); ++e)
+        {
+            const model::Usage usage = original.declaration[e].usage;
+            bool keep = false;
+            if (usage == model::Usage::Tangent || usage == model::Usage::Binormal)
+            {
+                keep = shaped;
+            }
+            else if (usage == model::Usage::BlendWeight || usage == model::Usage::BlendIndices)
+            {
+                keep = weighted;
+            }
+            else
+            {
+                keep = Near(data.values[e][v], original.values[e][v], Rounding(usage));
+            }
+            if (keep)
+            {
+                data.values[e][v] = original.values[e][v];
+            }
+        }
+    }
+}
+
+} // namespace
+
+std::string WeldToOriginal(model::ChunkData &data, const std::vector<std::uint32_t> &order, const Original &original)
+{
+    const std::size_t count = data.values.empty() ? 0 : data.values[0].size();
+    const std::size_t originalCount = original.values.empty() ? 0 : original.values[0].size();
+    const std::vector<std::uint32_t> &originalIndices = original.indices;
+    if (data.values.size() != original.values.size())
+    {
+        return "its vertex elements are not the original's";
+    }
+    if (order.size() != count)
+    {
+        return "the vertices' _DAO_INDEX did not come through whole";
+    }
+    // The first copy of each original vertex.
+    std::vector<std::uint32_t> first(originalCount, kNoOrder);
+    for (std::size_t v = 0; v < count; ++v)
+    {
+        const std::uint32_t o = order[v];
+        if (o == kNoOrder || o >= originalCount)
+        {
+            return "a vertex with no _DAO_INDEX of the original's, so vertices were added";
+        }
+        if (first[o] == kNoOrder)
+        {
+            first[o] = static_cast<std::uint32_t>(v);
+        }
+    }
+    if (std::ranges::find(first, kNoOrder) != first.end())
+    {
+        return "some of the original's vertices are gone";
+    }
+    // The triangles, each as the original's vertices, must be the original's.
+    using Triangle = std::array<std::uint32_t, 3>;
+    std::vector<Triangle> had;
+    std::vector<Triangle> now;
+    for (std::size_t i = 0; i + 2 < originalIndices.size(); i += 3)
+    {
+        had.push_back(Turned3(originalIndices[i], originalIndices[i + 1], originalIndices[i + 2]));
+    }
+    for (std::size_t i = 0; i + 2 < data.indices.size(); i += 3)
+    {
+        now.push_back(Turned3(order[data.indices[i]], order[data.indices[i + 1]], order[data.indices[i + 2]]));
+    }
+    std::ranges::sort(had);
+    std::ranges::sort(now);
+    if (had != now)
+    {
+        return "its triangles are not the original's (" + std::to_string(now.size()) + " where it had " +
+               std::to_string(had.size()) + ")";
+    }
+    for (auto &values : data.values)
+    {
+        std::vector<Value> welded(originalCount);
+        for (std::size_t o = 0; o < originalCount; ++o)
+        {
+            welded[o] = values[first[o]];
+        }
+        values = std::move(welded);
+    }
+    KeepUnedited(data, original);
+    data.indices = originalIndices;
+    data.indices.resize(data.indices.size() - (data.indices.size() % 3));
+    return {};
 }
 
 GltfFile ReadGltf(const std::filesystem::path &path)

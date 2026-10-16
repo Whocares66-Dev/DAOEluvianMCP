@@ -2767,6 +2767,42 @@ MUTANTS = [
     # Ghilana's own (src/ghilana, #128): the copy the game takes, a table as
     # the game merges it, what conflicts and query count, and the text and
     # files ghilana writes. `--suite ghilana`.
+    # Blender's split vertices joined back into the chunk's own (#139).
+    Mutant(
+        "ghilana's export writes no vertex's place in its chunk",
+        "src/ghilana/Gltf.cpp",
+        "attributes[std::string(kOrderAttribute)] = out_.Floats(order, 1, kVertices);",
+        "(void)order;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana joins a mesh whose triangles are not the original's",
+        "src/ghilana/GltfImport.cpp",
+        "    if (had != now)\n",
+        "    if (false)\n",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana takes a triangle from another corner for another triangle",
+        "src/ghilana/GltfImport.cpp",
+        "if (b < a && b <= c)",
+        "if (false)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana keeps Blender's tangents of an unedited shape",
+        "src/ghilana/GltfImport.cpp",
+        "const bool shaped = Shaped(data, original, v);",
+        "const bool shaped = Shaped(data, original, v) && v > count;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana keeps the original's place over an edit",
+        "src/ghilana/GltfImport.cpp",
+        "        return 1e-4F;",
+        "        return 1.0F;",
+        "ghilana",
+    ),
     Mutant(
         "ghilana taken: the copy the game takes is one it has, else none",
         "src/ghilana/GameFiles.cpp",

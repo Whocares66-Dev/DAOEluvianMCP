@@ -260,6 +260,17 @@ class ChunkWriter
         Sets(model::Usage::TexCoord, "TEXCOORD_", 2, attributes);
         Sets(model::Usage::Color, "COLOR_", 4, attributes);
         skinned = Joints(ref, skin, attributes);
+        // Each vertex's place in the chunk. Blender splits a vertex where its
+        // faces disagree on a UV or normal (a head's 2,282 came back 2,342,
+        // 2026-10-14) and keeps a custom attribute on every copy, so the way
+        // back joins the copies into the original layout a morph places by
+        // (#139). A float holds every index of a chunk exactly.
+        std::vector<float> order(places.size());
+        for (std::size_t i = 0; i < order.size(); ++i)
+        {
+            order[i] = static_cast<float>(i);
+        }
+        attributes[std::string(kOrderAttribute)] = out_.Floats(order, 1, kVertices);
         for (const auto &element : chunk_.declaration)
         {
             static constexpr std::array kTaken{

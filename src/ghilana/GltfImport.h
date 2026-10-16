@@ -71,6 +71,28 @@ std::vector<BonePiece> SplitByBones(const dao::core::model::ChunkData &whole,
                                     const std::vector<dao::core::model::Element> &declaration,
                                     const std::vector<std::int32_t> &bonesUsed, std::size_t most);
 
+// The chunk as the game has it, which a mesh from Blender is joined back into.
+struct Original
+{
+    const std::vector<dao::core::model::Element> &declaration;
+    std::vector<std::vector<dao::core::model::Value>> values; // an element's, a value a vertex
+    std::vector<std::uint32_t> indices;
+};
+
+// Joins the vertices Blender split back into the chunk's own layout: each
+// vertex of `data` (in the original's declaration) was the original's vertex
+// `order` names (model_export's _DAO_INDEX). Where every original vertex is
+// there and the triangles are the original's, `data` becomes the original's
+// vertices in their order and its triangles, and "" is returned; each value
+// is the first copy's, or the original's where that is no edit, only
+// Blender's rounding (and a tangent or binormal where the vertex's place,
+// normal and UVs are not edited, as Blender makes its own). So a mesh
+// through Blender unedited comes back as it was. Otherwise `data` is left
+// as it is and the reason returned: vertices or triangles were added or
+// removed, so there is no layout to keep.
+std::string WeldToOriginal(dao::core::model::ChunkData &data, const std::vector<std::uint32_t> &order,
+                           const Original &original);
+
 // The chunks and node edits of a glTF made of this model. Throws
 // std::runtime_error for a glTF none of whose meshes is one of the model's,
 // or a mesh that cannot be written (a bone the model does not have). A mesh

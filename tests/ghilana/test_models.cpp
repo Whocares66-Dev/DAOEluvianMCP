@@ -322,6 +322,8 @@ TEST_CASE("model_import: a model's own glTF comes back as it was; an edit in it 
     CHECK(answer["chunks"][0]["vertices"]["after"] == 3);
     CHECK(answer["node_edits"].empty());
     CHECK_THAT(answer["notes"].dump(), ContainsSubstring("chunk Cap is in no mesh of the glTF; kept as it was"));
+    // Each vertex's place in its chunk went out, and the way back joined by it (#139).
+    CHECK_THAT(answer["notes"].dump(), ContainsSubstring("joined back into the original 3"));
     const Slab slab;
     const WrittenMesh written(back / L"slab.msh");
     REQUIRE(written.mesh.chunks.size() == 2);
@@ -442,6 +444,89 @@ TEST_CASE("model_import: a mesh copied in the glTF is a new chunk under a new me
     CHECK(node->mesh->material == L"troll");
     // Its own bones only, not the original's [1, 0].
     CHECK(node->mesh->bonesUsed == std::vector<std::int32_t>{0});
+}
+
+namespace
+{
+
+// A square of two triangles as the game has it: places and tangents.
+struct Square
+{
+    std::vector<model::Element> declaration = std::vector<model::Element>(2);
+    ghilana::Original original{declaration, {}, {0, 1, 2, 0, 2, 3}};
+
+    Square()
+    {
+        declaration[1].usage = model::Usage::Tangent;
+        original.values = {{{0, 0, 0, 1}, {1, 0, 0, 1}, {1, 1, 0, 1}, {0, 1, 0, 1}},
+                           {{1, 0, 0, 1}, {1, 0, 0, 1}, {1, 0, 0, 1}, {1, 0, 0, 1}}};
+    }
+
+    // As Blender writes it back: vertex 0 split in two at a seam, the
+    // vertices in its own order, the places a float's rounding off, and
+    // tangents of its own.
+    [[nodiscard]] static model::ChunkData Blender()
+    {
+        model::ChunkData data;
+        data.values = {{{1, 1, 0.000001F, 1}, {0, 0, 0, 1}, {1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 0.000001F, 1}},
+                       {{0, 1, 0, -1}, {0, 1, 0, -1}, {0, 1, 0, -1}, {0, 1, 0, -1}, {0, 1, 0, -1}}};
+        // The original's triangles, the second first and from another corner:
+        // its least vertex second (2, 0, 1 of the original's).
+        data.indices = {4, 0, 3, 0, 1, 2};
+        return data;
+    }
+    const std::vector<std::uint32_t> order{2, 0, 1, 3, 0};
+};
+
+} // namespace
+
+TEST_CASE("model_import: Blender's split vertices are joined back into the chunk's own, an unedited one as it was",
+          "[ghilana][models]")
+{
+    const Square square;
+    model::ChunkData data = Square::Blender();
+    CHECK(ghilana::WeldToOriginal(data, square.order, square.original).empty());
+    // The original's vertices in its order and its triangles, every value the
+    // original's: the places but for rounding, and tangents Blender made of
+    // an unedited shape.
+    CHECK(data.values == square.original.values);
+    CHECK(data.indices == square.original.indices);
+
+    // A vertex moved: its place comes through, and its tangent is the glTF's.
+    data = Square::Blender();
+    data.values[0][0] = {1.5F, 1, 0, 1};
+    CHECK(ghilana::WeldToOriginal(data, square.order, square.original).empty());
+    CHECK(data.values[0][2] == model::Value{1.5F, 1, 0, 1});
+    CHECK(data.values[1][2] == model::Value{0, 1, 0, -1});
+    CHECK(data.values[0][1] == model::Value{1, 0, 0, 1});
+    CHECK(data.values[1][1] == model::Value{1, 0, 0, 1});
+    CHECK(data.indices == square.original.indices);
+}
+
+TEST_CASE("model_import: a mesh with vertices or triangles added or removed keeps Blender's layout",
+          "[ghilana][models]")
+{
+    const Square square;
+    // A vertex added, with no place in the original.
+    model::ChunkData data = Square::Blender();
+    const model::ChunkData was = data;
+    std::vector<std::uint32_t> order = square.order;
+    order[4] = 4;
+    CHECK_THAT(ghilana::WeldToOriginal(data, order, square.original), ContainsSubstring("added"));
+    CHECK(data.values == was.values);
+    // A triangle removed.
+    data.indices.resize(3);
+    CHECK_THAT(ghilana::WeldToOriginal(data, square.order, square.original),
+               ContainsSubstring("triangles are not the original's (1 where it had 2)"));
+    // A vertex gone (its triangle with it).
+    data = Square::Blender();
+    order = {2, 0, 1, 0, 0};
+    CHECK_THAT(ghilana::WeldToOriginal(data, order, square.original), ContainsSubstring("gone"));
+    // A triangle turned over is another triangle.
+    data = Square::Blender();
+    std::swap(data.indices[1], data.indices[2]);
+    CHECK_THAT(ghilana::WeldToOriginal(data, square.order, square.original), ContainsSubstring("triangles"));
+    CHECK(data.indices == std::vector<std::uint32_t>{4, 3, 0, 0, 1, 2});
 }
 
 TEST_CASE("a chunk over too many bones is split, each triangle in the first piece its bones fit", "[ghilana][models]")

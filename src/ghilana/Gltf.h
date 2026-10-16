@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace eluvian::ghilana
@@ -34,6 +35,11 @@ struct Gltf
 
 // A vertex element's usage and format by Direct3D's names, less the D3DDECL
 // prefix ("TexCoord", "Float16x2").
+// The custom attribute each vertex's place in its chunk is written as, which
+// Blender keeps (glTF's custom attributes start with _) and model_import
+// joins Blender's split copies by (#139).
+inline constexpr std::string_view kOrderAttribute = "_DAO_INDEX";
+
 std::string UsageName(dao::core::model::Usage usage);
 std::string FormatName(dao::core::model::Format format);
 

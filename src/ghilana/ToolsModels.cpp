@@ -292,7 +292,8 @@ Json Export(Ghilana &ghilana, const Json &raw)
     out["axes"] = "glTF's Y up is the game's Z; Blender's import turns it back to Z up";
     out["blender"] = "bpy.ops.import_scene.gltf(filepath=r\"" + PathText(gltfPath) +
                      "\"); the game's names and kinds are kept as custom properties (`dao`) for the way back";
-    out["next"] = "after editing, export glTF from Blender with custom properties (export_extras=True) and give it "
+    out["next"] = "after editing, export glTF from Blender with export_extras=True (each mesh's chunk), "
+                  "export_attributes=True (each vertex's place, _DAO_INDEX) and export_tangents=True, and give it "
                   "to `model_import`";
     return out;
 }
@@ -402,8 +403,10 @@ Json GuardMorphs(Ghilana &ghilana, const Loaded &loaded, const Imported &importe
     }
     return {{"files", found},
             {"nodes", nodes},
-            {"note", "these heads' morphs place the named mesh nodes' vertices themselves: on a morphed head a "
-                     "position edit there is replaced by the morph's, and UVs, normals and weights carry through"}};
+            {"note", "these heads' morphs place the named mesh nodes' vertices by their index: on a morphed "
+                     "head a position edit there does not show as made (a head raised 1 cm in Blender showed "
+                     "some 4 mm higher on a morphed hunter, 2026-10-16), and UVs, normals and weights carry "
+                     "through"}};
 }
 
 Json Import(Ghilana &ghilana, const Json &raw)
@@ -664,8 +667,9 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
                                               "written into.";
     importProperties["gltf"] = {{"type", "string"},
                                 {"description", "The edited model, a .gltf (with its .bin beside it) or .glb, full "
-                                                "path. Export from Blender with custom properties on "
-                                                "(export_extras=True), so each mesh still says its chunk."}};
+                                                "path. Export from Blender with export_extras=True, so each mesh "
+                                                "still says its chunk, and export_attributes=True, so each vertex "
+                                                "still says its place in it (_DAO_INDEX)."}};
     importProperties["to"] = {{"type", "string"},
                               {"description", "The folder to write the .msh and .mmh into, a full path; made if "
                                               "missing. Never inside the game's folder."}};
@@ -706,6 +710,10 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
              "parent. A mesh weighted to more than 67 bones (the "
              "most the game's skinning shaders take for one chunk) is split into chunks of at most 67, the "
              "rest under new mesh nodes like its own. "
+             "Blender splits vertices at seams; where the vertices still say their place (_DAO_INDEX) and none "
+             "were added or removed, they are joined back into the chunk's own vertices, order and triangles, "
+             "each value the original's where it is unedited, so a mesh through Blender unedited comes back as "
+             "it was and a head's morphs still fit; otherwise Blender's layout is kept (`notes` says which). "
              "Bone moves and textures are not taken. Answers each chunk's counts before and after, the files "
              "written, `notes`, and where to put the files for the game to take them. Writes nothing in the "
              "game's folders.",
