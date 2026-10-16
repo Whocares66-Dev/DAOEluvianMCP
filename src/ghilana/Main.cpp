@@ -40,6 +40,7 @@ struct Options
     std::optional<fs::path> game;
     std::optional<fs::path> documents;
     std::optional<fs::path> cache;
+    std::optional<fs::path> plugins;
     std::string instance;
     std::string language = "en-us";
     std::string campaign = "Single Player";
@@ -52,7 +53,9 @@ struct Options
 constexpr const char *kUsage =
     "ghilana " EL_VERSION_STRING " -- Dragon Age: Origins' files over MCP (stdio)\n"
     "  ghilana.exe [--game DIR] [--documents DIR] [--instance NAME] [--language CODE] [--cache DIR]\n"
-    "              [--campaign UID|none] [--textures high|medium]\n"
+    "              [--campaign UID|none] [--textures high|medium] [--plugins DIR]\n"
+    "    --plugins: the plugins folder the game was started with, in place of bin_ship\\daolib\\plugins\n"
+    "               (game_launch's `plugins`, a build tree's staged plugins)\n"
     "    --campaign: the campaign the game is taken to have loaded, as AddIns.xml names one\n"
     "                (\"Single Player\", the default; DAO_PRC_EP_1 for Awakening; none for the main menu)\n"
     "  ghilana.exe --call TOOL [JSON]   one call, its answer on stdout\n"
@@ -72,6 +75,10 @@ bool Take(const std::string &arg, const std::wstring &value, Options &options)
     else if (arg == "--cache")
     {
         options.cache = fs::path(value);
+    }
+    else if (arg == "--plugins")
+    {
+        options.plugins = fs::path(value);
     }
     else if (arg == "--instance")
     {
@@ -192,6 +199,10 @@ std::optional<gh::Paths> Where(const Options &options, const std::vector<gh::Ins
             return std::nullopt;
         }
         paths.instance = *name;
+    }
+    if (options.plugins)
+    {
+        paths.plugins = *options.plugins;
     }
     if (options.documents)
     {

@@ -47,7 +47,8 @@ Arguments, each optional where it can be found:
 - `--documents <folder>`: `Documents\BioWare\Dragon Age`. Default: the user's Documents folder as Windows reports it (`SHGetKnownFolderPath`; on this machine under OneDrive).
 - `--instance <name>`: a named instance's Documents folder (DAOLib's second copy of the game, `dao::Module::Instance`), which has its own `Settings\AddIns.xml`.
 - `--language <code>`: the talk tables' language, `en-us` unless said.
-- `--cache <folder>`: where the index is kept. Default `%LOCALAPPDATA%\Eluvian\ghilana`.
+- `--cache <folder>`: where the index is kept. Default `%LOCALAPPDATA%\Eluvian\ghilana`. The archives' directories are kept there (`index\archives.bin`, DAOLib #144), each read again only when its archive's size or time changes, so a `--call`, a process of its own, makes the index in 1.3 s where it read 10,634 archives in 5 s (2026-10-16, #146; DAOLib's paths made lexically took the rest from 7 s). The index block of an answer says how many were `read` and how many `kept`.
+- `--plugins <folder>`: the plugins folder the game was started with, read in place of `bin_ship\daolib\plugins` as the loader does (`game_launch`'s `plugins`, `DAOLIB_PLUGINS`; DAOLib #143). A test that stages its plugins and deploys nothing has the game take the staged overrides, and ghilana says so only when told (elgara-agent, 2026-10-16, #145). A plugin's override counts only beside its `<name>\<name>.dll`, as the loader serves it; its copies are named relative to that folder (`mymod/override/...`), which `environment` gives as `daolib.plugins_folder`.
 
 **What is reused, what is new.**
 

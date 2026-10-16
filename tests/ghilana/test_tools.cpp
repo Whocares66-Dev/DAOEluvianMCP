@@ -259,7 +259,8 @@ TEST_CASE("table: an M2DA as the game merges it, an ID's first file's row kept",
     REQUIRE(t["rows"].size() == 1);
     CHECK(t["rows"][0]["Label"] == "Dual Mod");
     CHECK(t["rows"][0]["_source"] == "plugin:mymod");
-    CHECK(t["rows"][0]["_in"] == "bin_ship/daolib/plugins/mymod/override/abi_mymod.gda");
+    // In the plugins folder read, which environment names (DAOLib #143).
+    CHECK(t["rows"][0]["_in"] == "mymod/override/abi_mymod.gda");
     CHECK(t["rows"][0]["_over"] == Json::array({"abi_base.gda"}));
     CHECK_FALSE(t["rows"][0].contains("_unsure"));
     // With `dropped`, the patch's row the game drops too.
@@ -345,6 +346,47 @@ TEST_CASE("references: what a template names, and what names a conversation", "[
     CHECK(r["used_by"].empty());
 }
 
+TEST_CASE("the index keeps the archives' directories in the cache, for the next process", "[ghilana][tools]")
+{
+    // Each --call is a process of its own (#146).
+    Served served;
+    const Json first = served.Call("environment", Json::object())["index"];
+    CHECK(first["read"].get<int>() > 0);
+    CHECK(first["kept"] == 0);
+    ghilana::Ghilana next{served.install.Paths(), {}, served.install.root.path / L"cache", "test"};
+    const Json again = next.Indexed();
+    CHECK(again["read"] == 0);
+    CHECK(again["kept"] == first["read"]);
+    CHECK(again["resources"] == first["resources"]);
+}
+
+TEST_CASE("a staged plugins folder (--plugins) is read in place of the game's", "[ghilana][tools]")
+{
+    // The game started with game_launch's `plugins` takes the staged override,
+    // not the one deployed in bin_ship (elgara-agent, 2026-10-16, #145).
+    Served served("Single Player", true);
+    Json t = served.Call("table", {{"table", "abilities"}, {"id", 2}});
+    REQUIRE(t["rows"].size() == 1);
+    CHECK(t["rows"][0]["Label"] == "Dual Staged");
+    CHECK(t["rows"][0]["_source"] == "plugin:mymod");
+    // The deployed plugin's texture is not the game's: only the staged folder is read.
+    const Json c = served.Call("conflicts", {{"name", "ogre_d.dds"}});
+    REQUIRE(c.contains("copies"));
+    CHECK(c.dump().find("plugin:mymod") == std::string::npos);
+    // The deployed plugin's texture is the game's without --plugins.
+    CHECK(Served().Call("conflicts", {{"name", "ogre_d.dds"}})["taken"]["source"] == "plugin:mymod");
+    const Json e = served.Call("environment", Json::object());
+    CHECK(e["daolib"]["plugins_given"] == true);
+    CHECK_THAT(e["daolib"]["plugins_folder"].get<std::string>(), ContainsSubstring("stage"));
+    CHECK(e["daolib"]["plugins"] == Json::array({"mymod"}));
+
+    // Without it, the game's own.
+    Served deployed;
+    t = deployed.Call("table", {{"table", "abilities"}, {"id", 2}});
+    CHECK(t["rows"][0]["Label"] == "Dual Mod");
+    CHECK(deployed.Call("environment", Json::object())["daolib"]["plugins_given"] == false);
+}
+
 TEST_CASE("extract: files written into a folder of the caller's, never the game's", "[ghilana][tools]")
 {
     Served served;
@@ -357,7 +399,7 @@ TEST_CASE("extract: files written into a folder of the caller's, never the game'
     // Every copy, each under its source and its archive: the core has two.
     e = served.Call("extract", {{"names", {"ogre_d.dds"}}, {"to", ghilana::PathText(to)}, {"all_copies", true}});
     CHECK(e["written"].size() == 3);
-    CHECK(std::filesystem::exists(to / L"plugin_mymod/bin_ship/daolib/plugins/mymod/override/ogre_d.dds"));
+    CHECK(std::filesystem::exists(to / L"plugin_mymod/mymod/override/ogre_d.dds"));
     CHECK(std::filesystem::exists(to / L"core/packages/core/textures/high/texturepack.erf/ogre_d.dds"));
     CHECK(std::filesystem::exists(to / L"core/packages/core/textures/medium/texturepack.erf/ogre_d.dds"));
     CHECK_THAT(Message(served, "extract",

@@ -8,8 +8,24 @@
 namespace eluvian::ghilana
 {
 
+namespace
+{
+
+// The paths, with the index's directories kept in ghilana's cache folder.
+Paths Cached(Paths paths, const fs::path &cache)
+{
+    if (!cache.empty())
+    {
+        paths.cache = cache / L"index";
+    }
+    return paths;
+}
+
+} // namespace
+
 Ghilana::Ghilana(Paths paths, std::vector<Install> installs, fs::path cache, std::string version)
-    : files_(std::move(paths)), installs_(std::move(installs)), cache_(std::move(cache)), version_(std::move(version))
+    : files_(Cached(std::move(paths), cache)), installs_(std::move(installs)), cache_(std::move(cache)),
+      version_(std::move(version))
 {
 }
 
@@ -25,7 +41,11 @@ Json Ghilana::Indexed()
                 {"archives", stats.archives},
                 {"copies", stats.copies},
                 {"resources", stats.resources},
-                {"note", "The index of every archive's directory was read now, once; later calls use it."}};
+                {"read", stats.read},
+                {"kept", stats.kept},
+                {"note", "The index of every archive's directory was made now, once; later calls use it. `kept` "
+                         "came from the cache on disk, unchanged since an earlier ghilana read them; `read`, "
+                         "from the archives."}};
 }
 
 const std::vector<LoadedTalkTable> &Ghilana::TalkTables(const std::string &language, bool female)

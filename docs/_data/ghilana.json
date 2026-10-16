@@ -46,7 +46,7 @@
   },
   {
    "name": "environment",
-   "description": "What ghilana is serving: the game install read (and every install found on the machine), the exe's build, the Documents folder and instance, the language, DAOLib and its plugins if installed, and each source of resources (the core, the campaign, every add-in and offer with whether AddIns.xml enables it, the packages a campaign loads ahead of the core such as Awakening's core_ep1, the override folders, DAOLib plugins' overrides) with how many archives and files it holds and how many cannot be read. Call it first. The first call reads every archive's directory (some ten thousand) and says how long that took; later calls are fast.",
+   "description": "What ghilana is serving: the game install read (and every install found on the machine), the exe's build, the Documents folder and instance, the language, DAOLib and its plugins if installed (`plugins_folder`, the folder read: the game's own, or the staged one ghilana was started with --plugins, as game_launch's `plugins`), and each source of resources (the core, the campaign, every add-in and offer with whether AddIns.xml enables it, the packages a campaign loads ahead of the core such as Awakening's core_ep1, the override folders, DAOLib plugins' overrides) with how many archives and files it holds and how many cannot be read. Call it first. The first call reads every archive's directory (some ten thousand) and says how long that took; later calls are fast.",
    "inputSchema": {
     "type": "object",
     "properties": {

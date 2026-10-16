@@ -104,6 +104,12 @@ struct Install
             Gda(abiColumns, {{2, std::string("Dual Mod"), 4.0F}, {3, std::string("New"), 1.0F}}, Hashes(abiColumns)));
         root.Write(L"game/bin_ship/daolib/plugins/mymod/override/ogre_d.dds",
                    Dds(4, 4, {0, 0, 255, 128}, {0, 0, 0, 255}));
+        // The loader serves a plugin's override only beside its DLL (DAOLib #143).
+        root.Write(L"game/bin_ship/daolib/plugins/mymod/mymod.dll", FromText("MZ"));
+        // A build tree's staged plugins, as game_launch's `plugins` names them (#145).
+        root.Write(L"stage/plugins/mymod/mymod.dll", FromText("MZ"));
+        root.Write(L"stage/plugins/mymod/override/abi_mymod.gda",
+                   Gda(abiColumns, {{2, std::string("Dual Staged"), 4.0F}}, Hashes(abiColumns)));
         root.Write(
             L"documents/Settings/AddIns.xml",
             FromText("<?xml version=\"1.0\"?>\n<AddInsList>\n"
@@ -142,12 +148,16 @@ struct Install
         return cif.bytes;
     }
 
-    eluvian::ghilana::Paths Paths(std::string campaign = "Single Player") const
+    eluvian::ghilana::Paths Paths(std::string campaign = "Single Player", bool staged = false) const
     {
         eluvian::ghilana::Paths paths;
         paths.game = game;
         paths.documents = documents;
         paths.campaign = std::move(campaign);
+        if (staged)
+        {
+            paths.plugins = root.path / L"stage" / L"plugins";
+        }
         return paths;
     }
 };
@@ -159,8 +169,9 @@ struct Served
     eluvian::ghilana::Ghilana ghilana;
     eluvian::Bench bench;
 
-    explicit Served(const std::string &campaign = "Single Player")
-        : ghilana{install.Paths(campaign), {}, install.root.path / L"cache", "test"}
+    // `staged`: started with --plugins, the build tree's staged plugins (#145).
+    explicit Served(const std::string &campaign = "Single Player", bool staged = false)
+        : ghilana{install.Paths(campaign, staged), {}, install.root.path / L"cache", "test"}
     {
         eluvian::ghilana::RegisterTools(bench, ghilana);
     }

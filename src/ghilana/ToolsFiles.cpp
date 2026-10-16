@@ -95,8 +95,9 @@ Json Fingerprint(const fs::path &game)
     return out;
 }
 
-// DAOLib's loader and its plugins, if installed.
-Json DaolibJson(const fs::path &game)
+// DAOLib's loader, and its plugins in the folder read: the game's own, or
+// the one --plugins names.
+Json DaolibJson(const fs::path &game, const fs::path &folder, bool given)
 {
     std::error_code error;
     const fs::path bin = game / L"bin_ship";
@@ -109,14 +110,17 @@ Json DaolibJson(const fs::path &game)
         }
     }
     Json plugins = Json::array();
-    for (fs::directory_iterator it(bin / L"daolib" / L"plugins", error), end; !error && it != end; it.increment(error))
+    for (fs::directory_iterator it(folder, error), end; !error && it != end; it.increment(error))
     {
         if (it->is_directory(error))
         {
             plugins.push_back(Utf8(it->path().filename().wstring()));
         }
     }
-    return Json{{"loader", loader}, {"plugins", std::move(plugins)}};
+    return Json{{"loader", loader},
+                {"plugins", std::move(plugins)},
+                {"plugins_folder", PathText(folder)},
+                {"plugins_given", given}};
 }
 
 Json UnreadableJson(const GameFiles &files)
@@ -145,6 +149,10 @@ Json SourceJson(const Source &source)
     if (source.base == Base::Documents)
     {
         s["in"] = "documents";
+    }
+    else if (source.base == Base::Plugins)
+    {
+        s["in"] = "plugins";
     }
     s["archives"] = source.archives;
     s["loose"] = source.loose;
@@ -209,7 +217,7 @@ Json Environment(Ghilana &ghilana, const Json &raw)
     Put(out, "instance", where.instance.empty() ? Json(nullptr) : Json(where.instance));
     out["language"] = where.language;
     out["cache"] = PathText(ghilana.Cache());
-    out["daolib"] = DaolibJson(where.game);
+    out["daolib"] = DaolibJson(where.game, files.Installed().Folder(Base::Plugins), !where.plugins.empty());
     out["unreadable"] = UnreadableJson(files);
     if (detail)
     {
@@ -883,7 +891,9 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
     tools.Add(Spec("environment",
                    "What ghilana is serving: the game install read (and every install found on the machine), the "
                    "exe's build, the Documents folder and instance, the language, DAOLib and its plugins if "
-                   "installed, and each source of resources (the core, the campaign, every add-in and offer with "
+                   "installed (`plugins_folder`, the folder read: the game's own, or the staged one ghilana was "
+                   "started with --plugins, as game_launch's `plugins`), and each source of resources (the core, the "
+                   "campaign, every add-in and offer with "
                    "whether AddIns.xml enables it, the packages a campaign loads ahead of the core such as "
                    "Awakening's core_ep1, the override folders, DAOLib plugins' overrides) with how many "
                    "archives and files it holds and how many cannot be read. Call it first. The first call reads "

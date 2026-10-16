@@ -2803,6 +2803,29 @@ MUTANTS = [
         "        return 1.0F;",
         "ghilana",
     ),
+    # The index's directories kept between processes (#146).
+    Mutant(
+        "ghilana keeps no directories between processes",
+        "src/ghilana/GameFiles.cpp",
+        "        options.cache = paths_.cache;\n",
+        "",
+        "ghilana",
+    ),
+    # A staged plugins folder (#145).
+    Mutant(
+        "ghilana reads the game's plugins though --plugins names others",
+        "src/ghilana/GameFiles.cpp",
+        "        options.plugins = paths_.plugins;\n",
+        "",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana's environment does not say a plugins folder was given",
+        "src/ghilana/ToolsFiles.cpp",
+        "!where.plugins.empty()",
+        "false",
+        "ghilana",
+    ),
     Mutant(
         "ghilana taken: the copy the game takes is one it has, else none",
         "src/ghilana/GameFiles.cpp",

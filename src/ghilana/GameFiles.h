@@ -43,6 +43,17 @@ struct Paths
     fs::path documents; // Documents\BioWare\Dragon Age, or an instance's
     std::string language = "en-us";
     std::string instance; // empty for the game's own Documents
+    // The plugins folder the game was started with, read in place of
+    // <game>\bin_ship\daolib\plugins, as the loader does (game_launch's
+    // `plugins`, DAOLIB_PLUGINS; DAOLib #143). Empty for the game's own: a
+    // test that stages its plugins and deploys nothing has the game take
+    // the staged overrides (elgara-agent, 2026-10-16, #145).
+    fs::path plugins;
+    // Where the index keeps the archives' directories between processes,
+    // each read again only when its archive changes (DAOLib #144): a
+    // --call is a process of its own, which read 10,612 archives in 5 s
+    // each time (elgara-agent, 2026-10-16, #146). Empty for none.
+    fs::path cache;
     // What the game is taken to be doing, which decides some of the copies
     // it has (dao::core::install::Options): the campaign loaded, as AddIns.xml
     // names one ("Single Player", "DAO_PRC_EP_1" for Awakening; empty for

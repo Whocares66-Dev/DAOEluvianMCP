@@ -17,6 +17,8 @@ bool GameFiles::Index()
         options.campaign = paths_.campaign;
         options.language = paths_.language;
         options.textures = paths_.textures;
+        options.plugins = paths_.plugins;
+        options.cache = paths_.cache;
         index_ = dao::core::install::Index::Build(paths_.game, paths_.documents, options);
         built = true;
     });
@@ -58,6 +60,10 @@ Json GameFiles::Describe(const Copy &copy) const
     if (source.base == Base::Documents)
     {
         out["in"] = "documents";
+    }
+    else if (source.base == Base::Plugins)
+    {
+        out["in"] = "plugins";
     }
     out["size"] = copy.size;
     out["priority"] = copy.priority;

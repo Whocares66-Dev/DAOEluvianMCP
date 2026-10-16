@@ -55,7 +55,7 @@ claude mcp add ghilana -- "C:\path\to\ghilana.exe"
 claude mcp add ghilana -- "C:\path\to\ghilana.exe" --game "E:\SteamLibrary\steamapps\common\Dragon Age Ultimate Edition"
 ```
 
-Use `--documents`, `--instance`, `--language` and `--cache` to point it elsewhere. Use `--campaign` and `--textures` to say what the game is doing (the default is Origins at high texture quality), since that changes which copies of a file the game uses. `ghilana.exe --call environment` runs one tool from a shell, and `--describe` lists all of them. The tools are `environment`, `resources`, `resource`, `conflicts`, `table`, `strings`, `query`, `references`, `extract` and `texture`. When a file has several copies, Ghilana tells you which one the game uses, following the game's own load order. It never writes to the game's folders.
+Use `--documents`, `--instance`, `--language` and `--cache` to point it elsewhere, and `--plugins` for a game started with plugins from another folder (the bridge's `game_launch` `plugins`, a build's staged plugins), whose overrides the game then takes in place of `bin_ship\daolib\plugins`'s. Use `--campaign` and `--textures` to say what the game is doing (the default is Origins at high texture quality), since that changes which copies of a file the game uses. `ghilana.exe --call environment` runs one tool from a shell, and `--describe` lists all of them. The tools are `environment`, `resources`, `resource`, `conflicts`, `table`, `strings`, `query`, `references`, `extract` and `texture`. When a file has several copies, Ghilana tells you which one the game uses, following the game's own load order. It never writes to the game's folders.
 
 ## What is here
 
