@@ -45,8 +45,6 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
         throw UnknownTool(said);
     }
     const auto thread = call->thread;
-    // What it ignores is said: in the answer, or with its refusal, as a
-    // misspelt argument is often why a tool refuses (#61).
     const Json ignored = tools_.Unknown(tool, args);
     const auto start = std::chrono::steady_clock::now();
     const auto record = [&](std::string_view error, const Json *answer = nullptr) {
@@ -59,6 +57,19 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
     };
     try
     {
+        // An argument the tool does not have is refused before it runs. It
+        // was said in the answer (#61, first in it since #66), and still
+        // `resources` with `name` for `match` was read twice as a filtered
+        // list of the whole install (#66, and again 2026-10-16, #147).
+        if (!ignored.empty())
+        {
+            std::string said = std::string(tool) + ":";
+            for (const auto &[name, why] : ignored.items())
+            {
+                said += " `" + name + "` is " + why.get<std::string>();
+            }
+            throw ToolError(said + " Nothing was done");
+        }
         if (const auto missing = tools_.Missing(tool, args); !missing.empty())
         {
             std::string names;
@@ -82,32 +93,7 @@ ToolResult Bench::Invoke(std::string_view tool, const Json &args)
             result = frames_.RunAndWait([handler, arguments] { return (*handler)(*arguments); }, options_.frameTimeout);
         }
         record({}, &result.data);
-        // First, where it is read: after a long list it went unseen
-        // (turn-based-agent, 2026-10-05, #66).
-        if (!ignored.empty() && result.data.is_object())
-        {
-            Json said = {{"ignored", ignored}};
-            for (auto it = result.data.begin(); it != result.data.end(); ++it)
-            {
-                said[it.key()] = std::move(*it);
-            }
-            result.data = std::move(said);
-        }
         return result;
-    }
-    catch (const ToolError &error)
-    {
-        record(error.what());
-        if (ignored.empty())
-        {
-            throw;
-        }
-        std::string said = error.what();
-        for (const auto &[name, why] : ignored.items())
-        {
-            said += " (`" + name + "` is " + why.get<std::string>() + ")";
-        }
-        throw ToolError(said);
     }
     catch (const std::exception &error)
     {

@@ -658,12 +658,6 @@ MUTANTS = [
         "(void)error;\n        throw;",
     ),
     Mutant(
-        "the bench does not tell of a refused call",
-        BENCH,
-        "record(error.what());\n        if (ignored.empty())",
-        "(void)error;\n        if (ignored.empty())",
-    ),
-    Mutant(
         "events reads from now by default",
         BENCH,
         'const auto since = static_cast<std::uint64_t>(args.Integer("since", 0, 0, kNoLimit));\n'
@@ -1759,18 +1753,24 @@ MUTANTS = [
         "if (canLevelUp_)",
     ),
     # #54: each kind's points counted by levelup itself.
-    # what a call ignored is said (#61)
+    # an argument a tool does not have is refused (#61, #147)
     Mutant(
-        "an answer with an argument ignored loses its own fields",
+        "an argument a tool does not have is let through",
         BENCH,
-        "said[it.key()] = std::move(*it);",
-        "(void)it;",
+        "if (!ignored.empty())",
+        "if (false)",
     ),
     Mutant(
-        "a refusal keeps quiet of what it ignored",
+        "an unknown argument's refusal does not say the one meant",
         BENCH,
-        "if (ignored.empty())",
-        "if (ignored.size() < 99)",
+        'said += " `" + name + "` is " + why.get<std::string>();',
+        'said += " `" + name + "` is " + std::string(why.is_string() ? "" : "");',
+    ),
+    Mutant(
+        "a missing argument is asked for before an unknown one is refused",
+        BENCH,
+        "        if (!ignored.empty())\n        {",
+        "        if (!ignored.empty() && tools_.Missing(tool, args).empty())\n        {",
     ),
     Mutant(
         "an argument the schema lists is said ignored",
@@ -2108,18 +2108,12 @@ MUTANTS = [
         '{"noUse", "readOnly", "use"}',
         '{"readOnly", "noUse", "use"}',
     ),
-    # events from now; an answer's ignored said first (#66)
+    # events from now (#66)
     Mutant(
         "events from the end reads from the start",
         BENCH,
         '{"events", Json::array()}, {"next", bench.Events().Next()}, {"missed", 0}, {"truncated", false}};',
         '{"events", Json::array()}, {"next", 0}, {"missed", 0}, {"truncated", false}};',
-    ),
-    Mutant(
-        "an answer's ignored is said last, after the rest",
-        BENCH,
-        'Json said = {{"ignored", ignored}};',
-        "Json said = Json::object();",
     ),
     # where the search finds none, the engine's own move first (#67)
     Mutant(

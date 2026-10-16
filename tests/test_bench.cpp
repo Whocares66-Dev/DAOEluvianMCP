@@ -50,47 +50,52 @@ TEST_CASE("an unknown tool and a tool's refusal reach the caller", "[bench]")
     CHECK_THROWS_AS(bench.Invoke("refuse", {}), ToolError);
 }
 
-TEST_CASE("an argument a tool does not have is named in its answer, with the one meant", "[bench]")
+TEST_CASE("an argument a tool does not have is refused before the tool runs, with the one meant", "[bench]")
 {
     Bench bench;
+    int ran = 0;
     const Json schema = {{"type", "object"}, {"properties", {{"topic", Json::object()}, {"since", Json::object()}}}};
-    bench.Tools().Add(ToolSpec{"read", "Read.", schema, Thread::Listener},
-                      [](const Json &) -> ToolResult { return Json{{"events", Json::array()}}; });
-    const auto answer = bench.Invoke("read", Json{{"since", 0}, {"topics", {"eluvian.gui.message"}}}).data;
-    REQUIRE(answer.contains("ignored"));
-    CHECK(answer.begin().key() == "ignored"); // said first, not after a long list (#66)
-    CHECK(answer["events"].is_array());
-    CHECK(answer["ignored"].size() == 1);
-    CHECK(answer["ignored"]["topics"] == "not an argument of read; did you mean `topic`?");
+    bench.Tools().Add(ToolSpec{"read", "Read.", schema, Thread::Listener}, [&ran](const Json &) -> ToolResult {
+        ++ran;
+        return Json{{"events", Json::array()}};
+    });
+    CHECK_THROWS_WITH(bench.Invoke("read", Json{{"since", 0}, {"topics", {"eluvian.gui.message"}}}),
+                      "read: `topics` is not an argument; did you mean `topic`? Nothing was done");
     // Far from any it has: what it takes is said instead.
-    const auto far = bench.Invoke("read", Json{{"cursor", 3}}).data;
-    CHECK(far["ignored"]["cursor"] == "not an argument of read; it takes `topic`, `since`");
+    CHECK_THROWS_WITH(bench.Invoke("read", Json{{"cursor", 3}}),
+                      "read: `cursor` is not an argument; it takes `topic`, `since`. Nothing was done");
     // Nearer one than the others, but by more than a third of it: not meant.
-    const auto stem = bench.Invoke("read", Json{{"topicsfilter", "x"}}).data;
-    CHECK(stem["ignored"]["topicsfilter"] == "not an argument of read; it takes `topic`, `since`");
-    CHECK_FALSE(bench.Invoke("read", Json{{"topic", "x"}}).data.contains("ignored"));
+    CHECK_THROWS_WITH(bench.Invoke("read", Json{{"topicsfilter", "x"}}),
+                      "read: `topicsfilter` is not an argument; it takes `topic`, `since`. Nothing was done");
+    // Each is named.
+    CHECK_THROWS_WITH(bench.Invoke("read", Json{{"cursor", 3}, {"topics", "x"}}),
+                      "read: `cursor` is not an argument; it takes `topic`, `since`. `topics` is not an argument; "
+                      "did you mean `topic`? Nothing was done");
+    CHECK(ran == 0);
+    CHECK(bench.Invoke("read", Json{{"topic", "x"}}).data == Json{{"events", Json::array()}});
+    CHECK(ran == 1);
 }
 
-TEST_CASE("a refusal says what argument it ignored, the likely why", "[bench]")
+TEST_CASE("an unknown argument is refused before a missing one is asked for", "[bench]")
 {
     Bench bench;
-    const Json schema = {{"type", "object"}, {"properties", {{"abilities", Json::object()}}}};
+    const Json schema = {
+        {"type", "object"}, {"properties", {{"abilities", Json::object()}}}, {"required", Json::array({"abilities"})}};
     bench.Tools().Add(ToolSpec{"spend", "Spend.", schema, Thread::Listener},
-                      [](const Json &) -> ToolResult { throw ToolError("give `abilities`"); });
+                      [](const Json &) -> ToolResult { return Json::object(); });
     CHECK_THROWS_WITH(bench.Invoke("spend", Json{{"abilites", {7}}}),
-                      "give `abilities` (`abilites` is not an argument of spend; did you mean `abilities`?)");
-    CHECK_THROWS_WITH(bench.Invoke("spend", Json{{"abilities", {7}}}), "give `abilities`");
+                      "spend: `abilites` is not an argument; did you mean `abilities`? Nothing was done");
 }
 
-TEST_CASE("a tool whose schema lists no arguments, and a kind's own, are not said ignored", "[bench]")
+TEST_CASE("a tool whose schema lists no arguments takes any", "[bench]")
 {
     Bench bench;
     bench.Tools().Add(ToolSpec{"open", "Open.", {}, Thread::Listener},
                       [](const Json &) -> ToolResult { return Json::object(); });
-    CHECK_FALSE(bench.Invoke("open", Json{{"anything", 1}}).data.contains("ignored"));
+    CHECK(bench.Invoke("open", Json{{"anything", 1}}).data == Json::object());
     bench.Tools().Add(ToolSpec{"bare", "Bare.", {{"type", "object"}}, Thread::Listener},
                       [](const Json &) -> ToolResult { return Json::object(); });
-    CHECK_FALSE(bench.Invoke("bare", Json{{"anything", 1}}).data.contains("ignored"));
+    CHECK(bench.Invoke("bare", Json{{"anything", 1}}).data == Json::object());
 }
 
 TEST_CASE("a call without what its schema requires is refused before it runs, naming each", "[bench]")
@@ -109,9 +114,9 @@ TEST_CASE("a call without what its schema requires is refused before it runs, na
                       });
     CHECK_THROWS_WITH(bench.Invoke("kill", Json::object()), ContainsSubstring("kill: needs `id`, `why`"));
     CHECK_THROWS_WITH(bench.Invoke("kill", Json{{"why", "test"}}), ContainsSubstring("needs `id`;"));
-    // A misspelt one is said with it.
+    // A misspelt one is the refusal, as the reason the other is missing (#147).
     CHECK_THROWS_WITH(bench.Invoke("kill", Json{{"idd", "0x82"}, {"why", "test"}}),
-                      ContainsSubstring("needs `id`") && ContainsSubstring("did you mean `id`"));
+                      ContainsSubstring("did you mean `id`") && !ContainsSubstring("needs"));
     CHECK(ran == 0);
     bench.Invoke("kill", Json{{"id", "0x82"}, {"why", "test"}});
     CHECK(ran == 1);
@@ -301,7 +306,7 @@ TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
                       [](const Json &) -> ToolResult { throw std::runtime_error("broke"); });
 
     bench.Invoke("echo", Json{{"id", "0x7d9"}});
-    bench.Invoke("echo", Json{{"idd", "0x7d9"}});
+    CHECK_THROWS_AS(bench.Invoke("echo", Json{{"idd", "0x7d9"}}), ToolError);
     CHECK_THROWS_AS(bench.Invoke("refuse", Json::object()), ToolError);
     CHECK_THROWS_AS(bench.Invoke("nothing", Json::object()), UnknownTool); // told of too (#110)
     // A failure that is not a refusal is told of too, by its own path.
@@ -314,8 +319,10 @@ TEST_CASE("every call is told of as it ends, with how long and how", "[bench]")
     CHECK(seen[0].error.empty());
     CHECK(seen[0].answer["id"] == "0x7d9"); // what it answered, for the log to say
     CHECK(seen[0].ignored.empty());
-    // What a call ignored goes with it, for the log to say (#110).
+    // What a call was refused for goes with it, for the log to say (#110, #147).
     CHECK_THAT(seen[1].ignored.value("idd", ""), ContainsSubstring("did you mean `id`"));
+    CHECK_THAT(seen[1].error, ContainsSubstring("Nothing was done"));
+    CHECK(seen[1].answer.is_null());
     CHECK(seen[2].error == "refuse: not now");
     CHECK(seen[2].answer.is_null());
     CHECK(seen[3].tool == "nothing");

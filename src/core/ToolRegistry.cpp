@@ -105,8 +105,7 @@ Json ToolRegistry::Unknown(std::string_view tool, const Json &args) const
         // Near enough to be the one meant: a letter or two off, or a third
         // of the name.
         const bool near = !nearest.empty() && best <= std::max<std::size_t>(2, name.size() / 3);
-        unknown[name] = "not an argument of " + std::string(tool) + "; " +
-                        (near ? "did you mean `" + nearest + "`?" : "it takes " + all);
+        unknown[name] = "not an argument; " + (near ? "did you mean `" + nearest + "`?" : "it takes " + all + ".");
     }
     return unknown;
 }

@@ -539,7 +539,7 @@ def checks(run: Run, owner: str) -> None:
     )
     check(
         "log",
-        tool("log", {"log": "eluvian.log", "since": 0, "limit": 5}),
+        tool("log", {"file": "eluvian.log", "since": 0, "limit": 5}),
         lambda a: "error" not in a,
     )
     check(
