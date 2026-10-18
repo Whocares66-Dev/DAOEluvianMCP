@@ -673,7 +673,7 @@
   },
   {
    "name": "texture",
-   "description": "Shows a DDS texture as a PNG image you can look at, with its size and the copy it came from: one picture of its mip chain no larger than `size`, all its channels or one as grey; `width` and `height` are the picture shown. `file` is what the file holds: its `format` (DXT1, DXT3, DXT5, B8G8R8 or B8G8R8A8, the ones read), its largest picture's size, `mips` (counted from the bytes; `header_mips` where the header says otherwise, as the game's own files often do) and `shape` (flat, cube or volume).",
+   "description": "Shows a DDS texture as a PNG image you can look at, with its size and the copy it came from: one picture of its mip chain no larger than `size`, all its channels or one as grey; `width` and `height` are the picture shown. `file` is what the file holds: its `format` (DXT1, DXT3, DXT5, A4R4G4B4, B8G8R8 or B8G8R8A8, the ones read), its largest picture's size, `mips` (counted from the bytes; `header_mips` where the header says otherwise, as the game's own files often do) and `shape` (flat, cube or volume).",
    "inputSchema": {
     "type": "object",
     "properties": {

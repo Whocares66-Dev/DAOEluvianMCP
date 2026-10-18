@@ -280,6 +280,14 @@ TEST_CASE("table: an M2DA as the game merges it, an ID's first file's row kept",
     CHECK_FALSE(t["rows"][0].contains("Label"));
     t = served.Call("table", {{"table", "abi_base"}, {"overrides_only", true}});
     CHECK(t["count"] == 2);
+    // A file's name, with its extension or without, is its file's table, not 2da_base's older
+    // single table of that worksheet, which has no file (#152).
+    for (const char *name : {"abi_base", "ABI_base", "abi_base.gda"})
+    {
+        t = served.Call("table", {{"table", name}});
+        CHECK(t["table"]["label"] == "Abilities");
+        CHECK(t["files"].size() == 4);
+    }
     CHECK_THAT(Message(served, "table", {{"table", "nope"}}), ContainsSubstring("worksheet"));
     CHECK_THAT(Message(served, "table", {{"table", 1}, {"where", {{"Nope", 1}}}}), ContainsSubstring("Label"));
 }

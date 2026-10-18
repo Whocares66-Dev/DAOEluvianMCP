@@ -833,7 +833,7 @@ ToolResult Texture(Ghilana &ghilana, const Json &raw)
     if (!image)
     {
         throw ToolError("texture: \"" + name +
-                        "\" is no DDS picture DAOLib reads (DXT1, DXT3, DXT5, or 24 or 32 bits a pixel); "
+                        "\" is no DDS picture DAOLib reads (DXT1, DXT3, DXT5, A4R4G4B4, or 24 or 32 bits a pixel); "
                         "`resource` says what it is");
     }
     const std::size_t pixels = std::size_t{image->width} * image->height;
@@ -1023,7 +1023,7 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
                              "Shows a DDS texture as a PNG image you can look at, with its size and the copy it "
                              "came from: one picture of its mip chain no larger than `size`, all its channels or "
                              "one as grey; `width` and `height` are the picture shown. `file` is what the file "
-                             "holds: its `format` (DXT1, DXT3, DXT5, B8G8R8 or B8G8R8A8, the ones read), its "
+                             "holds: its `format` (DXT1, DXT3, DXT5, A4R4G4B4, B8G8R8 or B8G8R8A8, the ones read), its "
                              "largest picture's size, `mips` (counted from the bytes; `header_mips` where the "
                              "header says otherwise, as the game's own files often do) and `shape` (flat, cube "
                              "or volume).",

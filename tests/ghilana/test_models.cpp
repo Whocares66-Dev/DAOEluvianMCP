@@ -606,6 +606,14 @@ TEST_CASE("model_import: a joint that is no bone of the model is a new bone unde
     REQUIRE(mesh->mesh);
     CHECK(std::ranges::find(mesh->mesh->bonesUsed, 3) != mesh->mesh->bonesUsed.end());
 
+    // A vertex's joint past the skin's joints is no node at all: refused, not a bone -1.
+    doc["skins"][0]["joints"] = Json::array();
+    std::ofstream(out / L"slab.gltf") << doc.dump();
+    CHECK_THAT(ImportRefusal(served, {{"name", "slab"},
+                                      {"gltf", ghilana::PathText(out / L"slab.gltf")},
+                                      {"to", ghilana::PathText(out / L"y")}}),
+               ContainsSubstring("no bone of the model and no node of the glTF"));
+
     CHECK_THAT(ImportRefusal(served, {{"name", "slab"},
                                       {"gltf", ghilana::PathText(out / L"none.gltf")},
                                       {"to", ghilana::PathText(out / L"x")}}),

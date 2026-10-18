@@ -67,8 +67,12 @@ struct Install
                                        {{1, std::string("Abilities"), std::string("ABI_")},
                                         {7, std::string("Portraits"), std::string("portraits")}},
                                        Hashes(sheetColumns))},
-                 {"2da_base.gda",
-                  Gda(sheetColumns, {{0, std::string("Gender"), std::string("gender")}}, Hashes(sheetColumns))},
+                 // An older single table whose worksheet is a merged table's file's name, as the
+                 // game's 2da_base has BITM_base beside m2da_base's BITM_ (#152).
+                 {"2da_base.gda", Gda(sheetColumns,
+                                      {{0, std::string("Gender"), std::string("gender")},
+                                       {75, std::string("Base Abilities"), std::string("ABI_base")}},
+                                      Hashes(sheetColumns))},
                  {"abi_base.gda", Gda(abiColumns, {{1, std::string("Flurry"), 2.0F}, {2, std::string("Dual"), 3.0F}},
                                       Hashes(abiColumns))}}));
         root.Write(L"game/packages/core/data/designercreatures.erf",

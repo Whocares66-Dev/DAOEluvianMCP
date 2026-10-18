@@ -154,12 +154,11 @@ TableFiles FindTable(const GameFiles &files, const std::vector<m2da::Worksheet> 
         stem.resize(stem.size() - 4);
     }
     TableFiles found;
-    found.sheet = FindWorksheet(sheets, asked);
+    // A file's name, with its extension or without, is its file's table first: 2da_base's older
+    // single table BITM_base took "bitm_base" from bitm_base.gda's table, BITM_, and found no
+    // file of its own (paragon-agent, 2026-10-17, #152).
     const bool isFile = files.Find(stem + ".gda") != nullptr;
-    if (!found.sheet && isFile)
-    {
-        found.sheet = SheetOfFile(sheets, stem);
-    }
+    found.sheet = isFile ? SheetOfFile(sheets, stem) : FindWorksheet(sheets, asked);
     if (!found.sheet)
     {
         if (isFile)
