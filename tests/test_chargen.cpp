@@ -28,6 +28,7 @@ struct Creation
     std::string mode = "chargen";
     bool up = true;
     bool box = true;
+    bool choice = false; // the box up asks Yes or No, not the background box
     int race = 3;
     int klass = 0;
     int background = 0;
@@ -63,7 +64,21 @@ struct Creation
             {
                 screens.push_back(Json{{"name", "CharGen"}});
             }
-            return Json{{"mode", mode}, {"screens", screens}};
+            Json popup;
+            if (box && choice)
+            {
+                popup = Json{{"text", "Shield Pummel"}, {"buttons", {Json{{"label", "Yes"}}, Json{{"label", "No"}}}}};
+            }
+            else if (box)
+            {
+                popup = Json{{"text", "The background you select..."}, {"buttons", {Json{{"label", "Close"}}}}};
+            }
+            return Json{{"mode", mode}, {"screens", screens}, {"popup", popup}};
+        });
+        Add("press", [this](const Json &args) {
+            order.push_back(std::format("press {}", args.value("button", -1)));
+            box = false;
+            return Json{{"popup", nullptr}};
         });
         Add("data", [this](const Json &args) { return Data(args); });
         Add("input", [this](const Json &args) { return Input(args.value("message", "")); });
@@ -109,10 +124,6 @@ struct Creation
         if (path == "CharGenCreature.ID")
         {
             return number(130);
-        }
-        if (path == "GUIPopupLayer.DialogBoxText")
-        {
-            return Json{{"path", path}, {"found", true}, {"text", "The background you select..."}};
         }
         // CharGenCreature.Stats.<list>.<i>.<field>
         std::istringstream in(path);
@@ -234,10 +245,6 @@ struct Creation
 
     Json Movie(const Json &args)
     {
-        if (args.contains("get"))
-        {
-            return box ? Json{{"type", "string"}, {"value", "_level0.null"}} : Json{{"type", "null"}};
-        }
         if (args.contains("set"))
         {
             const std::string path = args.at("set");
@@ -246,10 +253,6 @@ struct Creation
             return Json{{"done", true}, {"existed", path.starts_with("CharGen.")}};
         }
         const std::string call = args.value("call", "");
-        if (call == "PopupLayer.HideAllPopups")
-        {
-            box = false;
-        }
         if (call == "ExternalCommands.SetValueUnicode")
         {
             name = args.at("args").at(1).get<std::string>();
@@ -375,6 +378,8 @@ TEST_CASE("chargen builds a mage as the screen does and ends it as the movie doe
     // movie's own start carried creature 0.
     CHECK_FALSE(game.box);
     CHECK(answer["closedBox"] == "The background you select...");
+    REQUIRE_FALSE(game.order.empty());
+    CHECK(game.order.front() == "press 0");
     const std::vector<std::string> first(game.sent.begin(), game.sent.begin() + 6);
     CHECK(first == std::vector<std::string>{"GUICharGen.CharGenStart 130 0", "GUICharGen.CharGenSelectGender 130 0 1 1",
                                             "GUICharGen.CharGenSelectRace 130 0 3 1",
@@ -429,6 +434,12 @@ TEST_CASE("chargen refuses before sending what the screen would not allow", "[ch
     CHECK_THAT(game.Refusal({{"race", "human"}, {"class", "mage"}, {"background", "magi"}, {"voice", "sultry"}}),
                ContainsSubstring("a male human's are wise, cocky"));
     CHECK_THAT(game.Refusal({{"race", "human"}, {"class", "mage"}}), ContainsSubstring("`background`"));
+    CHECK(game.sent.empty());
+    CHECK(game.box);
+
+    // A box asking a choice is the test's to answer, not chargen's.
+    game.choice = true;
+    CHECK_THAT(game.Refusal(kMage), ContainsSubstring("a box asking a choice is up (\"Shield Pummel\")"));
     CHECK(game.sent.empty());
     CHECK(game.box);
 

@@ -431,21 +431,28 @@ class Creating
                     {"abilityCount", hero.value("abilityCount", 0)}};
     }
 
-    // The movie's background box, shown as the screen opens, closed as its
-    // Close does: left up, it stayed over the origin's opening (2026-10-18).
+    // The movie's background box, shown as the screen opens, closed by its
+    // Close: left up, it stayed over the origin's opening (2026-10-18). gui
+    // reads a box a movie shows and press closes it as a click does since
+    // DAOLib #173; until then this read and hid the popup layer's own clip.
+    // A box asking a choice is not this one's to answer.
     void CloseBox()
     {
-        // The box is a clip the layer keeps here, which this GFx gives as
-        // its path, a string ("_level0.null": attachMovie named it null);
-        // with none up, null.
-        const Json box = bench_.Invoke("movie", Json{{"screen", "PopupLayer"}, {"get", "PopupLayer.ms_mcPopup"}}).data;
-        const std::string type = box.value("type", "");
-        if (type != "string" && type != "object")
+        const Json popup = bench_.Invoke("gui", Json::object()).data.value("popup", Json());
+        if (!popup.is_object())
         {
             return;
         }
-        answer_["closedBox"] = Data("GUIPopupLayer.DialogBoxText").value("text", "");
-        bench_.Invoke("movie", Json{{"screen", "PopupLayer"}, {"call", "PopupLayer.HideAllPopups"}});
+        const std::string text = popup.value("text", "");
+        const Json buttons = popup.value("buttons", Json::array());
+        if (buttons.size() != 1)
+        {
+            throw ToolError(std::format("chargen: a box asking a choice is up (\"{}\"); press answers it, and "
+                                        "nothing was sent",
+                                        text));
+        }
+        answer_["closedBox"] = text;
+        bench_.Invoke("press", Json{{"button", 0}});
     }
 
     void Build()

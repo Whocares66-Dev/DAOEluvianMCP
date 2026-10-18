@@ -2760,10 +2760,16 @@ MUTANTS = [
         "if (true)",
     ),
     Mutant(
-        "chargen closes the movie's box, which the layer gives as a string",
+        "chargen closes the movie's box by its one button, and no box asking a choice",
         CHARGEN,
-        'if (type != "string" && type != "object")',
-        'if (type != "object")',
+        "if (buttons.size() != 1)",
+        "if (buttons.empty())",
+    ),
+    Mutant(
+        "chargen closes the movie's box before the screen's first message",
+        CHARGEN,
+        "        CloseBox();\n",
+        "",
     ),
     Mutant(
         "chargen spends every attribute point or none",
