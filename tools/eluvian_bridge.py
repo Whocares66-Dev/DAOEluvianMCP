@@ -9,6 +9,7 @@ REST API (POST /api/tool/<name>) while the game runs.
 It adds what only a process outside the game can do:
   game_status   is the game running, and what Eluvian's `health` says
   game_launch   start DAOrigins.exe (never a second of one copy), wait until it serves
+  game_new      a new game from the main menu to the creation screen, the intro skipped (#153)
   game_quit     close the game
   game_instance which copy of the game this bridge drives: the game as ever, or a named
                 instance beside it with a profile of its own (#116)
@@ -818,6 +819,43 @@ BRIDGE_TOOLS = [
         },
     },
     {
+        "name": "game_new",
+        "description": (
+            "Start a new game from the main menu and wait until the character creation screen is "
+            "up: New Game, the campaign chosen, its intro cutscene skipped, and the hero being "
+            "created there. The game must be at the main menu's start screen, as game_launch with "
+            "no `load` leaves it (health's mode pregame); a game already in a world is refused: "
+            "game_quit, then game_launch. Answers `hero`, the id of the creature being created, "
+            "and `health`; a call that runs out of `waitSeconds` says the stage it stopped at "
+            "and the mode last seen, and the game goes on from there (health says where). "
+            "Origins was seen to the creation screen in play (2026-10-18); Awakening is chosen "
+            "the same way, but its start may offer to import a hero rather than open the "
+            "creation screen. Drive only a game that is yours (health's `owner`)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "campaign": {
+                    "type": "string",
+                    "enum": ["origins", "awakening"],
+                    "description": "Which campaign. Default origins",
+                },
+                "intro": {
+                    "type": "string",
+                    "enum": ["skip", "play"],
+                    "description": "The campaign's intro cutscene: skip it (the default), or "
+                    "let it play to its end",
+                },
+                "waitSeconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 600,
+                    "description": "How long to wait for the creation screen. Default 300",
+                },
+            },
+        },
+    },
+    {
         "name": "game_instance",
         "description": (
             "Which copy of the game this bridge drives, and a way to drive another. The game runs "
@@ -851,6 +889,59 @@ BRIDGE_TOOLS = [
         "inputSchema": {"type": "object", "properties": {"force": {"type": "boolean"}}},
     },
 ]
+
+
+def distance(a: str, b: str) -> int:
+    """How many letters one name is from another (Levenshtein), as core/ToolRegistry's."""
+    row = list(range(len(b) + 1))
+    for i in range(1, len(a) + 1):
+        diagonal, row[0] = row[0], i
+        for j in range(1, len(b) + 1):
+            above = row[j]
+            row[j] = min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] != b[j - 1]))
+            diagonal = above
+    return row[len(b)]
+
+
+def unknown_arguments(name: str, arguments: dict) -> str | None:
+    """The refusal of arguments a bridge tool does not have, in the words the game's tools use
+    (core/ToolRegistry's Unknown and the bench's refusal, #147): an argument read as another
+    was taken as nothing, twice, while the answer said it was ignored. None where every
+    argument is one of the tool's."""
+    tool = next(tool for tool in BRIDGE_TOOLS if tool["name"] == name)
+    known = sorted(tool["inputSchema"].get("properties", {}))
+    said = ""
+    for argument in arguments:
+        if argument in known:
+            continue
+        nearest, best = "", len(argument)
+        for each in known:
+            if distance(argument, each) < best:
+                nearest, best = each, distance(argument, each)
+        # Near enough to be the one meant: a letter or two off, or a third of the name.
+        near = nearest and best <= max(2, len(argument) // 3)
+        why = (
+            f"did you mean `{nearest}`?"
+            if near
+            else "it takes " + ", ".join(f"`{each}`" for each in known) + "."
+        )
+        said += f" `{argument}` is not an argument; {why}"
+    return f"{name}:{said} Nothing was done" if said else None
+
+
+# game_new's choice on the campaign chooser, newgame.gfx's NewGame.ms_nGameSelection (#153).
+CAMPAIGNS = {"origins": 0, "awakening": 1}
+# How long the chooser may take to open after New Game: it was up within the 3 s the play
+# test waited (2026-10-18).
+CHOOSER_SECONDS = 10
+# How often game_new asks the game's mode while the campaign loads, and how long a skip of the
+# intro is given before it is asked again.
+POLL_SECONDS = 2
+SKIP_AGAIN_SECONDS = 5
+# The chooser's PlayOutro, called 17 ms after the screen was shown, did nothing: its
+# timeline was not yet where the outro is (2026-10-18, #153). Called again while the
+# chooser stays up; 3 s after it was shown, it loaded the campaign at once.
+OUTRO_AGAIN_SECONDS = 4
 
 
 class LaunchLock:
@@ -1579,6 +1670,215 @@ class Bridge:
         health = self.health()
         return health.get("mode") if isinstance(health, dict) else None
 
+    def ask(self, name: str, arguments: dict) -> tuple[bool, dict]:
+        """One of the game's tools, for a bridge tool that drives it: whether it answered, and
+        its answer (an `error` where it did not)."""
+        try:
+            status, body = self.game.request(
+                "POST", f"/api/tool/{name}", arguments, timeout=30
+            )
+        except (Unreachable, StillWaiting) as error:
+            return False, {"error": f"{name}: {error}"}
+        body = body if isinstance(body, dict) else {"answer": body}
+        if status != 200:
+            body.setdefault("error", f"{name}: HTTP {status}")
+        return status == 200, body
+
+    def screens(self) -> list[str]:
+        """The names of the screens shown, as gui reads them."""
+        taken, body = self.ask("gui", {})
+        shown = body.get("screens") if taken else None
+        return [
+            str(screen.get("name"))
+            for screen in shown or []
+            if isinstance(screen, dict)
+        ]
+
+    def hero(self) -> str | None:
+        """The creature the creation screen builds, as an id ("0x82"), once it has one: the
+        screen's own CharGenCreature.ID, 0 until the creation's script has made the hero."""
+        taken, body = self.ask("data", {"path": "CharGenCreature.ID"})
+        if not (taken and body.get("found")):
+            return None
+        try:
+            number = int(str(body.get("text")))
+        except ValueError:
+            return None
+        return f"0x{number:x}" if number else None
+
+    def game_new(self, arguments: dict) -> dict:
+        """A new game from the main menu to the creation screen (#153), as it went in play on
+        2026-10-18, the start menu's own calls sent through `movie` (newgame.gfx): New Game
+        opens the campaign chooser, whose PlayOutro hides it and loads the campaign into its
+        intro (game_intro.cut, mode cutscene), whose end script starts creation (mode chargen,
+        CharGenCreature.ID the hero). The skip is the dialogue tool's, as Esc's."""
+        refused = unknown_arguments("game_new", arguments)
+        if refused:
+            return text_result(refused, is_error=True)
+        campaign = arguments.get("campaign", "origins")
+        if not isinstance(campaign, str) or campaign not in CAMPAIGNS:
+            return text_result(
+                "game_new: `campaign` is origins or awakening", is_error=True
+            )
+        intro = arguments.get("intro", "skip")
+        if intro not in ("skip", "play"):
+            return text_result("game_new: `intro` is skip or play", is_error=True)
+        wait = arguments.get("waitSeconds", 300)
+        if not isinstance(wait, int) or isinstance(wait, bool) or wait < 0:
+            return text_result(
+                "game_new: `waitSeconds` is a whole number of seconds, 0 or more",
+                is_error=True,
+            )
+        deadline = time.monotonic() + wait
+        started = time.time() - 2  # a crash log of this call is no older
+
+        health = self.health()
+        if not isinstance(health, dict):
+            return text_result(
+                "game_new: the game is not running, or Eluvian is not serving in it: "
+                "game_launch starts it at the main menu, then call this again",
+                is_error=True,
+            )
+        mode = health.get("mode")
+        if mode != "pregame":
+            return text_result(
+                f"game_new: the game is not at the main menu (health's mode is {mode}, not "
+                "pregame). A game in a world is left by game_quit and a game_launch with no "
+                "`load`; a game still starting or loading is at the menu when health says "
+                "pregame. Nothing was done",
+                is_error=True,
+            )
+        shown = self.screens()
+        if "StartMenu" not in shown:
+            return text_result(
+                "game_new: the main menu is not on its start screen, the one with New Game "
+                f"(StartMenu); the screens shown are {', '.join(shown) or 'none'}. Close what "
+                "is open over it (gui lists the screens, and a screen's own Back returns "
+                "there), or after a game_launch wait until gui shows StartMenu. Nothing was done",
+                is_error=True,
+            )
+
+        def failed(stage: str, why: str) -> dict:
+            return text_result(
+                {
+                    "error": f"game_new: {why}",
+                    "stage": stage,
+                    "campaign": campaign,
+                    "health": self.health(),
+                },
+                is_error=True,
+            )
+
+        taken, body = self.ask(
+            "movie", {"screen": "StartMenu", "call": "StartMenu.NewGame"}
+        )
+        if not (taken and body.get("ran")):
+            return failed(
+                "New Game",
+                f"the start menu's New Game did not run: {body.get('error', body)}",
+            )
+        # The chooser is a screen of its own, and its variables are not there to set until
+        # it is shown.
+        until = min(deadline, time.monotonic() + CHOOSER_SECONDS)
+        while "NewGame" not in self.screens():
+            if time.monotonic() >= until:
+                return failed(
+                    "the campaign chooser",
+                    "New Game ran and the campaign chooser (screen NewGame) did not open",
+                )
+            self.sleep(0.5)
+        taken, body = self.ask(
+            "movie",
+            {
+                "screen": "NewGame",
+                "set": "NewGame.ms_nGameSelection",
+                "value": CAMPAIGNS[campaign],
+            },
+        )
+        # A path that was not there would be made new by the set, and read by nothing.
+        if not (taken and body.get("done") and body.get("existed", True)):
+            return failed(
+                "the campaign chooser",
+                f"the campaign was not chosen on the chooser: {body.get('error', body)}",
+            )
+        taken, body = self.ask(
+            "movie", {"screen": "NewGame", "call": "NewGame.PlayOutro"}
+        )
+        if not (taken and body.get("ran")):
+            return failed(
+                "the campaign chooser",
+                f"the chooser's PlayOutro, which starts the campaign, did not run: "
+                f"{body.get('error', body)}",
+            )
+
+        # The menu's outro plays (pregame), the campaign loads (loading), its intro plays
+        # (cutscene, or movie for one pre-rendered), and creation starts (chargen).
+        stage = "loading the campaign"
+        skipped: list[str] = []
+        asked_skip: float | None = None
+        outro = time.monotonic()
+        while True:
+            health = self.health()
+            mode = health.get("mode") if isinstance(health, dict) else None
+            if (
+                mode == "pregame"
+                and time.monotonic() - outro >= OUTRO_AGAIN_SECONDS
+                and "NewGame" in self.screens()
+            ):
+                outro = time.monotonic()
+                self.ask("movie", {"screen": "NewGame", "call": "NewGame.PlayOutro"})
+            elif mode == "chargen":
+                stage = "the creation screen's hero"
+                hero = self.hero()
+                if hero:
+                    answer = {
+                        "campaign": campaign,
+                        "hero": hero,
+                        "mode": "chargen",
+                        "health": health,
+                        "next": "chargen builds the hero on the creation screen",
+                    }
+                    if skipped:
+                        answer["skipped"] = skipped
+                    return text_result(answer)
+            elif mode in ("cutscene", "movie"):
+                stage = "the intro"
+                # A skip asked in the cutscene's first moment may find none to skip, and a
+                # skip taken may leave a second part playing: either is asked again.
+                if intro == "skip" and (
+                    asked_skip is None
+                    or time.monotonic() - asked_skip >= SKIP_AGAIN_SECONDS
+                ):
+                    asked_skip = time.monotonic()
+                    taken, body = self.ask("dialogue", {"action": "skip_cutscene"})
+                    if taken:
+                        skipped.append(str(body.get("skipped", mode)))
+            elif health is None and not self.processes.running():
+                answer = {
+                    "error": f"game_new: the game exited during {stage}",
+                    "stage": stage,
+                    "campaign": campaign,
+                }
+                crash = self.crash_since(started)
+                if crash:
+                    answer["crash"] = crash
+                    answer["error"] += f": {crash['what']}"
+                return text_result(answer, is_error=True)
+            if time.monotonic() >= deadline:
+                return text_result(
+                    {
+                        "error": f"game_new: no creation screen in {wait} s; it stopped at "
+                        f"{stage}, the last mode seen {mode or 'none, health not answering'}. "
+                        "The game goes on from there: health and gui say where it is",
+                        "stage": stage,
+                        "mode": mode,
+                        "campaign": campaign,
+                        "health": health,
+                    },
+                    is_error=True,
+                )
+            self.sleep(POLL_SECONDS)
+
     def game_quit(self, arguments: dict) -> dict:
         pids = self.processes.running()
         if not pids:
@@ -1680,6 +1980,8 @@ class Bridge:
                 return reply(self.game_instance(arguments))
             if name == "game_launch":
                 return reply(self.game_launch(arguments))
+            if name == "game_new":
+                return reply(self.game_new(arguments))
             if name == "game_quit":
                 return reply(self.game_quit(arguments))
             return reply(self.call_game(name, arguments))

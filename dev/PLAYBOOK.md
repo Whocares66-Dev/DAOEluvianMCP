@@ -19,6 +19,7 @@ Eluvian covers the game itself, not any one mod. A mod that registers with Eluvi
 |---|---|
 | `game_saves {"character": "Aedan"}` | Bridge tool. Lists the saves on disk, newest first. Works before the game runs. |
 | `game_launch {"owner": "my-name", "load": {"character": "Aedan", "kind": "manual", "number": 2}}` | Bridge tool. Starts the game (never a second copy), loads the save without going through the menus, and returns once the world is ready. |
+| `game_new {"campaign": "origins"}` | Bridge tool. With the game at the main menu (`game_launch` with no `load`), starts a new game: New Game, the campaign chosen, its intro skipped (`intro: "play"` lets it play), and returns once the character creation screen is up, with `hero`, the id of the creature being created. A game already in a world is refused; on a timeout it names the stage it stopped at. Seen in play for Origins; Awakening's start may offer to import a hero instead. |
 | `health {}` | Should report state `running` and mode `explore`. Also lists the mods that registered. |
 | `state` | The hero, the party and the area. |
 
@@ -91,6 +92,7 @@ If `game_launch` says the game is running but Eluvian is not serving, its `error
 | `press {"button": "Take All"}` | Presses a button the way a click does: a message box's button, or the loot panel's Take All or Close. |
 | `order {"action": "ability", "ability": 200010, "itemTag": "gen_im_qck_health_101", "target": "0x82"}` | Uses an item's ability (here a lesser health poultice). The item is found in the creature's inventory by its tag. |
 | `equip {"item": "0x20c5"}` | Puts the item on the selected party member, in the first slot it fits (`slot` to choose). `{"action": "unequip", "item": ...}` takes it off. |
+| `chargen {"race": "human", "class": "mage", "background": "magi"}` | On the character creation screen (`game_new` brings it up), builds the hero as the screen's clicks do and ends the screen, and the origin starts. With no `attributes` and `abilities` the game spends the points as the screen's Quick Play does; with them, every point. `offers: true` lists the backgrounds each race and class may take, and, after a call with `finish: false`, the skills and talents or spells. |
 | `levelup {"id": "0x82", "auto": true}` | Spends its level-up points as the screen's Auto Level Up does. Returns what was raised and gained. |
 | `store {"action": "buy", "item": "0x673", "count": 2}` | Buys at a merchant's store screen (talk to the merchant, then pick the reply that shows the wares). `gui`'s `store` lists the stock, the prices and your money. |
 

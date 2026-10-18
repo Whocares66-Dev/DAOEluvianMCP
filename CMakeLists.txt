@@ -147,6 +147,7 @@ add_library(
     src/core/Base64.cpp
     src/core/Bench.cpp
     src/core/Conversation.cpp
+    src/core/CharGen.cpp
     src/core/Craft.cpp
     src/core/EventBus.cpp
     src/core/EventLog.cpp

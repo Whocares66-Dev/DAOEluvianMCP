@@ -23,6 +23,19 @@ class FakeGame(BaseHTTPRequestHandler):
     popup = False  # whether the game's message box is up
     forced = False  # whether the game was told Force Load
     pid: int | None = None  # the process its health says it is, where a test needs one
+    # A new game's run (game_new, #153), where a test sets one up (BridgeTest.at_start_menu):
+    # the modes health answers in turn, the last kept; the screens gui says are shown; the
+    # calls of movie, dialogue and data, in order; the modes the chooser's PlayOutro starts;
+    # whether a skip ends the intro; how many reads of the creation screen's hero answer 0
+    # before its id.
+    modes: list[str] = []
+    screens: list[str] = []
+    outro: list[str] = []
+    calls: list[tuple[str, dict]] = []
+    skips = True
+    unmade_reads = 0
+    # PlayOutros the chooser takes no notice of, as one called the moment it was shown.
+    early_outros = 0
 
     def log_message(self, *args) -> None:  # quiet
         pass
@@ -40,7 +53,10 @@ class FakeGame(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/api/health":
-            health = {"state": "running", "mode": "explore"}
+            mode = FakeGame.modes[0] if FakeGame.modes else "explore"
+            if len(FakeGame.modes) > 1:
+                FakeGame.modes.pop(0)
+            health = {"state": "running", "mode": mode}
             if FakeGame.pid is not None:
                 health["pid"] = FakeGame.pid
             self.answer(200, health)
@@ -82,7 +98,50 @@ class FakeGame(BaseHTTPRequestHandler):
                 "text": "This saved game cannot be loaded.",
                 "buttons": [{"label": "Force Load"}, {"label": "Cancel"}],
             }
-            self.answer(200, {"popup": box if FakeGame.popup else None})
+            screens = [{"name": name} for name in FakeGame.screens]
+            self.answer(
+                200, {"popup": box if FakeGame.popup else None, "screens": screens}
+            )
+        elif self.path == "/api/tool/movie":
+            # The start menu's calls as newgame.gfx takes them (seen 2026-10-18).
+            FakeGame.calls.append(("movie", args))
+            if args.get("screen") not in FakeGame.screens:
+                self.answer(400, {"error": "movie: no such screen is shown"})
+            elif args.get("call") == "StartMenu.NewGame":
+                FakeGame.screens.append("NewGame")
+                self.answer(200, {"ran": True})
+            elif args.get("set") == "NewGame.ms_nGameSelection":
+                self.answer(200, {"done": True, "existed": True})
+            elif args.get("call") == "NewGame.PlayOutro" and FakeGame.early_outros > 0:
+                FakeGame.early_outros -= 1
+                self.answer(200, {"ran": True})
+            elif args.get("call") == "NewGame.PlayOutro":
+                FakeGame.screens.clear()
+                FakeGame.modes[:] = FakeGame.outro
+                self.answer(200, {"ran": True})
+            else:
+                self.answer(200, {"ran": False})
+        elif self.path == "/api/tool/dialogue":
+            FakeGame.calls.append(("dialogue", args))
+            mode = FakeGame.modes[0] if FakeGame.modes else "explore"
+            if mode != "cutscene":
+                self.answer(400, {"error": "dialogue: no cutscene or movie is playing"})
+                return
+            if FakeGame.skips:
+                FakeGame.modes[:] = ["chargen"]
+            self.answer(200, {"asked": True, "skipped": "cutscene"})
+        elif self.path == "/api/tool/data":
+            FakeGame.calls.append(("data", args))
+            made = FakeGame.modes[:1] == ["chargen"] and FakeGame.unmade_reads <= 0
+            FakeGame.unmade_reads -= 1
+            self.answer(
+                200,
+                {
+                    "path": args.get("path"),
+                    "found": True,
+                    "text": "130" if made else "0",
+                },
+            )
         elif self.path == "/api/tool/wait_for":
             event = {"seq": 9, "topic": args.get("topic"), "payload": {"number": 2}}
             found = args.get("since") == 7 or (
@@ -208,6 +267,7 @@ class BridgeTest(unittest.TestCase):
                 "game_saves",
                 "game_status",
                 "game_launch",
+                "game_new",
                 "game_instance",
                 "game_quit",
                 "health",
@@ -409,6 +469,128 @@ class BridgeTest(unittest.TestCase):
         text = result["content"][0]["text"]
         self.assertIn("showing a dialog", text)
         self.assertIn("Do not Force Load", text)
+
+    def at_start_menu(self, outro: list[str], skips: bool = True) -> None:
+        """A game at the main menu's start screen, whose campaign, once chosen, goes through
+        `outro`'s modes: a new game's run as it went in play (2026-10-18, #153)."""
+        FakeGame.modes = ["pregame"]
+        FakeGame.screens = ["StartMenu"]
+        FakeGame.outro = outro
+        FakeGame.calls = []
+        FakeGame.skips = skips
+        FakeGame.unmade_reads = 1
+        for name, value in (
+            ("modes", []),
+            ("screens", []),
+            ("outro", []),
+            ("calls", []),
+            ("skips", True),
+            ("unmade_reads", 0),
+            ("early_outros", 0),
+        ):
+            self.addCleanup(setattr, FakeGame, name, value)
+
+    def test_a_new_game_goes_from_the_start_menu_to_the_creation_screen(self) -> None:
+        self.at_start_menu(["pregame", "loading", "cutscene"])
+        result = self.call("game_new")
+        self.assertFalse(result["isError"])
+        self.assertEqual(
+            FakeGame.calls,
+            [
+                ("movie", {"screen": "StartMenu", "call": "StartMenu.NewGame"}),
+                (
+                    "movie",
+                    {
+                        "screen": "NewGame",
+                        "set": "NewGame.ms_nGameSelection",
+                        "value": 0,
+                    },
+                ),
+                ("movie", {"screen": "NewGame", "call": "NewGame.PlayOutro"}),
+                ("dialogue", {"action": "skip_cutscene"}),
+                # The hero is 0 until creation's script has made it: asked again.
+                ("data", {"path": "CharGenCreature.ID"}),
+                ("data", {"path": "CharGenCreature.ID"}),
+            ],
+        )
+        answer = result["structuredContent"]
+        self.assertEqual(answer["campaign"], "origins")
+        self.assertEqual(answer["hero"], "0x82")
+        self.assertEqual(answer["mode"], "chargen")
+        self.assertEqual(answer["health"]["mode"], "chargen")
+        self.assertEqual(answer["skipped"], ["cutscene"])
+        self.assertIn("chargen", answer["next"])
+
+    def test_the_chooser_is_told_again_when_its_outro_came_too_early(self) -> None:
+        # Called 17 ms after the chooser was shown, its PlayOutro did nothing; called again
+        # once it had settled, it loaded the campaign (2026-10-18, #153).
+        self.at_start_menu(["loading", "chargen"])
+        FakeGame.early_outros = 1
+        bridge_module.OUTRO_AGAIN_SECONDS, before = 0, bridge_module.OUTRO_AGAIN_SECONDS
+        self.addCleanup(setattr, bridge_module, "OUTRO_AGAIN_SECONDS", before)
+        result = self.call("game_new")
+        self.assertFalse(result["isError"])
+        outros = [c for c in FakeGame.calls if c[1].get("call") == "NewGame.PlayOutro"]
+        self.assertEqual(len(outros), 2)
+
+    def test_awakening_is_chosen_on_the_chooser_and_a_played_intro_is_waited_out(
+        self,
+    ) -> None:
+        self.at_start_menu(["loading", "cutscene", "cutscene", "chargen"])
+        FakeGame.unmade_reads = 0
+        result = self.call("game_new", {"campaign": "awakening", "intro": "play"})
+        self.assertFalse(result["isError"])
+        self.assertIn(
+            (
+                "movie",
+                {"screen": "NewGame", "set": "NewGame.ms_nGameSelection", "value": 1},
+            ),
+            FakeGame.calls,
+        )
+        self.assertNotIn("dialogue", [tool for tool, _ in FakeGame.calls])
+        self.assertEqual(result["structuredContent"]["campaign"], "awakening")
+
+    def test_a_new_game_is_refused_away_from_the_start_menu(self) -> None:
+        # In a world: the fake's mode is explore.
+        result = self.call("game_new")
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("mode is explore", text)
+        self.assertIn("game_quit", text)
+        # At the menu, with another of its screens over the start screen.
+        self.at_start_menu(["cutscene"])
+        FakeGame.screens = ["LoadGame"]
+        result = self.call("game_new")
+        self.assertTrue(result["isError"])
+        self.assertIn("LoadGame", result["content"][0]["text"])
+        # An argument it does not have, in the game's tools' words (#147).
+        FakeGame.screens = ["StartMenu"]
+        result = self.call("game_new", {"campain": "origins"})
+        self.assertTrue(result["isError"])
+        self.assertEqual(
+            result["content"][0]["text"],
+            "game_new: `campain` is not an argument; did you mean `campaign`? "
+            "Nothing was done",
+        )
+        self.assertEqual(FakeGame.calls, [])
+        self.down()
+        result = self.call("game_new")
+        self.assertTrue(result["isError"])
+        self.assertIn("game_launch", result["content"][0]["text"])
+
+    def test_a_new_game_that_runs_out_of_time_says_the_stage_it_stopped_at(
+        self,
+    ) -> None:
+        self.at_start_menu(["cutscene"], skips=False)
+        result = self.call("game_new", {"waitSeconds": 0})
+        self.assertTrue(result["isError"])
+        answer = json.loads(result["content"][0]["text"])
+        self.assertEqual(answer["stage"], "the intro")
+        self.assertEqual(answer["mode"], "cutscene")
+        self.assertIn(
+            "stopped at the intro, the last mode seen cutscene", answer["error"]
+        )
+        self.assertIn(("dialogue", {"action": "skip_cutscene"}), FakeGame.calls)
 
     def test_another_installs_game_is_neither_joined_nor_closed(self) -> None:
         self.processes.pids.clear()

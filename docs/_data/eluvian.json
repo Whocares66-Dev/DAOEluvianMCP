@@ -98,6 +98,55 @@
    }
   },
   {
+   "name": "chargen",
+   "description": "Builds the hero on the game's character creation screen, as a player's clicks do, so the game's own rules and scripts apply; then ends the screen, and the origin starts. The screen must be up (`gui` shows CharGen, mode chargen): `game_new` starts a new game and brings it up. Pass `race`, `class` and `background` (and optionally `gender`, `voice`, `name`, `difficulty`), and either both `attributes` and `abilities` spending every point, or neither, and the game spends them as the screen's Quick Play does. A background must suit the race and class, as the screen allows: `offers`: true lists which. Choices are checked before anything is sent.\n\nWith `finish`: false the choices are made and the screen stays up; `offers` then also lists the skills and the talents or spells to choose from, and a later call (with every choice again) finishes. The answer has the `hero`, what it `chose`, the `exit` (full or quick play), the hero `after` (attributes, points left, ability count), the `origin` (its row of the origins table and its `startArea`), whether it `finished`, every message `sent`, and a `cursor`. The origin's opening follows: a cutscene, then a conversation.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "race": {
+      "description": "human, elf or dwarf (or the race's id)."
+     },
+     "class": {
+      "description": "warrior, mage or rogue (or the class's id)."
+     },
+     "background": {
+      "description": "The origin's background by name, as `offers` lists them (noble, magi, dalish, city, commoner in the game as shipped), or its id."
+     },
+     "gender": {
+      "description": "male or female. Default male."
+     },
+     "voice": {
+      "type": "string",
+      "description": "The sound set: a name from the game's player sound sets (ss_pc_mhuman_wise), or its last word for the hero's race and gender (wise, cocky, exp, mystic, sultry, suave, smart, violent; not every one for every race). Default wise, the screen's own."
+     },
+     "name": {
+      "type": "string",
+      "description": "The hero's name. Default the origin's own (Aedan for a human noble man), as the screen offers it."
+     },
+     "attributes": {
+      "type": "object",
+      "description": "Points by attribute, every one spent, as {\"magic\": 5}."
+     },
+     "abilities": {
+      "type": "array",
+      "description": "Ability ids to take, every point spent: the skills and the talents or spells `offers` lists as learnable, the first of a chain before the next."
+     },
+     "difficulty": {
+      "type": "string",
+      "description": "casual, normal, hard or nightmare, as the screen asks at its end. It is the game's option, kept in its profile's settings. Default: left as it is."
+     },
+     "finish": {
+      "type": "boolean",
+      "description": "End the screen once the hero is built, and so start the origin. Default true."
+     },
+     "offers": {
+      "type": "boolean",
+      "description": "List the backgrounds with the races and classes each takes, and, once a class is chosen, the hero's points and abilities to choose from. Sends nothing but the screen's own ability lookups."
+     }
+    }
+   }
+  },
+  {
    "name": "control",
    "description": "Gives control to a party member, like clicking its portrait. Returns who was controlled `before`, who is `controlled` now, whether the change worked (`taken`), and a `cursor`. When the game keeps control where it was (at the party camp, in a conversation or a cutscene), `note` says so. `order` hands control over by itself when another party member has to move or use something.",
    "inputSchema": {

@@ -149,6 +149,7 @@ EVENTLOG = "src/core/EventLog.cpp"
 ARGS = "src/core/Args.cpp"
 REGISTRY = "src/core/ToolRegistry.cpp"
 LEVELUP = "src/core/LevelUp.cpp"
+CHARGEN = "src/core/CharGen.cpp"
 CRAFT = "src/core/Craft.cpp"
 CONVERSATION = "src/core/Conversation.cpp"
 PLACEABLES = "src/core/Placeables.cpp"
@@ -2732,6 +2733,67 @@ MUTANTS = [
         SIGHT,
         "return std::clamp(pitch, kPi / 6, kPi * 5 / 6);",
         "return std::clamp(pitch, 0.0F, kPi);",
+    ),
+    # The hero built on the creation screen (#153).
+    Mutant(
+        "chargen sends the screen's start again with the hero, the movie's own carrying 0",
+        CHARGEN,
+        'Send(std::format("GUICharGen.CharGenStart {} 0", hero_));',
+        "(void)hero_;",
+    ),
+    Mutant(
+        "chargen takes a background only for a race the table lets take it",
+        CHARGEN,
+        "each.race = race_ == nullptr || TableInt(kBackgrounds, race_->column, row) == 1;",
+        "each.race = true;",
+    ),
+    Mutant(
+        "chargen takes a background only for a class the table lets take it",
+        CHARGEN,
+        "each.klass = class_ == nullptr || TableInt(kBackgrounds, class_->column, row) == 1;",
+        "each.klass = true;",
+    ),
+    Mutant(
+        "chargen takes a voice only from the game's sound sets",
+        CHARGEN,
+        "if (set == voice_)",
+        "if (true)",
+    ),
+    Mutant(
+        "chargen closes the movie's box, which the layer gives as a string",
+        CHARGEN,
+        'if (type != "string" && type != "object")',
+        'if (type != "object")',
+    ),
+    Mutant(
+        "chargen spends every attribute point or none",
+        CHARGEN,
+        "if (raising != attributePoints ||",
+        "if (raising > attributePoints ||",
+    ),
+    Mutant(
+        "chargen takes only an ability the screen shows learnable",
+        CHARGEN,
+        "if (!found || found->state != kAvailable)",
+        "if (!found)",
+    ),
+    Mutant(
+        "chargen names the hero as the origin names one of the hero's gender",
+        CHARGEN,
+        'gender_ == 1 ? "DefaultNameMale" : "DefaultNameFemale"',
+        'gender_ == 1 ? "DefaultNameFemale" : "DefaultNameMale"',
+    ),
+    Mutant(
+        "chargen ends with the screen's exit set, so the movie sends CharGenEnd",
+        CHARGEN,
+        '{"CharGen.bUserExit", true}',
+        '{"CharGen.bUserExit", false}',
+    ),
+    Mutant(
+        "chargen with no points given ends as Quick Play",
+        CHARGEN,
+        "Finish(spending ? kExitFull : kExitQuickPlay);",
+        "Finish(kExitFull);",
     ),
     # One measure for every angle (#143).
     Mutant(

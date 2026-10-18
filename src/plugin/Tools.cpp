@@ -1,5 +1,6 @@
 #include "plugin/Tools.h"
 
+#include "core/CharGen.h"
 #include "core/Conversation.h"
 #include "core/Craft.h"
 #include "core/Gift.h"
@@ -32,6 +33,7 @@ void RegisterTools(Bench &bench, const game::Watch &watch, const ToolSetup &setu
     AddLootTool(bench, std::chrono::seconds(1));
     AddLevelUpTool(bench, std::chrono::seconds(1));
     AddCraftTool(bench, std::chrono::seconds(1));
+    AddCharGenTool(bench);
     AddPartyTool(bench);
     game::AddHealthTool(bench, watch, setup.health);
     game::AddGameTools(bench, watch);
