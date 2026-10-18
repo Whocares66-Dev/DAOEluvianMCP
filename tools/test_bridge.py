@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 import eluvian_bridge as bridge_module
 from eluvian_bridge import Bridge, Game
@@ -616,6 +619,20 @@ class BridgeTest(unittest.TestCase):
             bridge_module.is_same_file(r"C:\Games\EA\bin_ship\daorigins.exe", exe)
         )
         self.assertFalse(bridge_module.is_same_file(None, exe))
+
+    @unittest.skipUnless(
+        sys.platform == "win32", "a window's first showing is Windows'"
+    )
+    def test_a_game_is_started_behind_the_window_in_front(self) -> None:
+        exe = self.folder / "DAOrigins.exe"
+        with mock.patch.object(subprocess, "Popen") as popen:
+            popen.return_value.pid = 42
+            pid = bridge_module.Processes(exe).start({"DAOLIB_INSTANCE": "mine"})
+        self.assertEqual(pid, 42)
+        startup = popen.call_args.kwargs["startupinfo"]
+        self.assertTrue(startup.dwFlags & subprocess.STARTF_USESHOWWINDOW)
+        self.assertEqual(startup.wShowWindow, bridge_module.SW_SHOWNOACTIVATE)
+        self.assertEqual(popen.call_args.kwargs["env"]["DAOLIB_INSTANCE"], "mine")
 
     def test_a_bridge_in_a_games_plugin_folder_takes_that_game(self) -> None:
         game = self.folder / "bin_ship"

@@ -123,6 +123,8 @@ def written(file: Path) -> float:
 # The pid of a copy this bridge started, written beside its logs at once: Eluvian's own
 # eluvian.json comes seconds later, and until then nothing else says whose the process is.
 LAUNCH_FILE = "eluvian.launch.json"
+# ShowWindow's "shown, and the active window stays active", for the game's first window.
+SW_SHOWNOACTIVATE = 4
 
 # A second copy of the game beside the first (#116). DAOLib's loader makes a copy started with
 # DAOLIB_INSTANCE=<name> an instance (DAOLib #67; its dev/BUILDS.md, "a second copy beside the
@@ -609,12 +611,21 @@ class Processes:
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
         )
+        # The game opens behind the window in front, shown and not activated: one that came
+        # to the front took the keys typed in another window, a session's game opening a
+        # copy's menus (#154, #149). Not minimised, whose frames stop (#148).
+        startup = None
+        if sys.platform == "win32":
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = SW_SHOWNOACTIVATE
         process = subprocess.Popen(
             [str(self.exe)],
             cwd=str(self.exe.parent),
             env={**os.environ, **environment},
             creationflags=flags,
             close_fds=True,
+            startupinfo=startup,
         )
         return process.pid
 
@@ -763,7 +774,8 @@ BRIDGE_TOOLS = [
             "Start DAOrigins.exe, never a second of the same copy, and wait until Eluvian serves "
             "at the main menu; answers its health. The copy is the one this bridge drives: the "
             "game as ever, or the instance game_instance chose, which runs beside it with a "
-            "profile of its own. "
+            "profile of its own. Its window opens behind the one in front, so keys typed there "
+            "stay there; the tools drive the game from behind. "
             "With `load` (a save as game_saves lists them: character, kind, number), it then "
             "loads that save without the menus and waits until the world is there, so a test "
             "starts where it means to. Pass `owner`, the name you go by: health then says who "
