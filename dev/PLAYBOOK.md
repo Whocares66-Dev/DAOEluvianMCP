@@ -40,7 +40,7 @@ The game runs one at a time, except as a named instance: a second copy with its 
 
 | Call | What it does |
 |---|---|
-| `game_instance {"name": "mytest"}` | Bridge tool. From now on every tool of this bridge is that instance's: `game_launch` starts it, `game_status`, `game_saves` and `game_quit` are of it, and the game's tools go to it. An empty `name` goes back to the game as ever; no `name` only says which copy it is and which others run. |
+| `game_instance {"name": "mytest"}` | Bridge tool. From now on every tool of this bridge is that instance's: `game_launch` starts it, `game_status`, `game_saves` and `game_quit` are of it, and the game's tools go to it. An empty `name` goes back to the game as ever; no `name` only says which copy it is and which others run. Agents sharing a bridge (a session's subagents) pass `"instance": "mytest"` on each call instead: every other tool takes it, for that call only, and nobody's copy moves. |
 | `game_launch {"owner": "my-name", "seed": "save", "load": {"character": "Lyna", "kind": "manual", "number": 4}}` | Starts the instance. `seed: "save"` gives a new instance only the settings and that one save, and an instance that already has a folder that save where it has none of that slot (its own saves and settings are kept); `seeded` in the answer says what was copied and kept. A save that is in neither profile refuses the launch. Without it the loader copies the whole default profile on the first start, every save of every character. |
 | `game_launch {..., "plugins": "C:\\path\\to\\build\\release\\daolib\\plugins"}` | Loads the plugins from that folder in place of the game folder's, so nothing is deployed. The folder must hold `eluvian\eluvian.dll`. |
 

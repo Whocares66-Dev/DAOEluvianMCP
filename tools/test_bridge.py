@@ -1301,6 +1301,59 @@ class BridgeTest(unittest.TestCase):
         self.assertIsNone(back["instance"])
         self.assertNotIn("instance", self.call("game_status")["structuredContent"])
 
+    def test_a_call_naming_an_instance_is_that_copys_and_moves_no_other(self) -> None:
+        # A session's subagents share one bridge: each names its copy on the call (#159).
+        self.many()
+        launched = self.call("game_launch", {"owner": "sub-a", "instance": "Two"})
+        self.assertFalse(launched["isError"])
+        self.assertEqual(launched["structuredContent"]["instance"], "two")
+        self.assertEqual(self.made["two"].started, 1)
+        self.assertEqual(self.made[""].started, 0)
+        # The client lists the bridge's own copy's tools: another copy's launch tells it nothing.
+        self.assertEqual(self.sent, [])
+        # The bridge's own choice is as it was, and its calls are still the game as ever's.
+        self.assertIsNone(self.call("game_instance")["structuredContent"]["instance"])
+        self.assertNotIn("instance", self.call("game_status")["structuredContent"])
+        status = self.call("game_status", {"instance": "two"})["structuredContent"]
+        self.assertEqual(status["instance"], "two")
+        # The same copy's bridge again, so what it learnt (its launches, its tools) is kept.
+        made = len(self.made)
+        self.call("game_status", {"instance": "TWO"})
+        self.assertEqual(len(self.made), made)
+        # Naming the bridge's own copy is the same as naming none.
+        self.assertNotIn(
+            "instance", self.call("game_status", {"instance": ""})["structuredContent"]
+        )
+        # The game's own tools get the call without it.
+        echoed = self.call("echo", {"x": 1, "instance": "two"})["structuredContent"]
+        self.assertEqual(echoed, {"args": {"x": 1}})
+
+    def test_a_call_naming_an_instance_the_loader_would_refuse_is_refused(self) -> None:
+        self.many()
+        refused = self.call("game_launch", {"instance": "two games"})
+        self.assertTrue(refused["isError"])
+        self.assertIn("game_launch: `instance`", refused["content"][0]["text"])
+        self.assertEqual(self.made[""].started, 0)
+
+    def test_a_bridge_made_for_one_copy_reaches_no_other_by_a_call(self) -> None:
+        refused = self.call("game_status", {"instance": "two"})
+        self.assertTrue(refused["isError"])
+        self.assertIn("one copy", refused["content"][0]["text"])
+        self.assertFalse(self.call("game_status", {"instance": ""})["isError"])
+
+    def test_every_tool_but_game_instance_lists_instance(self) -> None:
+        tools = self.bridge.handle(request(1, "tools/list"))["result"]["tools"]
+        for tool in tools:
+            listed = "instance" in tool["inputSchema"].get("properties", {})
+            self.assertEqual(listed, tool["name"] != "game_instance", tool["name"])
+        # The bridge's own list is left as it was.
+        self.assertTrue(
+            all(
+                "instance" not in t["inputSchema"].get("properties", {})
+                for t in bridge_module.BRIDGE_TOOLS
+            )
+        )
+
     def test_game_instance_refuses_a_name_the_loader_would(self) -> None:
         self.many()
         self.assertTrue(self.call("game_instance", {"name": "two games"})["isError"])

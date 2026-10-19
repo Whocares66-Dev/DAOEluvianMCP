@@ -712,6 +712,32 @@ def text_result(value: object, is_error: bool = False) -> dict:
     return result
 
 
+INSTANCE_PROPERTY = {
+    "type": "string",
+    "description": (
+        "The copy of the game this call is for: an instance's name, or empty for the game as "
+        "ever. Default: the bridge's, as game_instance last set it. It leaves that as it is, so "
+        "agents sharing this bridge (a session's subagents) each name their own copy here and "
+        "cannot move another's."
+    ),
+}
+
+
+def with_instance(tool: dict) -> dict:
+    """A tool as listed, with the `instance` every call but game_instance's takes (#159); the
+    game's own list and BRIDGE_TOOLS are left as they are."""
+    if tool.get("name") == "game_instance":
+        return tool
+    schema = tool.get("inputSchema")
+    schema = dict(schema) if isinstance(schema, dict) else {"type": "object"}
+    properties = schema.get("properties")
+    schema["properties"] = {
+        **(properties if isinstance(properties, dict) else {}),
+        "instance": INSTANCE_PROPERTY,
+    }
+    return {**tool, "inputSchema": schema}
+
+
 BRIDGE_TOOLS = [
     {
         "name": "game_events",
@@ -880,7 +906,9 @@ BRIDGE_TOOLS = [
             "copy it is, the folder of its logs and the other copies running. A new instance's "
             "first start copies the default profile (game_launch's `seed`). Every copy runs "
             "from the one game folder and holds its plugins open, so a deploy still needs all "
-            "of them closed. The first copy may freeze for some seconds while a second starts."
+            "of them closed. The first copy may freeze for some seconds while a second starts. "
+            "Agents that share this bridge (a session's subagents) each move it for all: one "
+            "of them should pass `instance` on each call instead, which every other tool takes."
         ),
         "inputSchema": {
             "type": "object",
@@ -1025,6 +1053,8 @@ class Bridge:
         self.budgets: dict[str, dict | None] = {}
         self.lock = threading.Lock()
         self.launching = LaunchLock()
+        # The other copies' bridges, by instance, for calls that name one (#159).
+        self.views: dict[str, Bridge] = {}
 
     # ---- the game's tools -------------------------------------------------
 
@@ -1960,7 +1990,9 @@ class Bridge:
         if method == "tools/list":
             names = {tool["name"] for tool in BRIDGE_TOOLS}
             game = [tool for tool in self.game_tools() if tool.get("name") not in names]
-            return reply({"tools": BRIDGE_TOOLS + game})
+            return reply(
+                {"tools": [with_instance(tool) for tool in BRIDGE_TOOLS + game]}
+            )
         if method == "tools/call":
             name = params.get("name")
             arguments = params.get("arguments")
@@ -1970,38 +2002,80 @@ class Bridge:
                 return invalid("tools/call needs a tool `name`")
             if not isinstance(arguments, dict):
                 return invalid("`arguments` must be an object")
-            if name == "game_events":
-                return reply(self.game_events(arguments))
-            if name == "game_saves":
-                character = arguments.get("character")
-                saves = list_saves(
-                    self.characters, character if isinstance(character, str) else None
-                )
-                return reply(
-                    text_result(
-                        {
-                            "count": len(saves),
-                            "kinds": save_counts(saves),
-                            "saves": saves,
-                        }
-                    )
-                )
-            if name == "game_status":
-                return reply(text_result(self.game_status()))
-            if name == "game_instance":
-                return reply(self.game_instance(arguments))
-            if name == "game_launch":
-                return reply(self.game_launch(arguments))
-            if name == "game_new":
-                return reply(self.game_new(arguments))
-            if name == "game_quit":
-                return reply(self.game_quit(arguments))
-            return reply(self.call_game(name, arguments))
+            if "instance" in arguments and name != "game_instance":
+                arguments = dict(arguments)
+                view, refused = self.view(arguments.pop("instance"))
+                if refused:
+                    return reply(text_result(f"{name}: {refused}", is_error=True))
+                return reply(view.call(name, arguments))
+            return reply(self.call(name, arguments))
         return {
             "jsonrpc": "2.0",
             "id": request_id,
             "error": {"code": -32601, "message": f"Method not found: {method}"},
         }
+
+    def view(self, asked: object) -> tuple[Bridge, str | None]:
+        """The bridge of the copy one call names in its `instance`, this one's choice left as it
+        is: a session's subagents share their parent's bridge, and one's game_instance moved the
+        others' calls to its copy (DAOParagonEngine's, 2026-10-19, #159). A bridge is kept for
+        each copy named, so a copy's tools, budgets and launches are its own between calls."""
+        name = instance_name(asked)
+        if name is None:
+            return self, (
+                "`instance` is 1 to 32 letters, digits, - or _ (the loader takes no other), "
+                "or empty for the game as ever"
+            )
+        if name == self.instance:
+            return self, None
+        if self.copies is None:
+            return (
+                self,
+                "this bridge was started for one copy of the game and cannot reach another",
+            )
+        with self.lock:
+            view = self.views.get(name)
+        if view is None:
+            game, processes, cache, characters = self.copies(name)
+            # Silent: the client lists this bridge's copy's tools, so another copy's change
+            # of tools is none of its list's (one was sent at that copy's first answer).
+            view = Bridge(
+                game,
+                processes,
+                cache,
+                lambda _message: None,
+                sleep=self.sleep,
+                characters=characters,
+                default=self.default,
+            )
+            view.load_patience = self.load_patience
+            with self.lock:
+                view = self.views.setdefault(name, view)
+        return view, None
+
+    def call(self, name: str, arguments: dict) -> dict:
+        """One tool's call on this bridge's copy."""
+        if name == "game_events":
+            return self.game_events(arguments)
+        if name == "game_saves":
+            character = arguments.get("character")
+            saves = list_saves(
+                self.characters, character if isinstance(character, str) else None
+            )
+            return text_result(
+                {"count": len(saves), "kinds": save_counts(saves), "saves": saves}
+            )
+        if name == "game_status":
+            return text_result(self.game_status())
+        if name == "game_instance":
+            return self.game_instance(arguments)
+        if name == "game_launch":
+            return self.game_launch(arguments)
+        if name == "game_new":
+            return self.game_new(arguments)
+        if name == "game_quit":
+            return self.game_quit(arguments)
+        return self.call_game(name, arguments)
 
 
 def serve(bridge: Bridge, lines, drain_seconds: float = 30) -> None:
