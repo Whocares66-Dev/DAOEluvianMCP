@@ -152,6 +152,7 @@ Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female,
                  const dao::dialogue::Conversation *conversation = nullptr);
 
 Json RoomJson(ObjectId id);
+Json RoomJson(const dao::world::Room &room);
 // A creature as every listing and every stage answer gives it.
 Json Summary(ObjectId id, ObjectId hero, const std::set<ObjectId> &party);
 

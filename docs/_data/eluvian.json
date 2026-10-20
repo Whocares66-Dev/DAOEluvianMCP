@@ -1022,6 +1022,25 @@
    }
   },
   {
+   "name": "rooms",
+   "description": "Lists every room of the area: its `number`, whether the party has `seen` it (never, in view, before), whether it is therefore `shown` (a room never seen is drawn black, along with everything in it), how much the game `wanted` it and its `load`, and `party` true on the rooms the party stands in (`partyRooms`). With `point`, also the room `at` that point, and `outsideBy` how far the point lies outside its bounds (0 inside). Outdoors the rooms are the terrain's cells, and never read as loaded. A creature's own room is in `creature` and `creatures`.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "point": {
+      "description": "A world point, {x, y, z} or [x, y, z]: also answer the room it is in."
+     },
+     "shownOnly": {
+      "type": "boolean",
+      "description": "Only the rooms the party sees or has seen. Default false."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
    "name": "saves",
    "description": "Lists, loads and makes the game's saves. `action`:\n\n- `list`: the saves of `character` (or of every character), each with its area, name, time played and level, as the load screen shows them.\n- `load`: loads the save picked by `character`, `kind` and `number`, from the main menu or in the world. Refused during a conversation.\n- `force_load`: presses the game's Force Load after a load it answered with \"requires the following content\" (`gui` shows that message). The game loads without that content, and such a game is never saved.\n- `save`: makes a new manual save in the next free slot, named `name`. This is what a test should do, since it overwrites nothing.\n\nSaving into a slot `number` that already holds a save, or with `kind` quick (the player's quicksave), is refused unless `overwrite` is true. The game also refuses to save in combat or a cutscene.\n\nA load or save only asks the game: the answer includes a `cursor`, and `wait_for` eluvian.game.loaded or eluvian.game.saved from it says when it is done. If no load event comes, the game may be showing a message box; `gui` reads it.",
    "inputSchema": {

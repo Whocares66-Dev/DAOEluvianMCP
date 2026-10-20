@@ -351,21 +351,22 @@ Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female,
 // (the same day), so `shown` goes by `seen` alone (DAOLib 66d5567). `wanted`
 // and `load` are the game's own two states, by name where DAOLib names
 // them and by number where it does not.
-Json RoomJson(ObjectId id)
+Json RoomJson(const dao::world::Room &room)
 {
     using dao::world::Room;
-    const auto room = dao::world::RoomOf(id);
-    if (!room)
-    {
-        return nullptr;
-    }
     const Json seen =
-        Label(room->seen, {{Room::kNeverSeen, "never"}, {Room::kInView, "in view"}, {Room::kSeenBefore, "before"}});
+        Label(room.seen, {{Room::kNeverSeen, "never"}, {Room::kInView, "in view"}, {Room::kSeenBefore, "before"}});
     const Json wanted =
-        Label(room->state, {{Room::kDropped, "dropped"}, {Room::kWanted, "kept"}, {Room::kWantedNow, "now"}});
+        Label(room.state, {{Room::kDropped, "dropped"}, {Room::kWanted, "kept"}, {Room::kWantedNow, "now"}});
     const Json load =
-        Label(room->load, {{Room::kLoading, "loading"}, {Room::kLoaded, "loaded"}, {Room::kNotLoaded, "not loaded"}});
-    return Json{{"number", room->number}, {"seen", seen}, {"shown", room->Shown()}, {"wanted", wanted}, {"load", load}};
+        Label(room.load, {{Room::kLoading, "loading"}, {Room::kLoaded, "loaded"}, {Room::kNotLoaded, "not loaded"}});
+    return Json{{"number", room.number}, {"seen", seen}, {"shown", room.Shown()}, {"wanted", wanted}, {"load", load}};
+}
+
+Json RoomJson(ObjectId id)
+{
+    const auto room = dao::world::RoomOf(id);
+    return room ? RoomJson(*room) : Json(nullptr);
 }
 
 Json Summary(ObjectId id, ObjectId hero, const std::set<ObjectId> &party)

@@ -829,6 +829,56 @@ ToolResult KindTriggers(const Watch &watch, const Json &raw)
     return Json{{"area", Brief(api::GetArea(around))}, {"count", triggers.size()}, {"triggers", std::move(triggers)}};
 }
 
+// Every room of the area and whether the party has seen it (#164). A room's
+// `seen` was read only through a creature standing in it, so the moment an
+// empty room turns in view as the party walks up could not be watched
+// (lib-agent-2, for DAOParagonEngine #108, 2026-10-20).
+ToolResult KindRooms(const Watch &watch, const Json &raw)
+{
+    RequireWorld(watch, "rooms");
+    const Args args(raw, "rooms");
+    std::set<std::int32_t> partyRooms;
+    for (const ObjectId member : PartyOf(api::GetHero()))
+    {
+        if (const auto room = dao::world::RoomOf(member))
+        {
+            partyRooms.insert(room->number);
+        }
+    }
+    const bool shownOnly = args.Bool("shownOnly", false);
+    Json rooms = Json::array();
+    for (const auto &room : dao::world::Rooms())
+    {
+        if (shownOnly && !room.Shown())
+        {
+            continue;
+        }
+        Json one = RoomJson(room);
+        if (partyRooms.contains(room.number))
+        {
+            one["party"] = true;
+        }
+        rooms.push_back(std::move(one));
+    }
+    Json answer = {{"count", rooms.size()}, {"rooms", std::move(rooms)}};
+    answer["partyRooms"] = partyRooms;
+    if (args.Has("point"))
+    {
+        const auto at = dao::world::RoomAt(VectorOf(args.Raw().at("point"), "rooms: `point`"));
+        if (at)
+        {
+            Json room = RoomJson(*at);
+            room["outsideBy"] = at->distance;
+            answer["at"] = std::move(room);
+        }
+        else
+        {
+            answer["at"] = nullptr;
+        }
+    }
+    return answer;
+}
+
 // The journal kind's handler, registered by AddInspect.
 ToolResult KindJournal(const Watch &watch, const Json &raw)
 {
@@ -1224,6 +1274,21 @@ void AddInspect(Bench &bench, const Watch &watch)
                                     "30."}}}},
              {}),
         [&bench, &watch](const Json &raw) -> ToolResult { return KindSurroundings(bench, watch, raw); });
+
+    bench.Tools().Add(
+        Read(
+            "rooms",
+            "Lists every room of the area: its `number`, whether the party has `seen` it (never, in view, "
+            "before), whether it is therefore `shown` (a room never seen is drawn black, along with everything "
+            "in it), how much the game `wanted` it and its `load`, and `party` true on the rooms the party "
+            "stands in (`partyRooms`). With `point`, also the room `at` that point, and `outsideBy` how far "
+            "the point lies outside its bounds (0 inside). Outdoors the rooms are the terrain's cells, and "
+            "never read as loaded. A creature's own room is in `creature` and `creatures`.",
+            Json{{"point", {{"description", "A world point, {x, y, z} or [x, y, z]: also answer the room it is in."}}},
+                 {"shownOnly",
+                  {{"type", "boolean"}, {"description", "Only the rooms the party sees or has seen. Default false."}}}},
+            {}),
+        [&watch](const Json &raw) -> ToolResult { return KindRooms(watch, raw); });
 
     bench.Tools().Add(
         Read("exits",

@@ -524,3 +524,9 @@ A frame for drawing again elsewhere, 2026-10-19 (#156, for DAOParagonEngine's pa
 - The matrix: rows (1.0825, 0, 0, 0), (0, 1.7321, 0, 0), (0, 0, -1.00004, -0.15), (0, 0, -1, 0): right-handed, depth 0 to 1, for column vectors, the transpose of D3DXMatrixPerspectiveFovRH, where DAOLib's header said the left-handed one (told to lib-agent).
 - `screenshot` at a size: from the window, `width` 800 gave 800 by 500, `height` 720 gave 1152 by 720, 800 by 500 itself; 1280 by 720 was refused, naming 1280 by 800 and 1152 by 720, and with `crop` gave the middle 1600 by 900 scaled to 1280 by 720; `width` 15 was refused. From the game, `width` 800 gave 800 by 500, and 1000 by 1000 with `crop` the middle 1000 by 1000. Each answered `frame` 1600 by 1000.
 - With photo cam flying, the game's own picture at 1280 by 720 with `crop` was the frame alone: no HUD, no panel. In explore it has the HUD, as the game's screenshot key gives it.
+
+Rooms turning seen, 2026-10-20 (#164, `rooms`; for DAOParagonEngine #108 through lib-agent-2), in instance eluvian-test with this branch's build staged, `warp` to the Elven Ruins (bed110ar_elven_ruins) from Lyna's manual 4, by MCP alone:
+- At arrival 1574, the party's, in view; 1575 to 1580 never; seven rooms.
+- The door between 1574 and 1579 (bed110ip_door_south, story-locked, set shut by script), the party standing in 1574: opened, 1579 never to in view within 1.5 s; shut, in view to before; opened, before to in view.
+- Walking through in steps of at most 3 m: on entering 1579, 1578 and 1580 in view, unentered; in 1578, 1574 to before; a member in 1577, 1577 in view, and a step on 1576 in view, unentered; 1579 to before once nobody was in 1578, and back in view from 1576 and 1577. 1575 stayed never.
+- `camera follow` on a creature in 1575 (never seen): the game's and the window's pictures pure (0, 0, 0) over the middle, under the interface.
