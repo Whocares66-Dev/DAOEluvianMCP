@@ -32,22 +32,32 @@ inline std::vector<std::uint32_t> Hashes(const std::vector<std::string> &names)
 }
 
 // A creature template: its appearance, tag, name's string id, conversation,
-// and an inventory list of one item.
+// and an inventory list of its items (an axe, unless others are given).
 inline Bytes Creature(std::uint32_t appearance, std::string_view tag, std::uint32_t nameStrref,
-                      std::string_view conversation)
+                      std::string_view conversation, const std::vector<std::string_view> &items = {"gen_im_wep_axe"})
 {
     Gff3 out("UTC");
     const std::uint32_t t = out.ExoString(tag);
     const std::uint32_t n = out.LocString(nameStrref);
     const std::uint32_t c = out.ResRef(conversation);
-    const std::uint32_t r = out.ResRef("gen_im_wep_axe");
+    std::vector<std::uint32_t> refs;
+    refs.reserve(items.size());
+    for (const auto item : items)
+    {
+        refs.push_back(out.ResRef(item));
+    }
     // As the game's: the appearance in a struct of its own.
     out.Struct(
         0xFFFFFFFF,
         {{"Appearance Data", 14, 1}, {"Tag", 10, t}, {"LocName", 12, n}, {"Conversation", 11, c}, {"ItemList", 15, 0}});
     out.Struct(0, {{"Appearance_Type", 4, appearance}, {"Gender", 0, 1}});
-    const std::uint32_t inventory = out.Struct(0, {{"InventoryRes", 11, r}});
-    out.List({inventory});
+    std::vector<std::uint32_t> inventory;
+    inventory.reserve(refs.size());
+    for (const auto ref : refs)
+    {
+        inventory.push_back(out.Struct(0, {{"InventoryRes", 11, ref}}));
+    }
+    out.List(inventory);
     return out.Done();
 }
 
@@ -77,7 +87,7 @@ struct Install
                                       Hashes(abiColumns))}}));
         root.Write(L"game/packages/core/data/designercreatures.erf",
                    Erf({{"ogre.utc", Creature(80, "ogre", 100, "ogre_talk")},
-                        {"hurlock.utc", Creature(81, "hurlock", 101, "")},
+                        {"hurlock.utc", Creature(81, "hurlock", 101, "", {"gen_im_wep_axe", "gen_im_arm_hurlock"})},
                         {"ogre_talk.dlg", FromText("not read")}}));
         root.Write(L"game/packages/core/data/talktables/core_en-us.tlk",
                    Tlk({{7, "End turn"}, {100, "Ogre"}, {101, "Hurlock"}}));

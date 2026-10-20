@@ -590,64 +590,99 @@ Json Strings(Ghilana &ghilana, const Json &raw)
 
 // ---------------------------------------------------------------- query
 
-const Json *AtPath(const Json &root, std::string_view path)
+// A field's value found in a file, and where: its path with each list's
+// element by index ("StageCameraList[2].StageCameraLookingAtType"), and
+// whether a list was gone through to reach it.
+struct Found
 {
-    const Json *node = &root;
-    while (!path.empty())
-    {
-        const auto dot = path.find('.');
-        const std::string key = Lower(path.substr(0, dot));
-        path = dot == std::string_view::npos ? std::string_view() : path.substr(dot + 1);
-        if (!node->is_object())
-        {
-            return nullptr;
-        }
-        const Json *next = nullptr;
-        for (auto it = node->begin(); it != node->end() && next == nullptr; ++it)
-        {
-            next = Lower(it.key()) == key ? &it.value() : nullptr;
-        }
-        if (next == nullptr)
-        {
-            return nullptr;
-        }
-        node = next;
-    }
-    return node;
+    const Json *value = nullptr;
+    std::string path;
+    bool listed = false;
+};
+
+std::string Joined(const std::string &at, const std::string &key)
+{
+    return at.empty() ? key : at + "." + key;
 }
 
-// The value of a field: at a dotted path ("Appearance Data.Appearance_Type"),
-// each key without case; a bare name at the top, or else in the first struct
-// below that has it, breadth first and not into lists. A creature's
-// Appearance_Type is in its "Appearance Data" (cir320cr_ogre_boss.utc,
-// 2026-10-12), and the plan's own query names it bare.
-const Json *At(const Json &root, std::string_view path)
+// The values at a dotted path below `node`, each key without case. A list
+// on the way is each of its elements: a stage's cameras are a list, and
+// StageCameraList.StageCameraLookingAtType matched none of 497 stages
+// though 2p_200_cullen.stg has one of type 1 (2026-10-19, #162). A list
+// the path ends at is the list's value.
+void AtPath(const Json &node, std::string_view path, const std::string &at, bool listed, std::vector<Found> &out)
 {
+    if (path.empty())
+    {
+        out.push_back(Found{&node, at, listed});
+        return;
+    }
+    if (node.is_array())
+    {
+        for (std::size_t i = 0; i < node.size(); ++i)
+        {
+            AtPath(node[i], path, at + "[" + std::to_string(i) + "]", true, out);
+        }
+        return;
+    }
+    if (!node.is_object())
+    {
+        return;
+    }
+    const auto dot = path.find('.');
+    const std::string key = Lower(path.substr(0, dot));
+    const std::string_view rest = dot == std::string_view::npos ? std::string_view() : path.substr(dot + 1);
+    for (auto it = node.begin(); it != node.end(); ++it)
+    {
+        if (Lower(it.key()) == key)
+        {
+            AtPath(it.value(), rest, Joined(at, it.key()), listed, out);
+            return;
+        }
+    }
+}
+
+// The values of a field: at a dotted path ("Appearance Data.Appearance_Type"),
+// each key without case; a bare name at the top, or else in the nearest
+// structs below that have it, breadth first, a list's elements among them.
+// A creature's Appearance_Type is in its "Appearance Data"
+// (cir320cr_ogre_boss.utc, 2026-10-12), and the plan's own query names it
+// bare; a stage's StageCameraLookingAtType is in each camera of its list
+// (#162).
+std::vector<Found> At(const Json &root, std::string_view path)
+{
+    std::vector<Found> found;
     if (path.find('.') != std::string_view::npos)
     {
-        return AtPath(root, path);
+        AtPath(root, path, "", false, found);
+        return found;
     }
-    std::vector<const Json *> level{&root};
-    while (!level.empty())
+    std::vector<Found> level{Found{&root, "", false}};
+    while (!level.empty() && found.empty())
     {
-        std::vector<const Json *> next;
-        for (const Json *node : level)
+        std::vector<Found> next;
+        for (const Found &node : level)
         {
-            if (const Json *found = AtPath(*node, path))
+            AtPath(*node.value, path, node.path, node.listed, found);
+            for (auto it = node.value->begin(); node.value->is_object() && it != node.value->end(); ++it)
             {
-                return found;
-            }
-            for (const auto &child : *node)
-            {
-                if (child.is_object())
+                if (it.value().is_object())
                 {
-                    next.push_back(&child);
+                    next.push_back(Found{&it.value(), Joined(node.path, it.key()), node.listed});
+                }
+                for (std::size_t i = 0; it.value().is_array() && i < it.value().size(); ++i)
+                {
+                    if (it.value()[i].is_object())
+                    {
+                        next.push_back(
+                            Found{&it.value()[i], Joined(node.path, it.key()) + "[" + std::to_string(i) + "]", true});
+                    }
                 }
             }
         }
         level = std::move(next);
     }
-    return nullptr;
+    return found;
 }
 
 // Whether a field's value is what a call asked: CellMatches, a localised
@@ -665,34 +700,82 @@ bool FieldMatches(const Json &value, const Json &wanted)
     return CellMatches(value, wanted);
 }
 
-bool Matches(const Json &json, const Json &where)
+// Whether a file has what `where` asks, each field matching where any of
+// its values does; and, in `matched`, for a field reached through a list,
+// the paths of the elements' values that matched.
+bool Matches(const Json &json, const Json &where, Json &matched)
 {
-    return std::ranges::all_of(where.items(), [&json](const auto &w) {
-        const Json *value = At(json, w.key());
-        return value != nullptr && FieldMatches(*value, w.value());
-    });
+    for (const auto &w : where.items())
+    {
+        Json paths = Json::array();
+        bool any = false;
+        for (const Found &found : At(json, w.key()))
+        {
+            if (FieldMatches(*found.value, w.value()))
+            {
+                any = true;
+                if (found.listed)
+                {
+                    paths.push_back(found.path);
+                }
+            }
+        }
+        if (!any)
+        {
+            return false;
+        }
+        if (!paths.empty())
+        {
+            matched[w.key()] = std::move(paths);
+        }
+    }
+    return true;
 }
 
 // What group_by counts a match under: the field's value, a localised
-// string's id.
-std::string GroupKey(const Json &json, const std::string &field)
+// string's id; through a list, each element's value, so a stage of three
+// cameras counts three times; with none, "null".
+std::vector<std::string> GroupKeys(const Json &json, const std::string &field)
 {
-    const Json *value = At(json, field);
-    if (value == nullptr)
+    std::vector<std::string> keys;
+    for (const Found &found : At(json, field))
     {
-        return "null";
+        const Json &value = *found.value;
+        const Json &key = value.is_object() && value.contains("strref") ? value["strref"] : value;
+        keys.push_back(key.is_string() ? key.get<std::string>() : key.dump());
     }
-    const Json &key = value->is_object() && value->contains("strref") ? (*value)["strref"] : *value;
-    return key.is_string() ? key.get<std::string>() : key.dump();
+    if (keys.empty())
+    {
+        keys.emplace_back("null");
+    }
+    return keys;
 }
 
+// The fields asked for: each one's value, or through a list every
+// element's, as an array.
 Json Picked(const Json &json, const std::vector<std::string> &fields)
 {
     Json picked = Json::object();
     for (const auto &field : fields)
     {
-        const Json *value = At(json, field);
-        picked[field] = value == nullptr ? Json(nullptr) : *value;
+        const auto found = At(json, field);
+        if (found.empty())
+        {
+            picked[field] = nullptr;
+        }
+        else if (found.size() == 1 && !found.front().listed)
+        {
+            picked[field] = *found.front().value;
+        }
+        else
+        {
+            Json values = Json::array();
+            for (const Found &one : found)
+            {
+                values.push_back(*one.value);
+            }
+            picked[field] = std::move(values);
+        }
     }
     return picked;
 }
@@ -761,17 +844,25 @@ void QueryCopy(const GameFiles &files, const std::string &name, const Copy &copy
         return;
     }
     ++run.read;
-    if (!Matches(json, ask.where))
+    Json matched = Json::object();
+    if (!Matches(json, ask.where, matched))
     {
         return;
     }
     if (!ask.groupBy.empty())
     {
-        ++run.groups[GroupKey(json, ask.groupBy)];
+        for (const auto &key : GroupKeys(json, ask.groupBy))
+        {
+            ++run.groups[key];
+        }
     }
     if (page.Takes(run.count++, run.matches.size()))
     {
         Json item = {{"name", name}, {"copy", files.Describe(copy)}};
+        if (!matched.empty())
+        {
+            item["matched"] = std::move(matched);
+        }
         if (!ask.fields.empty())
         {
             item["fields"] = Picked(json, ask.fields);
@@ -1095,12 +1186,18 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
         {"where",
          {{"type", "object"},
           {"description", "Fields and the values they must have: {\"Appearance_Type\": 80}. A bare name is "
-                          "found at the top or in the nearest struct below that has it; a dotted path names one "
-                          "(\"Appearance Data.Appearance_Type\"). A localised name matches its string id; an array "
-                          "matches any of its values. Default: every file."}}},
+                          "found at the top or in the nearest structs below that have it, a list's elements among "
+                          "them; a dotted path names one (\"Appearance Data.Appearance_Type\"), and through a list "
+                          "(\"StageCameraList.StageCameraLookingAtType\") each element. A field matches where any "
+                          "of its values does, and a match says which elements in `matched`. A localised name "
+                          "matches its string id; an array matches any of its values. Default: every file."}}},
         {"fields",
-         {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Fields to answer each match with."}}},
-        {"group_by", {{"type", "string"}, {"description", "A field: count the matches by its value."}}},
+         {{"type", "array"},
+          {"items", {{"type", "string"}}},
+          {"description", "Fields to answer each match with; one through a list answers every element's value."}}},
+        {"group_by",
+         {{"type", "string"},
+          {"description", "A field: count the matches by its value; through a list, each element's value."}}},
         {"source", {{"type", "string"}, {"description", "Only copies in this source."}}},
         {"copies",
          {{"type", "string"},

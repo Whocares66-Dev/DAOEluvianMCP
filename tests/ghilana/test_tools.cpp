@@ -339,6 +339,44 @@ TEST_CASE("query: templates by a field's value, the fields asked, counts by a fi
     CHECK(q["count"] == 0);
 }
 
+TEST_CASE("query: a field in a list's elements, matched by any, counted by each", "[ghilana][tools]")
+{
+    // A stage's cameras are a list, and their type went unmatched and ungrouped (#162). The
+    // core's hurlock carries an axe and its armour; the ogre the axe alone. Documents' hurlock
+    // shadows the core's, so every copy is asked for and the core's taken.
+    Served served;
+    const Json core = {{"type", "utc"}, {"source", "core"}, {"copies", "all"}};
+    Json ask = core;
+    ask["where"] = {{"ItemList.InventoryRes", "gen_im_arm_hurlock"}};
+    Json q = served.Call("query", ask);
+    REQUIRE(q["count"] == 1);
+    CHECK(q["matches"][0]["name"] == "hurlock.utc");
+    CHECK(q["matches"][0]["matched"]["ItemList.InventoryRes"] == Json::array({"ItemList[1].InventoryRes"}));
+    // A bare name is found in the list's elements too, and the axe is in both.
+    ask["where"] = {{"inventoryres", "gen_im_wep_axe"}};
+    q = served.Call("query", ask);
+    CHECK(q["count"] == 2);
+    // The fields through a list answer every element's value; a field not in a list, its own.
+    ask["where"] = {{"Tag", "hurlock"}};
+    ask["fields"] = {"InventoryRes", "Tag"};
+    q = served.Call("query", ask);
+    REQUIRE(q["count"] == 1);
+    CHECK(q["matches"][0]["fields"]["InventoryRes"] == Json::array({"gen_im_wep_axe", "gen_im_arm_hurlock"}));
+    CHECK(q["matches"][0]["fields"]["Tag"] == "hurlock");
+    CHECK_FALSE(q["matches"][0].contains("matched")); // Tag is in no list
+    // Counted by each element's value: the axe twice, the armour once.
+    Json group = core;
+    group["group_by"] = "ItemList.InventoryRes";
+    q = served.Call("query", group);
+    REQUIRE(q["groups"].size() == 2);
+    CHECK(q["groups"][0] == Json{{"value", "gen_im_wep_axe"}, {"count", 2}});
+    CHECK(q["groups"][1] == Json{{"value", "gen_im_arm_hurlock"}, {"count", 1}});
+    // A field none has is still null.
+    group["group_by"] = "ItemList.NoSuchField";
+    q = served.Call("query", group);
+    CHECK(q["groups"] == Json::array({Json{{"value", "null"}, {"count", 2}}}));
+}
+
 TEST_CASE("references: what a template names, and what names a conversation", "[ghilana][tools]")
 {
     Served served;

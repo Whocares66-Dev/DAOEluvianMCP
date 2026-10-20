@@ -293,18 +293,18 @@
      },
      "where": {
       "type": "object",
-      "description": "Fields and the values they must have: {\"Appearance_Type\": 80}. A bare name is found at the top or in the nearest struct below that has it; a dotted path names one (\"Appearance Data.Appearance_Type\"). A localised name matches its string id; an array matches any of its values. Default: every file."
+      "description": "Fields and the values they must have: {\"Appearance_Type\": 80}. A bare name is found at the top or in the nearest structs below that have it, a list's elements among them; a dotted path names one (\"Appearance Data.Appearance_Type\"), and through a list (\"StageCameraList.StageCameraLookingAtType\") each element. A field matches where any of its values does, and a match says which elements in `matched`. A localised name matches its string id; an array matches any of its values. Default: every file."
      },
      "fields": {
       "type": "array",
       "items": {
        "type": "string"
       },
-      "description": "Fields to answer each match with."
+      "description": "Fields to answer each match with; one through a list answers every element's value."
      },
      "group_by": {
       "type": "string",
-      "description": "A field: count the matches by its value."
+      "description": "A field: count the matches by its value; through a list, each element's value."
      },
      "source": {
       "type": "string",
