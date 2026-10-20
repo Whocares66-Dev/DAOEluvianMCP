@@ -332,6 +332,7 @@ void AddCamera(Bench &bench, const Watch &watch);
 void AddDialogue(Bench &bench, const Watch &watch);
 void AddScreen(Bench &bench, const Watch &watch);
 void AddResources(Bench &bench);
+void AddWarpArea(Bench &bench);                      // warp.area, which core's warp reads an area's file by
 void AddCharacter(Bench &bench, const Watch &watch); // character, abilities, equipment, inventory, item
 void AddGui(Bench &bench, const Watch &watch);       // gui, controls
 void AddStore(Bench &bench, const Watch &watch);

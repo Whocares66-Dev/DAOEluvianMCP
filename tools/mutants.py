@@ -157,6 +157,7 @@ GFXLIST = "src/core/GfxList.cpp"
 GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
 SIGHT = "src/core/Sight.cpp"
+WARP = "src/core/Warp.cpp"
 STDIO = "src/core/Stdio.cpp"
 
 # A mutant's `old` is the source's text as written, so a C++ escape is two
@@ -2696,6 +2697,73 @@ MUTANTS = [
         REGISTRY,
         "        if (entry.spec.budget)\n",
         "        if (entry.spec.budget && entry.spec.listed && entry.spec.name.empty())\n",
+    ),
+    # warp: the party put in an area at a waypoint, both checked first (#157)
+    Mutant(
+        "warp refuses an area the archives lack",
+        WARP,
+        'if (!file.value("found", false))',
+        'if (file.contains("nothing"))',
+    ),
+    Mutant(
+        "warp names the areas with the one asked in their name",
+        WARP,
+        "name.find(asked) != std::string::npos",
+        "name == asked",
+    ),
+    Mutant(
+        "warp names the areas that begin as the one asked",
+        WARP,
+        "name.starts_with(prefix)",
+        "name.ends_with(prefix)",
+    ),
+    Mutant(
+        "warp finds a waypoint without case",
+        WARP,
+        'if (Lower(waypoint.value("tag", std::string())) == Lower(tag))',
+        'if (waypoint.value("tag", std::string()) == tag)',
+    ),
+    Mutant(
+        "warp refuses a waypoint the area lacks",
+        WARP,
+        "            if (waypoint == nullptr)\n            {\n                throw",
+        '            if (waypoint == nullptr && args_.Has("never"))\n            {\n                throw',
+    ),
+    Mutant(
+        "warp refuses a waypoint of an area whose file is not read",
+        WARP,
+        "if (!readable && (",
+        'if (!readable && args_.Has("never") && (',
+    ),
+    Mutant(
+        "warp jumps only from explore or combat",
+        WARP,
+        'if (mode != "explore" && mode != "combat")',
+        'if (mode == "never")',
+    ),
+    Mutant(
+        "warp says the game refused the jump",
+        WARP,
+        'if (sent.value("value", 1) == 0)',
+        'if (sent.value("value", 1) == 2)',
+    ),
+    Mutant(
+        "warp waits out the load",
+        WARP,
+        'health->value("mode", std::string()) != "loading"',
+        'health->value("mode", std::string()) != "never"',
+    ),
+    Mutant(
+        "warp waits for the area asked, not the one left",
+        WARP,
+        'state && Lower(state->value("area", Json::object()).value("tag", std::string())) == Lower(tag)',
+        "state && !tag.empty()",
+    ),
+    Mutant(
+        "warp says the hero stands away from the waypoint",
+        WARP,
+        "if (off > kAtWaypoint)",
+        "if (off > kAtWaypoint * 100)",
     ),
     # the camera's angles for a point to be seen (#117)
     Mutant(

@@ -59,6 +59,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddInput(bench, watch);
     AddScreen(bench, watch);
     AddResources(bench);
+    AddWarpArea(bench);
 }
 
 namespace

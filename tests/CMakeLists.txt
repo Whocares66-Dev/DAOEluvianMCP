@@ -46,6 +46,7 @@ add_executable(
     test_sight.cpp
     test_stdio.cpp
     test_until.cpp
+    test_warp.cpp
     test_ready.cpp
     test_travel.cpp
 )

@@ -11,6 +11,7 @@
 #include "core/Scenario.h"
 #include "core/Travel.h"
 #include "core/Until.h"
+#include "core/Warp.h"
 #include "game/GameTools.h"
 
 #include <chrono>
@@ -27,6 +28,7 @@ void RegisterTools(Bench &bench, const game::Watch &watch, const ToolSetup &setu
     AddWaitReadyTool(bench);
     AddGiftTool(bench);
     AddTravelTool(bench);
+    AddWarpTool(bench);
     AddDialogueTool(bench);
     // A second on each screen a tool opens and closes in one call, so that
     // whoever watches sees it (the user, 2026-10-03, #14).

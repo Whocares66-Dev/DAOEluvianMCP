@@ -172,6 +172,7 @@ add_library(
     src/core/ToolRegistry.cpp
     src/core/Travel.cpp
     src/core/Until.cpp
+    src/core/Warp.cpp
 )
 el_apply_warnings(el_core)
 target_include_directories(el_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
@@ -286,6 +287,7 @@ add_library(
     src/game/Stage.cpp
     src/game/Tactics.cpp
     src/game/Store.cpp
+    src/game/Warp.cpp
     src/game/WorldMap.cpp
     src/plugin/Tools.cpp
 )

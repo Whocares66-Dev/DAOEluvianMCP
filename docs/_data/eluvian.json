@@ -1778,6 +1778,42 @@
    }
   },
   {
+   "name": "warp",
+   "description": "Puts the party in an area, at one of its waypoints, by the game's own area transition (DoAreaTransition), with no save there: the area loads and its scripts run as on arriving by its doors, so a cutscene or a fight it starts plays. Use a test save: the area's plot may not be where its scripts expect, and plot sets flags first.\n\nPass `area`, its tag (state's `area` gives the one the party is in; `resources` with type \"are\" lists them). `waypoint`, one of the area's, is where the party arrives; without it, the area's own arrival. `waypoints: true` lists the area's waypoints (tag and position) and jumps nowhere. Both are checked against the area's file before anything is sent: the game itself puts the party at (0, 0, 0) for a waypoint the area lacks.\n\nIt jumps from explore or combat mode, and answers once the party is in the area, or after `budgetMs`: the `area`, the `party`, the `mode` it arrived in (cutscene, dialog or combat if the area's scripts started one), with a waypoint where the hero stands (`at`) and how far from it (`fromWaypoint`, metres), `arrived`, and a `cursor` for the events of the load.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "area": {
+      "type": "string",
+      "description": "The area's tag, as pre440ar_tower_level_4 (the Tower of Ishal's top floor). Without case."
+     },
+     "waypoint": {
+      "type": "string",
+      "description": "One of the area's waypoints, by tag. Default: the area's own arrival."
+     },
+     "waypoints": {
+      "type": "boolean",
+      "description": "List the area's waypoints and jump nowhere. Default false."
+     },
+     "budgetMs": {
+      "type": "integer",
+      "minimum": 5000,
+      "maximum": 180000,
+      "description": "The longest to wait for the area to load, in milliseconds. Default 60000."
+     }
+    },
+    "required": [
+     "area"
+    ]
+   },
+   "_meta": {
+    "eluvian/budget": {
+     "argument": "budgetMs",
+     "defaultMs": 60000
+    }
+   }
+  },
+  {
    "name": "window",
    "description": "Returns where the game's window is on the desktop, for tests that must use the real mouse: `client`, the top left corner of the game's picture in desktop pixels (`x`, `y`) and its `width` and `height`, and whether the window is `minimised` or the `foreground` window (the one that gets mouse and keyboard input).\n\nTo click a spot seen in a screenshot, take its position as a fraction of the picture, multiply by the size and add the corner. Works in any mode.",
    "inputSchema": {

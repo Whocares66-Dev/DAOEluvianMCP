@@ -87,6 +87,7 @@ If `game_launch` says the game is running but Eluvian is not serving, its `error
 |---|---|
 | `travel {"target": "0x2ec"}` | Walks there, opening doors on the way. Returns whether it arrived, or why not. |
 | `travel {"area": "bed100ar_forest_clearing"}` | Goes to another area by the exit that leads there (see `exits`): walks to it, uses it, and returns once the new area has loaded. |
+| `warp {"area": "pre440ar_tower_level_4", "waypoint": "pre440wp_from_tower3"}` | Puts the party in that area at that waypoint, with no save there and no walk: the area's scripts run as on arriving (a cutscene, a fight). `{"area": ..., "waypoints": true}` lists its waypoints first. From a test save: the plot may not be where the area expects. |
 | `order {"action": "use", "target": "0x1fd"}` | Uses it the way a click would (and by an actual click when the creature you control does it). |
 | `loot {"target": "0x1fd"}` | Walks there, opens it and takes everything. Returns what was taken and what is left, or why it did not open (`empty`: emptied remains open nothing). |
 | `press {"button": "Take All"}` | Presses a button the way a click does: a message box's button, or the loot panel's Take All or Close. |
