@@ -40,7 +40,7 @@
   },
   {
    "name": "camera",
-   "description": "Reads or moves the camera, in explore or combat mode. `action`:\n\n- `read` (the default): returns what it is `following`, its `focus` and how far that is from what it follows (`focusOffset`), its `position`, `facingDegrees` and `pitchDegrees`, whether it is `tactical`, `zoom` (1 close in, -1 the tactical view) and `zoomSetting`, the zoom it is easing toward.\n- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, for a screenshot that shows it. With `tilt` true it tilts as well, so the target is in the middle of the picture: use it for something above or below, such as the sky. A creature's point is at its feet, so one standing near is looked down on.\n- `follow`: makes it follow `target` and jump there at once, as selecting a party member does (nothing gets selected). Use it to look at a creature elsewhere, or to centre the tactical view on one.\n- `turn`: turns it to `facingDegrees`, tilts it to `pitchDegrees`, or both. The tactical view keeps its own pitch of -45 degrees, so tilt close in.\n- `behind`: turns it to look the way `target` faces, from behind it, as the game's own camera reset does. Default: what it follows.\n- `zoom`: sets `zoom` as the mouse wheel does: -1 is the tactical view, high above, and 0.5 (farthest) to 1 (closest) the close view. The game has no view between them. The camera eases there within about a second. In the tactical view the game pans the camera while the mouse is at the picture's edge or off it, so the party drifts to a corner (`focusOffset` grows): first hold the cursor inside the picture with `pointer` (a `pixel` near the middle), then `follow` a creature to centre on it.\n\nEvery action returns the camera as `read` does. A turn or tilt shows from the next frame, so take the screenshot after this call; after `zoom`, read until `zoom` has arrived. A mod that smooths camera moves treats a move from here as the player's and stops its own.",
+   "description": "Reads or moves the camera, in explore or combat mode. `action`:\n\n- `read` (the default): returns what it is `following`, its `focus` and how far that is from what it follows (`focusOffset`), its `position`, `facingDegrees` and `pitchDegrees`, whether it is `tactical`, `zoom` (1 close in, -1 the tactical view) and `zoomSetting`, the zoom it is easing toward. Its `projection` is what the last frame was drawn with, for drawing the same frame elsewhere: `fovDegrees` (vertical), `aspect` (width over height, as used), `near` and `far` in metres, the view's `width` and `height` in pixels, and Direct3D's row-major `matrix`. While another plugin's free view flies (flycam mode), `read` gives only the projection.\n- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, for a screenshot that shows it. With `tilt` true it tilts as well, so the target is in the middle of the picture: use it for something above or below, such as the sky. A creature's point is at its feet, so one standing near is looked down on.\n- `follow`: makes it follow `target` and jump there at once, as selecting a party member does (nothing gets selected). Use it to look at a creature elsewhere, or to centre the tactical view on one.\n- `turn`: turns it to `facingDegrees`, tilts it to `pitchDegrees`, or both. The tactical view keeps its own pitch of -45 degrees, so tilt close in.\n- `behind`: turns it to look the way `target` faces, from behind it, as the game's own camera reset does. Default: what it follows.\n- `zoom`: sets `zoom` as the mouse wheel does: -1 is the tactical view, high above, and 0.5 (farthest) to 1 (closest) the close view. The game has no view between them. The camera eases there within about a second. In the tactical view the game pans the camera while the mouse is at the picture's edge or off it, so the party drifts to a corner (`focusOffset` grows): first hold the cursor inside the picture with `pointer` (a `pixel` near the middle), then `follow` a creature to centre on it.\n\nEvery action returns the camera as `read` does. A turn or tilt shows from the next frame, so take the screenshot after this call; after `zoom`, read until `zoom` has arrived. A mod that smooths camera moves treats a move from here as the player's and stops its own.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1123,7 +1123,7 @@
   },
   {
    "name": "screenshot",
-   "description": "Takes a picture of the game as it is now, interface included. Other windows on top of the game do not get in the way. `source`:\n\n- `window` (the default): Windows draws the game's window at once, even while the game is not drawing frames. If the display is asleep or the session locked, the picture is all black (`black`); use `game` then.\n- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later.\n\nReturns the picture as an image, with its `width`, `height` and `file` (in Screenshots\\Eluvian; for `game`, the game's own file is `original`). Pass `image: false` to get only the file and save tokens.",
+   "description": "Takes a picture of the game as it is now, interface included. Other windows on top of the game do not get in the way. `source`:\n\n- `window` (the default): Windows draws the game's window at once, even while the game is not drawing frames. If the display is asleep or the session locked, the picture is all black (`black`); use `game` then.\n- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later. While another plugin's free view flies (a photo camera's), the game hides its interface and that plugin keeps its own panel out of this picture, so it is the frame alone.\n\nReturns the picture as an image, with its `width`, `height` and `file` (in Screenshots\\Eluvian; for `game`, the game's own file is `original`). Pass `image: false` to get only the file and save tokens. `width` or `height` scales the picture, the other side kept to the frame's aspect; both must be the frame's aspect, or with `crop` true the middle of the frame at theirs is taken. The game draws at its window's size, so a larger picture is no sharper: `frame` is the size it was drawn at. To draw the same frame elsewhere, `camera`'s `projection` is the one it was drawn with.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1142,6 +1142,18 @@
      "quality": {
       "type": "number",
       "description": "With `window`: JPEG quality, 0.1 to 1. Default 0.8."
+     },
+     "width": {
+      "type": "integer",
+      "description": "The picture's width in pixels, 16 to 8192. Default: the frame's."
+     },
+     "height": {
+      "type": "integer",
+      "description": "The picture's height in pixels, 16 to 8192. Default: the frame's."
+     },
+     "crop": {
+      "type": "boolean",
+      "description": "With both `width` and `height` of another aspect than the frame's: take the middle of the frame at theirs. Default false: refused."
      }
     }
    },

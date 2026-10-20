@@ -51,7 +51,7 @@ TEST_CASE("environment: the sources found, their archives and files, the add-ins
     const Json *core = SourceIn(sources, "core");
     REQUIRE(core != nullptr);
     CHECK((*core)["archives"] == 5); // 2da, creatures, two texture packs, a patch
-    CHECK((*core)["loose"] == 2);    // the two talk tables; the .fsb is not a resource
+    CHECK((*core)["loose"] == 3);    // the two talk tables, and the .fsb, a sound bank since DAOLib #191
     const Json *addin = SourceIn(sources, "addin:dao_prc_cp_1");
     REQUIRE(addin != nullptr);
     CHECK((*addin)["unreadable"] == 1);

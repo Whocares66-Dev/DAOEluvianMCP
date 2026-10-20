@@ -182,7 +182,7 @@ All of it into a mod folder of the user's naming, laid out as an override folder
 ### Not ghilana's
 
 - Anything of the running game: Eluvian's. Eluvian gains one tool for ghilana's sake, a resource read through the engine's resource manager, as ElgaraShaders' `src/ResourceDump.cpp` does behind a file it watches: for the enciphered add-ins until DAOLib deciphers them, and to check ghilana's winners.
-- Audio: FMOD's `.fsb` and `.fev`.
+- Audio: FMOD's `.fsb` and `.fev`. Since DAOLib #191 its core reads the banks and indexes the `.fsb` files among the install's loose ones (so `environment` counts them); whether ghilana serves sound is open.
 - Compiling scripts, until it is known whether the toolset has a compiler that runs from a command line (houseCARL compiles Papyrus; open question below).
 
 ## Testing

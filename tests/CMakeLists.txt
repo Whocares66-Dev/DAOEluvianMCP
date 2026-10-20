@@ -39,6 +39,7 @@ add_executable(
     test_placeables.cpp
     test_mcp.cpp
     test_origin.cpp
+    test_picturesize.cpp
     test_registry.cpp
     test_requirements.cpp
     test_rest.cpp

@@ -36,6 +36,23 @@ Json CameraJson(const dao::CameraController &camera)
     return answer;
 }
 
+// The projection the scene is drawn with, so another renderer can draw the
+// same frame (DAOParagonEngine's parity work, #156; DAOLib #204): two given
+// the same eye, target and vertical field of view came out a few percent of
+// the width apart (2026-10-19). Null with no scene drawn.
+Json ProjectionJson()
+{
+    const auto projection = dao::camera::CurrentProjection();
+    if (!projection)
+    {
+        return nullptr;
+    }
+    return Json{
+        {"fovDegrees", projection->fieldOfView}, {"aspect", projection->aspect}, {"near", projection->nearPlane},
+        {"far", projection->farPlane},           {"width", projection->width},   {"height", projection->height},
+        {"matrix", projection->matrix}};
+}
+
 Point PointOf(const dao::Vector &v)
 {
     return {v.x, v.y, v.z};
@@ -234,6 +251,16 @@ ToolResult ToolCamera(const Watch &watch, const Json &raw)
     // camera is that plugin's to move (#143).
     if (watch.Mode() == static_cast<std::int32_t>(dao::GameMode::FlyCam))
     {
+        // A read moves nothing: the view's projection is what a frame taken
+        // there is drawn with (#156).
+        if (action == "read")
+        {
+            return Json{{"action", action},
+                        {"flying", true},
+                        {"projection", ProjectionJson()},
+                        {"note", "the game is in flycam mode, a free view another plugin's tools move (see "
+                                 "health's `plugins`): its own state says where the eye is"}};
+        }
         throw ToolError("camera: the game is in flycam mode, a free view another plugin's tools move; this "
                         "tool moves the camera in explore and combat mode only. Use that plugin's tools (see "
                         "health's `plugins`), or leave its view first");
@@ -265,6 +292,7 @@ ToolResult ToolCamera(const Watch &watch, const Json &raw)
         note = Turn(FaceOf(args, *camera, SceneOf(*camera)), *camera);
     }
     Json answer = CameraJson(*camera);
+    answer["projection"] = ProjectionJson();
     answer["action"] = action;
     if (!note.empty())
     {
@@ -284,7 +312,10 @@ void AddCamera(Bench &bench, const Watch &watch)
             "- `read` (the default): returns what it is `following`, its `focus` and how far that is from "
             "what it follows (`focusOffset`), its `position`, `facingDegrees` and `pitchDegrees`, whether it "
             "is `tactical`, `zoom` (1 close in, -1 the tactical view) and `zoomSetting`, the zoom it is "
-            "easing toward.\n"
+            "easing toward. Its `projection` is what the last frame was drawn with, for drawing the same "
+            "frame elsewhere: `fovDegrees` (vertical), `aspect` (width over height, as used), `near` and "
+            "`far` in metres, the view's `width` and `height` in pixels, and Direct3D's row-major `matrix`. "
+            "While another plugin's free view flies (flycam mode), `read` gives only the projection.\n"
             "- `face`: turns it at once so that `target` or `point` is straight ahead, beyond the focus, "
             "for a screenshot that shows it. With `tilt` true it tilts as well, so the target is in the "
             "middle of the picture: use it for something above or below, such as the sky. A creature's "

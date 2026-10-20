@@ -156,6 +156,7 @@ PLACEABLES = "src/core/Placeables.cpp"
 GFXLIST = "src/core/GfxList.cpp"
 GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
+PICTURE_SIZE = "src/core/PictureSize.cpp"
 SIGHT = "src/core/Sight.cpp"
 WARP = "src/core/Warp.cpp"
 STDIO = "src/core/Stdio.cpp"
@@ -2764,6 +2765,55 @@ MUTANTS = [
         WARP,
         "if (off > kAtWaypoint)",
         "if (off > kAtWaypoint * 100)",
+    ),
+    # the size screenshot writes a picture at (#156)
+    Mutant(
+        "a picture given its width keeps the frame's aspect",
+        PICTURE_SIZE,
+        "fit.height = Scaled(*askedWidth, height, width);",
+        "fit.height = height;",
+    ),
+    Mutant(
+        "a picture given its height keeps the frame's aspect",
+        PICTURE_SIZE,
+        "fit.width = Scaled(*askedHeight, width, height);",
+        "fit.width = width;",
+    ),
+    Mutant(
+        "a side the other gives is rounded to the nearest pixel",
+        PICTURE_SIZE,
+        "static_cast<int>(std::lround(exact))",
+        "static_cast<int>(exact)",
+    ),
+    Mutant(
+        "two sides a pixel off the frame's aspect are its aspect",
+        PICTURE_SIZE,
+        "- *askedHeight) <= 1)",
+        "- *askedHeight) <= 0)",
+    ),
+    Mutant(
+        "two sides of another aspect are refused without crop",
+        PICTURE_SIZE,
+        "    if (!crop)\n",
+        "    if (crop && !crop)\n",
+    ),
+    Mutant(
+        "a crop is the middle of the frame",
+        PICTURE_SIZE,
+        "fit.cropX = (width - fit.cropWidth) / 2;",
+        "fit.cropX = 0;",
+    ),
+    Mutant(
+        "a crop of a wider aspect keeps the frame's whole width",
+        PICTURE_SIZE,
+        "static_cast<long long>(width) * *askedHeight > static_cast<long long>(height) * *askedWidth",
+        "static_cast<long long>(width) * *askedHeight < static_cast<long long>(height) * *askedWidth",
+    ),
+    Mutant(
+        "a side under 16 pixels is refused",
+        PICTURE_SIZE,
+        "*side < kLeastSide ||",
+        "*side < kLeastSide - 1 ||",
     ),
     # the camera's angles for a point to be seen (#117)
     Mutant(

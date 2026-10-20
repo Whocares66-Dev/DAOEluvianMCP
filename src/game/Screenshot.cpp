@@ -114,10 +114,16 @@ void AddScreenshot(Bench &bench, const Watch &watch)
             "- `window` (the default): Windows draws the game's window at once, even while the game is not "
             "drawing frames. If the display is asleep or the session locked, the picture is all black "
             "(`black`); use `game` then.\n"
-            "- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later.\n\n"
+            "- `game`: the game takes its own screenshot, as its screenshot key does, a frame or more later. "
+            "While another plugin's free view flies (a photo camera's), the game hides its interface and "
+            "that plugin keeps its own panel out of this picture, so it is the frame alone.\n\n"
             "Returns the picture as an image, with its `width`, `height` and `file` (in Screenshots\\Eluvian; "
             "for `game`, the game's own file is `original`). Pass `image: false` to get only the file and "
-            "save tokens.",
+            "save tokens. `width` or `height` scales the picture, the other side kept to the frame's aspect; "
+            "both must be the frame's aspect, or with `crop` true the middle of the frame at theirs is "
+            "taken. The game draws at its window's size, so a larger picture is no sharper: `frame` is the "
+            "size it was drawn at. To draw the same frame elsewhere, `camera`'s `projection` is the one it "
+            "was drawn with.",
             Json{{"type", "object"},
                  {"properties",
                   {{"source",
@@ -127,12 +133,32 @@ void AddScreenshot(Bench &bench, const Watch &watch)
                    {"image",
                     {{"type", "boolean"}, {"description", "Include the picture itself in the answer. Default true."}}},
                    {"quality",
-                    {{"type", "number"}, {"description", "With `window`: JPEG quality, 0.1 to 1. Default 0.8."}}}}}},
+                    {{"type", "number"}, {"description", "With `window`: JPEG quality, 0.1 to 1. Default 0.8."}}},
+                   {"width",
+                    {{"type", "integer"},
+                     {"description", "The picture's width in pixels, 16 to 8192. Default: the frame's."}}},
+                   {"height",
+                    {{"type", "integer"},
+                     {"description", "The picture's height in pixels, 16 to 8192. Default: the frame's."}}},
+                   {"crop",
+                    {{"type", "boolean"},
+                     {"description", "With both `width` and `height` of another aspect than the frame's: take the "
+                                     "middle of the frame at theirs. Default false: refused."}}}}}},
             Thread::Listener, true},
         [&bench, &watch](const Json &raw) -> ToolResult {
             const Args args(raw, "screenshot");
             const auto source = args.Choice("source", {"window", "game"}, "window");
             const bool image = args.Bool("image", true);
+            SizeAsked size;
+            if (args.Has("width"))
+            {
+                size.width = static_cast<int>(args.Integer("width", 0, kLeastSide, kMostSide));
+            }
+            if (args.Has("height"))
+            {
+                size.height = static_cast<int>(args.Integer("height", 0, kLeastSide, kMostSide));
+            }
+            size.crop = args.Bool("crop", false);
             std::filesystem::path file;
             std::string jpeg;
             Json answer = {{"source", source}};
@@ -147,7 +173,7 @@ void AddScreenshot(Bench &bench, const Watch &watch)
                     std::ifstream in(original, std::ios::binary);
                     bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
                 }
-                const auto picture = ReencodeJpeg(bytes, 0.9F);
+                const auto picture = ReencodeJpeg(bytes, 0.9F, size);
                 const auto folder = Screenshots() / "Eluvian";
                 std::error_code error;
                 std::filesystem::create_directories(folder, error);
@@ -156,6 +182,7 @@ void AddScreenshot(Bench &bench, const Watch &watch)
                     .write(picture.jpeg.data(), static_cast<std::streamsize>(picture.jpeg.size()));
                 answer["width"] = picture.width;
                 answer["height"] = picture.height;
+                answer["frame"] = {{"width", picture.frameWidth}, {"height", picture.frameHeight}};
                 answer["original"] = original.string();
                 jpeg = picture.jpeg;
             }
@@ -166,7 +193,7 @@ void AddScreenshot(Bench &bench, const Watch &watch)
                 {
                     throw ToolError("screenshot: `quality` is from 0.1 to 1");
                 }
-                const auto picture = CaptureGameWindow(static_cast<float>(quality));
+                const auto picture = CaptureGameWindow(static_cast<float>(quality), size);
                 const auto folder = Screenshots() / "Eluvian";
                 std::error_code error;
                 std::filesystem::create_directories(folder, error);
@@ -178,6 +205,7 @@ void AddScreenshot(Bench &bench, const Watch &watch)
                     .write(picture.jpeg.data(), static_cast<std::streamsize>(picture.jpeg.size()));
                 answer["width"] = picture.width;
                 answer["height"] = picture.height;
+                answer["frame"] = {{"width", picture.frameWidth}, {"height", picture.frameHeight}};
                 if (picture.black)
                 {
                     answer["black"] = true;

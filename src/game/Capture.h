@@ -7,6 +7,8 @@
 // nothing in this build (play, 2026-09-30); the key's way is not read yet.
 #pragma once
 
+#include "core/PictureSize.h"
+
 #include <optional>
 #include <string>
 
@@ -22,12 +24,23 @@ struct Picture
     // display asleep, 2026-10-01, where the game's own screenshot of the
     // same moment was whole.
     bool black = false;
+    // The frame's own size, before it was cropped or scaled to the size asked.
+    int frameWidth = 0;
+    int frameHeight = 0;
+};
+
+// The size a picture is asked at (core/PictureSize.h): none, the frame's.
+struct SizeAsked
+{
+    std::optional<int> width;
+    std::optional<int> height;
+    bool crop = false;
 };
 
 // The game's main window's client area, as a JPEG of `quality` (0 to 1).
 // Throws ToolError saying why not: no visible window, minimised, or Windows
 // could not draw it.
-Picture CaptureGameWindow(float quality);
+Picture CaptureGameWindow(float quality, const SizeAsked &size = {});
 
 // Where the game's window is on the desktop: what turns a place in the
 // game's picture into one a real mouse can be sent to.
@@ -63,6 +76,6 @@ std::optional<std::string> CoveredAt(int x, int y);
 // screenshots carry an Exif header that some readers will not take: an
 // image reader rejected one until it was saved again, and so did the
 // model's own (2026-10-01). Throws ToolError if the bytes are no picture.
-Picture ReencodeJpeg(const std::string &jpeg, float quality);
+Picture ReencodeJpeg(const std::string &jpeg, float quality, const SizeAsked &size = {});
 
 } // namespace eluvian::game

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <utility>
 #include <vector>
 
 #ifndef PW_RENDERFULLCONTENT
@@ -112,10 +113,33 @@ class ComScope
     HRESULT result_;
 };
 
-// A picture's source written as a JPEG of `quality`, with nothing but the
-// picture in it.
-std::string EncodeSource(IWICImagingFactory *factory, IWICBitmapSource *source, UINT width, UINT height, float quality)
+// A picture's source of `width` by `height` written as a JPEG of `quality`,
+// with nothing but the picture in it: the part `fit` takes, at its size.
+Picture EncodeSource(IWICImagingFactory *factory, IWICBitmapSource *frameSource, UINT frameWidth, UINT frameHeight,
+                     const SizeAsked &size, float quality)
 {
+    const auto fit =
+        FitPicture(static_cast<int>(frameWidth), static_cast<int>(frameHeight), size.width, size.height, size.crop);
+    IWICBitmapSource *source = frameSource;
+    ComPtr<IWICBitmapClipper> clipper;
+    if (std::cmp_not_equal(fit.cropWidth, frameWidth) || std::cmp_not_equal(fit.cropHeight, frameHeight))
+    {
+        const WICRect part{fit.cropX, fit.cropY, fit.cropWidth, fit.cropHeight};
+        Check(factory->CreateBitmapClipper(&clipper), "making a clipper");
+        Check(clipper->Initialize(source, &part), "cropping the picture");
+        source = clipper.Get();
+    }
+    ComPtr<IWICBitmapScaler> scaler;
+    if (fit.width != fit.cropWidth || fit.height != fit.cropHeight)
+    {
+        Check(factory->CreateBitmapScaler(&scaler), "making a scaler");
+        Check(scaler->Initialize(source, static_cast<UINT>(fit.width), static_cast<UINT>(fit.height),
+                                 WICBitmapInterpolationModeHighQualityCubic),
+              "scaling the picture");
+        source = scaler.Get();
+    }
+    const auto width = static_cast<UINT>(fit.width);
+    const auto height = static_cast<UINT>(fit.height);
     ComPtr<IWICFormatConverter> converter;
     Check(factory->CreateFormatConverter(&converter), "making a converter");
     Check(converter->Initialize(source, GUID_WICPixelFormat24bppBGR, WICBitmapDitherTypeNone, nullptr, 0.0,
@@ -155,10 +179,13 @@ std::string EncodeSource(IWICImagingFactory *factory, IWICBitmapSource *source, 
     }
     std::string jpeg(bytes, static_cast<std::size_t>(stat.cbSize.QuadPart));
     GlobalUnlock(memory);
-    return jpeg;
+    Picture picture{std::move(jpeg), fit.width, fit.height};
+    picture.frameWidth = static_cast<int>(frameWidth);
+    picture.frameHeight = static_cast<int>(frameHeight);
+    return picture;
 }
 
-std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int height, float quality)
+Picture EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int height, const SizeAsked &size, float quality)
 {
     const ComScope com;
     ComPtr<IWICImagingFactory> factory;
@@ -169,7 +196,8 @@ std::string EncodeJpeg(const std::vector<std::uint8_t> &bgra, int width, int hei
                                           GUID_WICPixelFormat32bppBGRA, static_cast<UINT>(width) * 4,
                                           static_cast<UINT>(bgra.size()), const_cast<BYTE *>(bgra.data()), &bitmap),
           "taking the pixels");
-    return EncodeSource(factory.Get(), bitmap.Get(), static_cast<UINT>(width), static_cast<UINT>(height), quality);
+    return EncodeSource(factory.Get(), bitmap.Get(), static_cast<UINT>(width), static_cast<UINT>(height), size,
+                        quality);
 }
 
 } // namespace
@@ -223,7 +251,7 @@ WindowPlace GameWindowPlace()
     return place;
 }
 
-Picture ReencodeJpeg(const std::string &jpeg, float quality)
+Picture ReencodeJpeg(const std::string &jpeg, float quality, const SizeAsked &size)
 {
     const ComScope com;
     ComPtr<IWICImagingFactory> factory;
@@ -242,11 +270,10 @@ Picture ReencodeJpeg(const std::string &jpeg, float quality)
     UINT width = 0;
     UINT height = 0;
     Check(frame->GetSize(&width, &height), "measuring the picture");
-    return Picture{EncodeSource(factory.Get(), frame.Get(), width, height, quality), static_cast<int>(width),
-                   static_cast<int>(height)};
+    return EncodeSource(factory.Get(), frame.Get(), width, height, size, quality);
 }
 
-Picture CaptureGameWindow(float quality)
+Picture CaptureGameWindow(float quality, const SizeAsked &size)
 {
     HWND window = GameWindow();
     if (window == nullptr)
@@ -314,7 +341,9 @@ Picture CaptureGameWindow(float quality)
     {
         black = pixels[i] == 0 && pixels[i + 1] == 0 && pixels[i + 2] == 0;
     }
-    return Picture{EncodeJpeg(pixels, width, height, quality), width, height, black};
+    auto picture = EncodeJpeg(pixels, width, height, size, quality);
+    picture.black = black;
+    return picture;
 }
 
 } // namespace eluvian::game
