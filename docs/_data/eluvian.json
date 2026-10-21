@@ -890,6 +890,70 @@
    }
   },
   {
+   "name": "peek",
+   "description": "Reads a field of a live object, or of the game's own data, by a chain of offsets: from the start, every offset but the last is a pointer read and followed, and the value is read at the last, as `type`. Use it to check a reading of the exe against the running game: a field at +0x64 of the object a creature holds at +0x7B0 is `{\"object\": \"0x7d9\", \"offsets\": [\"0x7B0\", \"0x64\"], \"type\": \"f32\"}`. Each pointer on the way is named by its class (RTTI). A read that fails is answered with `readable: false` and where, never a crash. Nothing is written.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "object": {
+      "type": "string",
+      "description": "An object's id, \"0x7d9\", as creatures, placeables or party list them."
+     },
+     "side": {
+      "type": "string",
+      "enum": [
+       "game",
+       "client"
+      ],
+      "description": "With `object`: the game's object (CGameObject, the scripts' side), or the client's (CCObject, what is drawn). Default game."
+     },
+     "address": {
+      "type": "string",
+      "description": "In place of `object`: an address in the running game, \"0x00b2b290\"."
+     },
+     "address_id": {
+      "type": "integer",
+      "description": "In place of `object`: an ID of the address library (DAOLib's tools/address_ids.py names them), its address in the running build."
+     },
+     "offsets": {
+      "type": "array",
+      "items": {
+       "type": [
+        "integer",
+        "string"
+       ]
+      },
+      "description": "The chain: numbers, or hex as text (\"0x7B0\", \"-0x10\"). None reads at the start itself."
+     },
+     "type": {
+      "type": "string",
+      "enum": [
+       "f32",
+       "i32",
+       "u32",
+       "u16",
+       "u8",
+       "ptr",
+       "vec3",
+       "quat",
+       "wstring",
+       "bytes"
+      ],
+      "description": "What the value is: a float, an integer, a pointer (with its class), three or four floats, the engine's std::wstring, or raw bytes as hex. Default u32."
+     },
+     "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024,
+      "description": "How many values one after another (bytes: how many bytes, default 16). Default 1."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
    "name": "placeables",
    "description": "Lists the doors, chests, levers and other placeables in the area, nearest first. Each has its `id`, `name`, `tag`, `template`, `position` and `distance`, and:\n\n- `state`, the placeable's own state number (it changes when a door or chest opens), and `stateName`: shut, locked, open or destroyed.\n- `action` and `actionName`: what using it does now (loot, unlock, open, use, ...).\n- `active`, `interactive` (whether it can be used) and `popup`, its tooltip text.\n- `lock`: whether it needs a key (`keyRequired`), the key's tag (`keyTag`), whether the party has it (`keyHeld`), and the lock-picking level needed (`pickLevel`).\n- `leadsTo`, for a way out of the area: the destination area's tag and waypoint.\n\nUse one with `order` action=use.",
    "inputSchema": {
