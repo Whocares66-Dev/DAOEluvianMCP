@@ -3367,6 +3367,56 @@ MUTANTS = [
         "if (false)",
         "ghilana",
     ),
+    # A level, its sky, a cutscene and a stage (#163).
+    Mutant(
+        "ghilana level: a placed model where its room has it, not the level",
+        "src/ghilana/ToolsLevels.cpp",
+        '{"at", level::InLevel(room, placed, {0, 0, 0})},',
+        '{"at", placed.at},',
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana level: a placed model turned by its own turn alone",
+        "src/ghilana/ToolsLevels.cpp",
+        '{"turn", level::Then(placed.turn, room.turn)},',
+        '{"turn", placed.turn},',
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana level: a lamp where its layout has it, not the level",
+        "src/ghilana/ToolsLevels.cpp",
+        '{"at", level::InLevel(room, placed, lamp.at)},',
+        '{"at", lamp.at},',
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana level: a room's layout is listed as a placed model",
+        "src/ghilana/ToolsLevels.cpp",
+        "            if (IsLayout(placed))\n",
+        "            if (IsLayout(placed) && placed.scale < 0)\n",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana cutscene: an action to the end gives 1e10 for its stop",
+        "src/ghilana/ToolsLevels.cpp",
+        '{"stop", a.stop >= 1e9F ? Json("end") : Json(a.stop)},',
+        '{"stop", Json(a.stop)},',
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana cutscene: a spoken line without its text",
+        "src/ghilana/ToolsLevels.cpp",
+        'line["text"] = Utf8(*text);',
+        "(void)text;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana cutscene: a time sampled off the cutscene's frames",
+        "src/ghilana/ToolsLevels.cpp",
+        'asked.at = cutscene::FrameTime(static_cast<float>(args.Number("at")), cut.fps);',
+        'asked.at = static_cast<float>(args.Number("at"));',
+        "ghilana",
+    ),
 ]
 
 

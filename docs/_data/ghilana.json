@@ -2,6 +2,25 @@
  "version": "0.1.0",
  "tools": [
   {
+   "name": "atmosphere",
+   "description": "A level's sky as its layout (.arl) has it: the sky dome, the sun (direction, colour, the colour on characters), the atmosphere's scattering, fog and moon and the clouds, each value by its field's name, the frame effects with their parameters (da_bloom, da_hsvmatrix), and the wind. These are the file's, before a script's SetAtmosphere.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "level": {
+      "type": "string",
+      "description": "The level, \"oth000d\" (its .arl)."
+     }
+    },
+    "required": [
+     "level"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
    "name": "conflicts",
    "description": "Says which copy of a resource the game takes, and every copy of it in the order the game looks for it (with each copy's priority, and why the game does not have one where it does not), for one resource (`name`) or every resource more than one source has. The order is the game's, read in the exe, for the campaign, language and texture quality ghilana was started with. Use it to see what an add-in or a mod overrides and what overrides it (`source`: `lost` counts those it does not win), or where a resource comes from.",
    "inputSchema": {
@@ -39,6 +58,50 @@
       "description": "How many to skip first, to page through a long answer. Default 0."
      }
     }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "cutscene",
+   "description": "A cutscene decoded: its area, length, frames a second, end script, blend tree, stage, and its actors (model, creature, the area's tag that plays it, origin and final places), each with its actions in order: kind (animation, spoken line with its text, position or orientation track, stage camera, sound, frame effect, fog...), start and stop, and the action's own fields. `curves` adds each curve's keys; `at` samples every curve and places every actor at that time, as the engine does. Name a .cut, or a conversation's line that plays one, held in the line or named by it.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The cutscene, \"bhmcs_intro\" (its .cut)."
+     },
+     "conversation": {
+      "type": "string",
+      "description": "In place of `name`: a conversation, \"bhm100_jowan\"."
+     },
+     "line": {
+      "type": "integer",
+      "description": "With `conversation`: the line's index in its list."
+     },
+     "actor": {
+      "description": "Only this actor, by its id (a number) or its name (\"Jowan\").",
+      "type": [
+       "integer",
+       "string"
+      ]
+     },
+     "kind": {
+      "type": "string",
+      "description": "Only actions of this template: AANI, TRAK."
+     },
+     "curves": {
+      "type": "boolean",
+      "description": "Each curve's vertices and transitions. Default false."
+     },
+     "at": {
+      "type": "number",
+      "description": "Seconds into the cutscene: every curve's value and every actor's place then."
+     }
+    },
+    "required": []
    },
    "annotations": {
     "readOnlyHint": true
@@ -94,6 +157,52 @@
     "required": [
      "to"
     ]
+   }
+  },
+  {
+   "name": "level",
+   "description": "A level's layout (.arl) and its rooms (.rml): each room's number, bounds, place and the rooms seen from it; the models the rooms place, each in the level's space (place, turn, scale, its lightmaps' atlases), paged, with `model` to keep those whose name has a word, `room` one room's, and `materials` each model's material objects by part (from its .mmh); and the rooms' lights counted, listed with `lights`: lamps (colour, radius, flicker, affect domain: 2 in a room's _ll layout, 1 in its _lc), ambient lights and light probes, each in the level's space. A level's name is an area's layout, \"lak303d\".",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The level, \"lak303d\" (its .arl)."
+     },
+     "model": {
+      "type": "string",
+      "description": "Only the placed models whose name has this word: fxe, lamp."
+     },
+     "room": {
+      "type": "integer",
+      "description": "Only the models and lights of this room's number."
+     },
+     "materials": {
+      "type": "boolean",
+      "description": "Each placed model's material objects by part, from its hierarchy. Default false."
+     },
+     "lights": {
+      "type": "boolean",
+      "description": "List the lamps, ambient lights and probes, not only count them. Default false."
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2000,
+      "description": "The most to return. Default 100."
+     },
+     "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many to skip first, to page through a long answer. Default 0."
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
    }
   },
   {
@@ -460,6 +569,25 @@
       "description": "How many to skip first, to page through a long answer. Default 0."
      }
     }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "stage",
+   "description": "A stage (.stg) a cutscene or a conversation's line is set on: its places (tag, position, orientation, default camera) and its cameras (position, orientation, field of view, the places in shot, and what it looks from and at, with its LookingAtType), in the stage's own frame.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The stage, \"jowan_attack\" (its .stg)."
+     }
+    },
+    "required": [
+     "name"
+    ]
    },
    "annotations": {
     "readOnlyHint": true

@@ -482,7 +482,7 @@ TEST_CASE("every tool's name is a model's and its schema is an object", "[ghilan
 {
     Served served;
     const Json tools = served.bench.Tools().Describe();
-    CHECK(tools.size() == 20);
+    CHECK(tools.size() == 24);
     for (const auto &tool : tools)
     {
         const auto name = tool["name"].get<std::string>();

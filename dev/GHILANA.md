@@ -177,7 +177,14 @@ All of it into a mod folder of the user's naming, laid out as an override folder
 
 ### Later: assets
 
-`model` and `model_export` are done (#132, above); and `model_import` the way back (#132, above). `level` (a level's rooms, their models, lightmaps and probes, out of `Level.h`), `material` (a `.mao`'s shader and textures, with ElgaraShaders' classification), `movie` (a GFx movie's ExternalInterface calls and fscommands, out of `GfxMovie.h`; DAOLib's `dev/GUI.md`).
+`model` and `model_export` are done (#132, above); and `model_import` the way back (#132, above). Since #163, for DAOParagonEngine, whose agents ran its daolib-sys examples for each of these (a compile each time, and only in that repository): `level`, a level's rooms (`.arl` and each `.rml`) with the models they place in the level's space, paged and filtered by name and room, each model's material objects by part from its `.mmh`, and the rooms' lamps, ambient lights and probes from their `_ll` and `_lc` layouts, which a room places as it does a model (`Level.h`); `atmosphere`, the `.arl`'s sun, sky dome, atmosphere and clouds by field name, frame effects and wind; `cutscene`, a `.cut`'s or a conversation line's cutscene, its actors and their actions by kind with their own fields and a spoken line's text, its curves' keys, and every curve sampled and every actor placed at a time as the engine does (`Cutscene.h`); `stage`, a `.stg`'s places and cameras with their LookingAt fields (`Stage.h`). Seen over the GOG install 2026-10-20:
+- **lak303d (the Circle's first level):** 9 rooms and 1,190 placed models. 1,186 of the models were within a metre of their room's bounds. The 60 at exactly (0, 0, 0) were the tower's floors, supports and wall blocks, pivoted on its axis and told apart by their turns. Its 90 lamps all fell within their rooms: 83 of affect domain 2, and 7 of domain 1, the `_lc` layouts' player lights of radius 1000. It has 9 ambient lights and 8 probes, all baked.
+- **oth000d's atmosphere:** sky dome sb_day, AtmoSunIntensity 15.85, the fog and moon by name.
+- **bhmcs_intro:** 14 actors and 71 actions, its six spoken lines with their text ("On a cliff overlooking the dark waters of Lake Calenhad...").
+- **jowan_attack:** 14 places and 15 cameras, `group` at 45 degrees looking at greagoir with type 3, as DAOLib's test reads it.
+- **bhm100_jowan's lines:** lines 0 to 2 hold their own cut, and line 3 names 36642.cut. All four are on the stage jowan_attack, with 11 actors.
+
+Each call took 21 to 78 ms after the index. Not yet: `material` (a `.mao`'s shader and textures, with ElgaraShaders' classification), `movie` (a GFx movie's ExternalInterface calls and fscommands, out of `GfxMovie.h`; DAOLib's `dev/GUI.md`).
 
 ### Not ghilana's
 

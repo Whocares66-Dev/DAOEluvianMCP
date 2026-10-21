@@ -99,6 +99,7 @@ void RegisterTools(Bench &bench, Ghilana &ghilana)
     detail::RegisterTextureTools(bench, ghilana);
     detail::RegisterModTools(bench, ghilana);
     detail::RegisterTemplateTools(bench, ghilana);
+    detail::RegisterLevelTools(bench, ghilana);
 }
 
 std::string Instructions()
@@ -109,7 +110,10 @@ std::string Instructions()
            "`resources` finds a resource's name by a word; `resource` reads one; `conflicts` says which sources have "
            "a resource and which copy the game takes; `table` reads a data table merged as the game merges it; "
            "`strings` turns string ids to text and back; `query` searches every template or file of a type by its "
-           "fields. A resource read by its name is the copy the game takes, in the game's own order (read in the "
+           "fields; `level`, `atmosphere`, `cutscene` and `stage` decode a level's rooms, models and lights, its sky, "
+           "a "
+           "cutscene's actions and a stage's cameras. A resource read by its name is the copy the game takes, in the "
+           "game's own order (read in the "
            "exe), for the campaign, language and texture quality ghilana was started with. The running game is "
            "Eluvian's server, not this one.";
 }

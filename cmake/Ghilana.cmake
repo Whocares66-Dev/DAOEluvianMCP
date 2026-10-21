@@ -76,6 +76,7 @@ add_library(
     src/ghilana/Text.cpp
     src/ghilana/ToolsData.cpp
     src/ghilana/ToolsFiles.cpp
+    src/ghilana/ToolsLevels.cpp
     src/ghilana/ToolsModels.cpp
     src/ghilana/ToolsMods.cpp
     src/ghilana/ToolsTemplates.cpp

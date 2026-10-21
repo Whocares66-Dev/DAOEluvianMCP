@@ -92,6 +92,7 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana);
 void RegisterTextureTools(Bench &bench, Ghilana &ghilana);
 void RegisterModTools(Bench &bench, Ghilana &ghilana);
 void RegisterTemplateTools(Bench &bench, Ghilana &ghilana);
+void RegisterLevelTools(Bench &bench, Ghilana &ghilana);
 // The `limit` and `offset` a paged tool takes, in its schema.
 Json PageProperties(int defaultLimit, int mostLimit);
 
