@@ -17,7 +17,7 @@ Eluvian covers the game itself, not any one mod. A mod that registers with Eluvi
 
 | Call | What it does |
 |---|---|
-| `game_saves {"character": "Aedan"}` | Bridge tool. Lists the saves on disk, newest first. Works before the game runs. |
+| `game_saves {"character": "Aedan"}` | Bridge tool. Lists the saves on disk, newest first, each with where it was made (`area` tag, `position`, `areaName`, `level`). Works before the game runs. `{"area": "pre4"}` finds the saves in areas whose tag begins so; `{"profile": "default"}` lists the game as ever's while an instance is chosen. |
 | `game_launch {"owner": "my-name", "load": {"character": "Aedan", "kind": "manual", "number": 2}}` | Bridge tool. Starts the game (never a second copy), loads the save without going through the menus, and returns once the world is ready. |
 | `game_new {"campaign": "origins"}` | Bridge tool. With the game at the main menu (`game_launch` with no `load`), starts a new game: New Game, the campaign chosen, its intro skipped (`intro: "play"` lets it play), and returns once the character creation screen is up, with `hero`, the id of the creature being created. A game already in a world is refused; on a timeout it names the stage it stopped at. Seen in play for Origins; Awakening's start may offer to import a hero instead. |
 | `health {}` | Should report state `running` and mode `explore`. Also lists the mods that registered. |

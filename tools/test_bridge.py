@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -919,6 +920,129 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(kinds["Lyna"]["auto"]["count"], 1)
         self.bridge.characters = self.folder / "nowhere"
         self.assertEqual(self.call("game_saves")["structuredContent"]["count"], 0)
+
+    def write_save(
+        self, folder: Path, name: str, area: str, xyz: tuple, area_name: str, level: int
+    ) -> None:
+        """A save's two files as GFF4 V4.0 as the game writes them, cut down to the fields read:
+        the .das's SavegameCampaign with its area and position, the .met's area name and level."""
+
+        def gff4(kind: bytes, templates: list, data: bytes) -> bytes:
+            # Header, then each template (label, field count, field offset, size), then fields.
+            count = len(templates)
+            fields_at = 28 + 16 * count
+            table, fields = b"", b""
+            for label, size, entries in templates:
+                table += struct.pack(
+                    "<4sIII", label, len(entries), fields_at + len(fields), size
+                )
+                for flabel, ftype, flags, off in entries:
+                    fields += struct.pack("<III", flabel, ftype | (flags << 16), off)
+            data_at = fields_at + len(fields)
+            head = b"GFF V4.0PC  " + kind + b"V1.1" + struct.pack("<II", count, data_at)
+            return head + table + fields + data
+
+        def text(s: str) -> bytes:
+            return struct.pack("<I", len(s) + 1) + (s + "\0").encode("utf-16-le")
+
+        folder.mkdir(parents=True, exist_ok=True)
+        das = gff4(
+            b"SAVE",
+            [
+                (b"SAVE", 16, [(bridge_module.SAVE_CAMPAIGN, 1, 0x4000, 0)]),
+                (
+                    b"MODU",
+                    16,
+                    [
+                        (bridge_module.CAMPAIGN_AREA, 14, 0, 0),
+                        (bridge_module.CAMPAIGN_POSITION, 10, 0, 4),
+                    ],
+                ),
+            ],
+            struct.pack("<I3f", 16, *xyz) + text(area),
+        )
+        (folder / f"{name}.das").write_bytes(das)
+        met = gff4(
+            b"SVMT",
+            [
+                (
+                    b"SVMT",
+                    8,
+                    [
+                        (bridge_module.META_AREA_NAME, 14, 0, 0),
+                        (bridge_module.META_LEVEL, 5, 0, 4),
+                    ],
+                )
+            ],
+            struct.pack("<Ii", 8, level) + text(area_name),
+        )
+        (folder / f"{name}.das.met").write_bytes(met)
+
+    def test_a_save_says_where_it_was_made_and_saves_are_found_by_area(self) -> None:
+        # Finding a save in an area meant searching file names (#158).
+        characters = self.folder / "Characters"
+        saves = characters / "Lyna" / "Saves"
+        self.write_save(
+            saves / "Slot_4",
+            "Eluviantestforest",
+            "bed100ar_forest_clearing",
+            (55.25, 144.5, -14.25),
+            "Forest Clearing",
+            1,
+        )
+        self.write_save(
+            saves / "AutoSave_2",
+            "savegame",
+            "pre440ar_tower_level_4",
+            (5.5, -3.5, 0.0),
+            "Tower of Ishal - Upper Floor",
+            7,
+        )
+        (saves / "Slot_9").mkdir()
+        (saves / "Slot_9" / "broken.das").write_bytes(b"not a save")
+        self.bridge.characters = characters
+
+        listed = {
+            s["name"]: s for s in self.call("game_saves")["structuredContent"]["saves"]
+        }
+        self.assertEqual(
+            listed["Eluviantestforest"]["area"], "bed100ar_forest_clearing"
+        )
+        self.assertEqual(
+            listed["Eluviantestforest"]["position"],
+            {"x": 55.25, "y": 144.5, "z": -14.25},
+        )
+        self.assertEqual(listed["Eluviantestforest"]["areaName"], "Forest Clearing")
+        self.assertEqual(listed["savegame"]["level"], 7)
+        # A save whose files can't be read is still listed, and says why there's no place.
+        self.assertIn("could not be read", listed["broken"]["placeNote"])
+        self.assertNotIn("area", listed["broken"])
+        # By an area's tag, or the start of one, without case.
+        found = self.call("game_saves", {"area": "PRE4"})["structuredContent"]
+        self.assertEqual([s["name"] for s in found["saves"]], ["savegame"])
+        found = self.call("game_saves", {"area": "bed100ar_forest_clearing"})
+        self.assertEqual(found["structuredContent"]["count"], 1)
+        # Without places, the folders alone.
+        bare = self.call("game_saves", {"places": False})["structuredContent"]["saves"]
+        self.assertTrue(all("area" not in s for s in bare))
+
+    def test_the_default_profiles_saves_are_listed_whichever_copy_is_chosen(
+        self,
+    ) -> None:
+        default = self.folder / "default"
+        self.write_save(
+            default / "Characters" / "Aedan" / "Saves" / "Slot_1",
+            "CastleCousland",
+            "cou100ar_castle",
+            (1.0, 2.0, 3.0),
+            "Castle Cousland",
+            2,
+        )
+        self.many(default=default)
+        self.call("game_instance", {"name": "two"})
+        self.assertEqual(self.call("game_saves")["structuredContent"]["count"], 0)
+        theirs = self.call("game_saves", {"profile": "default"})["structuredContent"]
+        self.assertEqual([s["area"] for s in theirs["saves"]], ["cou100ar_castle"])
 
     def test_input_that_ends_still_gets_every_answer(self) -> None:
         lines = [

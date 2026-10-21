@@ -36,6 +36,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import threading
@@ -657,10 +658,138 @@ def save_counts(saves: list[dict]) -> dict:
     return counts
 
 
-def list_saves(characters: Path, character: str | None = None) -> list[dict]:
+# A save's place, read from its files without the game (#158): the area tag and where the hero
+# stood are in the save's SavegameCampaign (CampaignCIFEntryArea, CampaignCIFEntryPosition: in
+# Lyna's save in the Forest Clearing, bed100ar_forest_clearing and the point she stood at), the
+# area's name and the level in its .das.met. Field numbers are xoreos's (DAOLib's
+# dev/gff4_fields.csv), the format DAOLib's dev/SAVES.md and tools/gff4.py. A profile's saves
+# were 538, 5.9 GB on this machine (2026-10-20), so a .das is read by seeking to the few bytes
+# needed, never whole; and a file OneDrive keeps online only is left alone, since a read would
+# download it.
+SAVE_CAMPAIGN = 16000
+CAMPAIGN_AREA = 17101
+CAMPAIGN_POSITION = 17102
+META_AREA_NAME = 16800
+META_LEVEL = 16802
+GFF4_STRUCT, GFF4_REFERENCE = 0x4000, 0x2000
+GFF4_NULL = 0xFFFFFFFF
+# FILE_ATTRIBUTE_OFFLINE, _RECALL_ON_OPEN, _RECALL_ON_DATA_ACCESS: a placeholder of a cloud file.
+NOT_HERE = 0x1000 | 0x40000 | 0x400000
+
+
+class Gff4:
+    """The fields of a GFF4 file's structs, each read from the file where it lies."""
+
+    def __init__(self, f) -> None:
+        self.f = f
+        head = self.read(0, 40)
+        if (
+            head[:4] != b"GFF "
+            or head[4:8] not in (b"V4.0", b"V4.1")
+            or head[8:12] != b"PC  "
+        ):
+            raise ValueError("not a GFF4 file")
+        count = struct.unpack_from("<I", head, 20)[0]
+        at = 32 if head[4:8] == b"V4.1" else 24
+        self.data = struct.unpack_from("<I", head, at)[0]
+        self.templates = []
+        table = self.read(at + 4, 16 * count)
+        for i in range(count):
+            _, fields, offset, _ = struct.unpack_from("<4sIII", table, 16 * i)
+            raw = self.read(offset, 12 * fields) if offset != GFF4_NULL else b""
+            self.templates.append(
+                {
+                    label: (tf & 0xFFFF, tf >> 16, off)
+                    for label, tf, off in struct.iter_unpack("<III", raw)
+                }
+            )
+
+    def read(self, at: int, n: int) -> bytes:
+        self.f.seek(at)
+        data = self.f.read(n)
+        if len(data) < n:
+            raise ValueError("the file ends early")
+        return data
+
+    def u32(self, at: int) -> int:
+        return struct.unpack("<I", self.read(at, 4))[0]
+
+    def field(self, template: int, base: int, label: int):
+        """A field of the struct of `template` at `base`: (type, flags, where), or None."""
+        found = self.templates[template].get(label)
+        return None if found is None else (found[0], found[1], base + found[2])
+
+    def child(self, template: int, base: int, label: int):
+        """The struct a struct field holds: (its template, where it is), or None."""
+        found = self.field(template, base, label)
+        if found is None or not found[1] & GFF4_STRUCT:
+            return None
+        kind, flags, at = found
+        if flags & GFF4_REFERENCE:
+            offset = self.u32(at)
+            if offset == GFF4_NULL:
+                return None
+            at = self.data + offset
+        return kind, at
+
+    def value(self, template: int, base: int, label: int):
+        """A string, a 32-bit number or a vector3 field's value, or None."""
+        found = self.field(template, base, label)
+        if found is None:
+            return None
+        kind, _, at = found
+        if kind == 14:
+            offset = self.u32(at)
+            if offset == GFF4_NULL:
+                return ""
+            length = self.u32(self.data + offset)
+            text = self.read(self.data + offset + 4, 2 * length)
+            return text.decode("utf-16-le", errors="replace").rstrip("\0")
+        if kind in (4, 5):
+            return struct.unpack("<I" if kind == 4 else "<i", self.read(at, 4))[0]
+        if kind == 10:
+            return list(struct.unpack("<3f", self.read(at, 12)))
+        return None
+
+
+def save_place(das: Path) -> dict:
+    """A save's area tag, the hero's position, the area's name and the level; what could not
+    be read is left out, and `placeNote` says why."""
+    place: dict = {}
+    try:
+        for file in (das, das.with_name(das.name + ".met")):
+            if getattr(file.stat(), "st_file_attributes", 0) & NOT_HERE:
+                return {
+                    "placeNote": "the save's files are kept online only, and were not read"
+                }
+        with open(das, "rb") as f:
+            gff = Gff4(f)
+            campaign = gff.child(0, gff.data, SAVE_CAMPAIGN)
+            if campaign is not None:
+                place["area"] = gff.value(*campaign, CAMPAIGN_AREA)
+                xyz = gff.value(*campaign, CAMPAIGN_POSITION)
+                if xyz is not None:
+                    place["position"] = {"x": xyz[0], "y": xyz[1], "z": xyz[2]}
+        with open(das.with_name(das.name + ".met"), "rb") as f:
+            meta = Gff4(f)
+            place["areaName"] = meta.value(0, meta.data, META_AREA_NAME)
+            place["level"] = meta.value(0, meta.data, META_LEVEL)
+    except (OSError, ValueError, struct.error) as error:
+        place["placeNote"] = f"the save's files could not be read: {error}"
+    return place
+
+
+def list_saves(
+    characters: Path,
+    character: str | None = None,
+    places: bool = False,
+    area: str | None = None,
+) -> list[dict]:
     """The game's saves, newest first, from their folders:
     Characters\<character>\Saves\<Slot_|AutoSave_|QuickSave_><n>\<name>.das (dev/SAVES.md in
-    DAOLib). The name is the save's, which the game makes the area's (CastleCousland)."""
+    DAOLib). The name is the save's, which the game makes the area's (CastleCousland). With
+    `places`, each save's area, position, area name and level (save_place); with `area`, only
+    the saves whose area tag begins with it, without case."""
     saves = []
     if not characters.is_dir():
         return saves
@@ -687,17 +816,22 @@ def list_saves(characters: Path, character: str | None = None) -> list[dict]:
             if das is None:
                 continue
             saved = das.stat().st_mtime
-            saves.append(
-                {
-                    "character": folder.name,
-                    "kind": kind[0],
-                    "number": int(slot.name[len(kind[1]) :]),
-                    "name": das.stem,
-                    "saved": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(saved)),
-                    "folder": str(slot),
-                    "_mtime": saved,
-                }
-            )
+            save = {
+                "character": folder.name,
+                "kind": kind[0],
+                "number": int(slot.name[len(kind[1]) :]),
+                "name": das.stem,
+                "saved": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(saved)),
+                "folder": str(slot),
+                "_mtime": saved,
+            }
+            if places or area:
+                save.update(save_place(das))
+            if area and not str(save.get("area") or "").lower().startswith(
+                area.lower()
+            ):
+                continue
+            saves.append(save)
     saves.sort(key=lambda save: save["_mtime"], reverse=True)
     for save in saves:
         del save["_mtime"]
@@ -771,14 +905,33 @@ BRIDGE_TOOLS = [
         "description": (
             "The game's saves on disk, newest first: character, kind (manual, auto, quick), number, "
             "the save's name (the area's, as the game names it), when it was saved, and its folder; "
-            "`kinds`, each character's count of each kind against the most the game keeps "
-            "(500 manual, 4 auto, 1 quick: past it, `full`, a save is refused). "
-            "Answers while the game is down, to choose what a test starts from."
+            "where it was made, read from its files: the `area` tag, the `position` the hero stood "
+            "at, the `areaName` and the `level`; and `kinds`, each character's count of each kind "
+            "against the most the game keeps (500 manual, 4 auto, 1 quick: past it, `full`, a save "
+            "is refused). Answers while the game is down, to choose what a test starts from: "
+            "`area` finds the saves made in an area, and `warp` goes to one with no save there."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "character": {"type": "string", "description": "Only this character's"}
+                "character": {"type": "string", "description": "Only this character's"},
+                "area": {
+                    "type": "string",
+                    "description": "Only the saves made in an area whose tag begins with this, "
+                    'without case: "pre440ar_tower_level_4", or "pre4" for every area of Ishal',
+                },
+                "profile": {
+                    "type": "string",
+                    "enum": ["own", "default"],
+                    "description": "own (the default): the saves of this bridge's copy, an "
+                    "instance's own; default: the game as ever's, Documents', whichever copy is "
+                    "chosen",
+                },
+                "places": {
+                    "type": "boolean",
+                    "description": "Read where each save was made. Default true; false lists the "
+                    "folders alone, faster for many saves",
+                },
             },
         },
         "annotations": {"readOnlyHint": True},
@@ -2059,8 +2212,17 @@ class Bridge:
             return self.game_events(arguments)
         if name == "game_saves":
             character = arguments.get("character")
+            area = arguments.get("area")
+            characters = (
+                self.default / "Characters"
+                if arguments.get("profile") == "default"
+                else self.characters
+            )
             saves = list_saves(
-                self.characters, character if isinstance(character, str) else None
+                characters,
+                character if isinstance(character, str) else None,
+                places=arguments.get("places", True) is not False,
+                area=area if isinstance(area, str) and area else None,
             )
             return text_result(
                 {"count": len(saves), "kinds": save_counts(saves), "saves": saves}
