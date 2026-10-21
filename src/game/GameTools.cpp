@@ -2,8 +2,11 @@
 
 #include "game/Shared.h"
 
+#include "dao/Animation.h"
 #include "dao/Equipment.h"
 #include "dao/Party.h"
+
+#include <unordered_map>
 
 namespace eluvian::game
 {
@@ -22,6 +25,10 @@ struct ScriptEventTopic
 // dozen a second and say little; nor EVENT_TYPE_COMMAND_COMPLETE, the most
 // frequent of all in play (2,094 of a session's 12,743 events, 2026-09-30),
 // which eluvian.command.ended says better: who, what, and how it ended.
+// The animations table, anim_base, anim_combat and anim_placeables merged
+// (DAOLib's dao/core/Anb.h: table 0).
+constexpr std::int32_t kTableAnimations = 0;
+
 constexpr ScriptEventTopic kScriptEvents[] = {
     {dao::script::EventType::Damaged, "damaged"},
     {dao::script::EventType::Death, "death"},
@@ -159,6 +166,29 @@ Json CommandPayload(ObjectId id, const dao::Command &command)
     return payload;
 }
 
+// Each clip a creature begins, for DAOParagonEngine's timelines diffed row by
+// row against the game's (#165, DAOLib #217's hook on the play call,
+// 0x006AA7E0). Called often in a fight, always on the game's thread: a row's
+// label is looked up once.
+void AnimationPlayed(Bench &bench, ObjectId id, std::int32_t row, float speed, float blend, bool flag)
+{
+    static std::unordered_map<std::int32_t, std::string> labels;
+    auto [label, added] = labels.try_emplace(row);
+    if (added)
+    {
+        label->second = Narrow(api::GetM2DAString(kTableAnimations, L"Label", row));
+    }
+    const dao::Vector at = api::GetPosition(id);
+    bench.Events().Emit("eluvian.animation.played", Json{{"id", IdJson(id)},
+                                                         {"tag", Narrow(api::GetTag(id))},
+                                                         {"row", row},
+                                                         {"label", label->second},
+                                                         {"speed", speed},
+                                                         {"blend", blend},
+                                                         {"flag", flag},
+                                                         {"position", Json::array({at.x, at.y, at.z})}});
+}
+
 } // namespace
 
 void DescribeTopics(EventCatalog &topics)
@@ -230,6 +260,20 @@ void DescribeTopics(EventCatalog &topics)
         "creatures that were hurt, or killed with `stage_kill`. The engine's own eluvian.script.death fires "
         "1.5 to 2.5 seconds later, once the death has played out.",
         Json{{"id", "the creature's id"}, {"name", "its name"}, {"killer", "the last creature to hurt it, if known"}});
+    describe("eluvian.animation.played",
+             "A creature began a clip on its base layer, by the engine's own play call: a command's step (a "
+             "swing, an evade, a deathblow, a knockdown), a conversation line, a walk, the idle. Clips the "
+             "animation set starts on its own (a one-shot returning to the idle) are not seen. Often several a "
+             "second in a fight: read it with `match` on the creature's id or tag.",
+             Json{{"id", "the creature's id"},
+                  {"tag", "its tag"},
+                  {"row", "the animation's row of the animations table (anim_base, anim_combat, anim_placeables), "
+                          "a number"},
+                  {"label", "the row's Label"},
+                  {"speed", "the play speed, 1 normal"},
+                  {"blend", "the fade into it, in weight per second; -1 instant, -2 over a fifth of the clip"},
+                  {"flag", "the play call's last argument, as the engine passes it"},
+                  {"position", "where the creature stood, [x, y, z]"}});
     describe("eluvian.command.started",
              "A creature started a command from its queue: an attack, a move, an ability, a wait, an "
              "animation, and so on.",
@@ -305,6 +349,9 @@ void AddEngineEvents(Bench &bench)
         }
     });
 
+    dao::animation::OnPlayed([&bench](ObjectId id, std::int32_t row, float speed, float blend, bool flag) {
+        AnimationPlayed(bench, id, row, speed, blend, flag);
+    });
     dao::saves::OnGameLoaded([&bench](const std::optional<dao::saves::Slot> &slot) {
         Json payload = {{"newGame", !slot.has_value()}};
         if (slot)

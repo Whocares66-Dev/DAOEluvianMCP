@@ -307,7 +307,7 @@ Json Gff3Loc(const gff3::Struct &node, const std::string &label)
 
 Json Gff3Value(const gff3::Struct &node, const gff3::Field &field, const Limits &limits, int depth)
 {
-    const std::string &label = field.label;
+    const std::string label(field.label);
     switch (field.type)
     {
     case gff3::Type::Byte:

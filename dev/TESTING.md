@@ -537,3 +537,9 @@ Saves found by area, 2026-10-20 (#158): `game_saves` with `profile` default over
 - Lyna (0x82), client side, +0x120 as vec3: (55.2909, 144.3523, -14.1715), the `creatures` tool's position to the last digit; the object a CCCreature, and its game side the same address.
 - +0x7B0 then +0x64 as f32: a CAppearance at +0x7B0, and 1.55 at its +0x64, an elf's height, as lib-agent-2 read the cutscene actor's height there (0x007CE5A0).
 - `address_id` 10547 (CClientExoApp::SetPaused) as bytes: 0x005D6740, `6a ff 68 50 df a8 00 64`, the function's prologue; an address of 0x10: `readable: false` with the step, the game running on.
+
+`eluvian.animation.played` in play, 2026-10-21 (#165, DAOLib #217 at 1c0e70d), in instance eluvian-test with this branch's release build staged, Lyna's manual 4 (the forest clearing), 15,000 frames, by MCP alone:
+- At the load every creature began row 1 Pause (blend -1, then -2), the dead hunters row 3 Dead; a portrait creature (0x3e0, no tag, at the origin) row 678 at speed 0.
+- Idle: Pause and the idle twitches (rows 640 to 644, blend 2.5), each started by a PlayAnimation command that ends "looping" as Pause comes back.
+- Tamlen (an archer) attacking a genlock: 249 Aim at speed 1.96, 48 frames on 243 Fire, the attack_impact 21 frames after; then 248 Withdraw and Pause at blend 3.0, and 101 Exit.
+- Lyna's and Tamlen's walks of 75 m: no clip, the walk not being played through that call. Ids as `creatures` gives them; frames at about 54 a second, no hitch. A conversation line not seen.

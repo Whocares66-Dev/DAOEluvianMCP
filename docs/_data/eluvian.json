@@ -1938,6 +1938,21 @@
  ],
  "topics": [
   {
+   "topic": "eluvian.animation.played",
+   "description": "A creature began a clip on its base layer, by the engine's own play call: a command's step (a swing, an evade, a deathblow, a knockdown), a conversation line, a walk, the idle. Clips the animation set starts on its own (a one-shot returning to the idle) are not seen. Often several a second in a fight: read it with `match` on the creature's id or tag.",
+   "fields": {
+    "id": "the creature's id",
+    "tag": "its tag",
+    "row": "the animation's row of the animations table (anim_base, anim_combat, anim_placeables), a number",
+    "label": "the row's Label",
+    "speed": "the play speed, 1 normal",
+    "blend": "the fade into it, in weight per second; -1 instant, -2 over a fifth of the clip",
+    "flag": "the play call's last argument, as the engine passes it",
+    "position": "where the creature stood, [x, y, z]"
+   },
+   "from": "eluvian"
+  },
+  {
    "topic": "eluvian.command.ended",
    "description": "A creature's command ended. `result` says how.",
    "fields": {
