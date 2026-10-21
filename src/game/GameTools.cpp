@@ -3,6 +3,7 @@
 #include "game/Shared.h"
 
 #include "dao/Animation.h"
+#include "dao/Audio.h"
 #include "dao/Equipment.h"
 #include "dao/Party.h"
 
@@ -189,6 +190,19 @@ void AnimationPlayed(Bench &bench, ObjectId id, std::int32_t row, float speed, f
                                                          {"position", Json::array({at.x, at.y, at.z})}});
 }
 
+// Each FMOD event the game starts (#166): put on the bus and nothing more,
+// since it comes on the thread that started it.
+void SoundPlayed(Bench &bench, const dao::audio::EventStart &start)
+{
+    Json payload = {
+        {"path", std::string(start.path)}, {"name", std::string(start.name)}, {"positional", start.positional}};
+    if (start.positional)
+    {
+        payload["position"] = Json::array({start.position[0], start.position[1], start.position[2]});
+    }
+    bench.Events().Emit("eluvian.sound.played", std::move(payload));
+}
+
 } // namespace
 
 void DescribeTopics(EventCatalog &topics)
@@ -274,6 +288,17 @@ void DescribeTopics(EventCatalog &topics)
                   {"blend", "the fade into it, in weight per second; -1 instant, -2 over a fifth of the clip"},
                   {"flag", "the play call's last argument, as the engine passes it"},
                   {"position", "where the creature stood, [x, y, z]"}});
+
+    describe("eluvian.sound.played",
+             "The game started a sound: an FMOD event, by the event's own start, so music, the interface, "
+             "footsteps, blows, voices and ambience alike. Often many a second: read it with `match` on the "
+             "path, or a part of the path's own field. Which creature made it is not known.",
+             Json{{"path", "the event's path, \"project/group/.../event\", as the scripts' PlaySound names it"},
+                  {"name", "the event's own name, the path's last part"},
+                  {"positional", "true for a sound placed in the world (FMOD's 3-D mode); false for music and the "
+                                 "interface"},
+                  {"position", "where it was placed, [x, y, z], for a positional sound; a 3-D sound nobody placed "
+                               "yet is at its default, usually the origin"}});
     describe("eluvian.command.started",
              "A creature started a command from its queue: an attack, a move, an ability, a wait, an "
              "animation, and so on.",
@@ -352,6 +377,12 @@ void AddEngineEvents(Bench &bench)
     dao::animation::OnPlayed([&bench](ObjectId id, std::int32_t row, float speed, float blend, bool flag) {
         AnimationPlayed(bench, id, row, speed, blend, flag);
     });
+
+    // Each FMOD event the game starts, for DAOParagonEngine's mixer checked
+    // against the game's (#166, DAOLib #218's hook on fmod_event.dll's
+    // Event::start). On the thread that started it, which need not be the
+    // game's: nothing of the game is read here, only the event put on the bus.
+    dao::audio::OnEventStart([&bench](const dao::audio::EventStart &start) { SoundPlayed(bench, start); });
     dao::saves::OnGameLoaded([&bench](const std::optional<dao::saves::Slot> &slot) {
         Json payload = {{"newGame", !slot.has_value()}};
         if (slot)

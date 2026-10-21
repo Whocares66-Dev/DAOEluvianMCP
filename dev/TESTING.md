@@ -543,3 +543,9 @@ Saves found by area, 2026-10-20 (#158): `game_saves` with `profile` default over
 - Idle: Pause and the idle twitches (rows 640 to 644, blend 2.5), each started by a PlayAnimation command that ends "looping" as Pause comes back.
 - Tamlen (an archer) attacking a genlock: 249 Aim at speed 1.96, 48 frames on 243 Fire, the attack_impact 21 frames after; then 248 Withdraw and Pause at blend 3.0, and 101 Exit.
 - Lyna's and Tamlen's walks of 75 m: no clip, the walk not being played through that call. Ids as `creatures` gives them; frames at about 54 a second, no hitch. A conversation line not seen.
+
+`eluvian.sound.played` in play, 2026-10-21 (#166, DAOLib #218 at 60aa40b), in instance eluvian-test with this branch's release build staged, Lyna's manual 4 (the forest clearing), about 10,000 frames, by MCP alone:
+- Not positional: the music (music/_menu/main, music/dalish_k/main and its stingers), the interface (glo_gui/gui/gui_load_hit4), the ducking categories.
+- Positional: the ambience's loops at (123.6, 131.7, 2.0), its single sounds about (103, 101, 20); 92 footsteps (glo_fly_fs/humanoid/small) and 100 leather armour sounds in the walks.
+- Tamlen's shot: glo_fly_wep/weapon_impacts/bow/movement/load and fire where he stood (130.6, 115.3), the arrow's flight beside him, its impact on dirt 4 frames on at (132.7, 114.6).
+- 59.7 frames a second over 140 s, no stutter; audio_categories/CategoryDucking/combat about twice a second all session.

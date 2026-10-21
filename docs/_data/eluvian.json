@@ -2261,6 +2261,17 @@
     "floats": "the event's decimal-number parameters"
    },
    "from": "eluvian"
+  },
+  {
+   "topic": "eluvian.sound.played",
+   "description": "The game started a sound: an FMOD event, by the event's own start, so music, the interface, footsteps, blows, voices and ambience alike. Often many a second: read it with `match` on the path, or a part of the path's own field. Which creature made it is not known.",
+   "fields": {
+    "path": "the event's path, \"project/group/.../event\", as the scripts' PlaySound names it",
+    "name": "the event's own name, the path's last part",
+    "positional": "true for a sound placed in the world (FMOD's 3-D mode); false for music and the interface",
+    "position": "where it was placed, [x, y, z], for a positional sound; a 3-D sound nobody placed yet is at its default, usually the origin"
+   },
+   "from": "eluvian"
   }
  ]
 }
