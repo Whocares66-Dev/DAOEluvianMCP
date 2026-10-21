@@ -532,3 +532,8 @@ Rooms turning seen, 2026-10-20 (#164, `rooms`; for DAOParagonEngine #108 through
 - `camera follow` on a creature in 1575 (never seen): the game's and the window's pictures pure (0, 0, 0) over the middle, under the interface.
 
 Saves found by area, 2026-10-20 (#158): `game_saves` with `profile` default over this machine's own profile, by `--call`: 537 saves listed with their places in 1.7 s, each .das read by seeking to the few fields it needs (the profile is 5.9 GB), none unread. Lyna's AutoSave_4: bhm600ar_fade_harrowing, The Fade, level 16, the hero at (129.30, 165.61, 26.43). `area` "pre4": none, so Ishal's floors have no save there, which is what #158 met; `warp` goes there instead.
+
+`peek` in play, 2026-10-21 (#161), in instance eluvian-test with this branch's release build staged, Lyna's manual 4 (the forest clearing), by MCP alone:
+- Lyna (0x82), client side, +0x120 as vec3: (55.2909, 144.3523, -14.1715), the `creatures` tool's position to the last digit; the object a CCCreature, and its game side the same address.
+- +0x7B0 then +0x64 as f32: a CAppearance at +0x7B0, and 1.55 at its +0x64, an elf's height, as lib-agent-2 read the cutscene actor's height there (0x007CE5A0).
+- `address_id` 10547 (CClientExoApp::SetPaused) as bytes: 0x005D6740, `6a ff 68 50 df a8 00 64`, the function's prologue; an address of 0x10: `readable: false` with the step, the game running on.

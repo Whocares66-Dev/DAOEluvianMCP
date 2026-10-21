@@ -157,6 +157,7 @@ GFXLIST = "src/core/GfxList.cpp"
 GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
 PICTURE_SIZE = "src/core/PictureSize.cpp"
+PEEK = "src/core/Peek.cpp"
 SIGHT = "src/core/Sight.cpp"
 WARP = "src/core/Warp.cpp"
 STDIO = "src/core/Stdio.cpp"
@@ -2814,6 +2815,43 @@ MUTANTS = [
         PICTURE_SIZE,
         "*side < kLeastSide ||",
         "*side < kLeastSide - 1 ||",
+    ),
+    # a field of a live object by a chain of offsets (#161)
+    Mutant(
+        "peek follows no pointer but reads every offset from the start",
+        PEEK,
+        "        at = *pointer;\n",
+        "",
+    ),
+    Mutant(
+        "peek reads the value at the chain's end without its last offset",
+        PEEK,
+        "const std::uint32_t address = offsets.empty() ? at : Moved(at, offsets.back());",
+        "const std::uint32_t address = at;",
+    ),
+    Mutant(
+        "peek follows the last offset as a pointer too",
+        PEEK,
+        "for (std::size_t i = 0; i + 1 < offsets.size(); ++i)",
+        "for (std::size_t i = 0; i + 1 < offsets.size() + 1; ++i)",
+    ),
+    Mutant(
+        "peek reads a short engine string from the heap",
+        PEEK,
+        "if (*capacity > kStringInline)",
+        "if (*capacity >= kStringInline)",
+    ),
+    Mutant(
+        "peek reads a length past the capacity as a string",
+        PEEK,
+        "if (*size > kStringMost || *size > *capacity)",
+        "if (*size > kStringMost)",
+    ),
+    Mutant(
+        "peek takes a negative offset forward",
+        PEEK,
+        "out.push_back(negative ? -value : value);",
+        "out.push_back(value);",
     ),
     # the camera's angles for a point to be seen (#117)
     Mutant(
