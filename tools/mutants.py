@@ -158,6 +158,7 @@ GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
 PICTURE_SIZE = "src/core/PictureSize.cpp"
 PEEK = "src/core/Peek.cpp"
+SNAPSHOT = "src/core/Snapshot.cpp"
 SIGHT = "src/core/Sight.cpp"
 WARP = "src/core/Warp.cpp"
 STDIO = "src/core/Stdio.cpp"
@@ -2852,6 +2853,67 @@ MUTANTS = [
         PEEK,
         "out.push_back(negative ? -value : value);",
         "out.push_back(value);",
+    ),
+    # snapshot_diff and the snapshot's keys (#167)
+    Mutant(
+        "snapshot keys count within a tag and template",
+        SNAPSHOT,
+        "seen[kind]++",
+        "seen[kind]",
+    ),
+    Mutant(
+        "snapshot_diff weighs a position against its tolerance",
+        SNAPSHOT,
+        "by > tolerance_.position + 1e-9",
+        "by > 1e-9",
+    ),
+    Mutant(
+        "snapshot_diff measures facing the short way round",
+        SNAPSHOT,
+        "by = std::min(by, 360.0 - by);",
+        ";",
+    ),
+    Mutant(
+        "snapshot_diff says the skew as b's time minus a's",
+        SNAPSHOT,
+        "skew_ = *y - *x;",
+        "skew_ = *x - *y;",
+    ),
+    Mutant(
+        "snapshot_diff takes the party as a set",
+        SNAPSHOT,
+        "std::ranges::sort(keys);",
+        ";",
+    ),
+    Mutant(
+        "snapshot_diff compares an effect's time left",
+        SNAPSHOT,
+        'Measure(effects[i], others[i], "remaining", at + "/remaining", tolerance_.time);',
+        ";",
+    ),
+    Mutant(
+        "snapshot_diff leaves a creature's name uncompared",
+        SNAPSHOT,
+        'kNotCompared = {"key", "id", "name"};',
+        'kNotCompared = {"key", "id"};',
+    ),
+    Mutant(
+        "snapshot_diff lists at most `most`",
+        SNAPSHOT,
+        "if (differences_.size() >= most_)",
+        "if (most_ == 0)",
+    ),
+    Mutant(
+        "snapshot_diff refuses a negative tolerance",
+        SNAPSHOT,
+        "item.value().get<double>() < 0",
+        "item.value().get<double>() < -1",
+    ),
+    Mutant(
+        "snapshot_diff compares the area, mode and pause",
+        SNAPSHOT,
+        "if (inA && !Same(a.at(field), b.at(field)))",
+        "if (inA && !Same(a.at(field), a.at(field)))",
     ),
     # the camera's angles for a point to be seen (#117)
     Mutant(

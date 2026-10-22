@@ -107,6 +107,10 @@ Json Depletable(ObjectId id, std::int32_t property);
 std::string Side(ObjectId id, ObjectId hero, const std::set<ObjectId> &party);
 std::set<ObjectId> PartyOf(ObjectId hero);
 
+// A plot named by its resource, or given by its GUID: its GUID. Throws
+// ToolError, said by `tool`, for a plot the game has not.
+std::wstring PlotGuid(const std::string &asked, std::string_view tool);
+
 // An equipment slot's name (INVENTORY_SLOT_*), as inventory names it:
 // "main_hand", "chest", ...; empty for none.
 std::string_view EquipSlotName(std::int32_t slot);
@@ -335,6 +339,7 @@ void AddScreen(Bench &bench, const Watch &watch);
 void AddResources(Bench &bench);
 void AddWarpArea(Bench &bench); // warp.area, which core's warp reads an area's file by
 void AddPeek(Bench &bench);
+void AddSnapshot(Bench &bench, const Watch &watch);
 void AddCharacter(Bench &bench, const Watch &watch); // character, abilities, equipment, inventory, item
 void AddGui(Bench &bench, const Watch &watch);       // gui, controls
 void AddStore(Bench &bench, const Watch &watch);

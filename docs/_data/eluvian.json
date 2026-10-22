@@ -1273,6 +1273,68 @@
    }
   },
   {
+   "name": "snapshot",
+   "description": "Takes the game's state in one frame, as a JSON another engine can write too, to compare with snapshot_diff: the same save and inputs run here and elsewhere, or this game at two moments. It has the area, mode, paused, `gameTime` (the world clock a save keeps, in seconds; `worldTime` the same as day and ms), the frame and an events `cursor`; every creature of the area, inactive ones too, keyed `tag|template#k` (k counts that tag and template in the order they were made), with position, facingDegrees, health and stamina, dead, active, group, combatState, attackTarget (a key), the command's type number and effects (type, ability, remaining); the party and the one controlled, by key. Pass `plots` for their flags by name, `vars` for variables, and `file` to keep it on disk for snapshot_diff. To line two runs up, pause, act, let the same game time pass, pause again, then take it.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "plots": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "Plots whose flags to include, by resource name (bed000pt_main)."
+     },
+     "vars": {
+      "type": "array",
+      "items": {
+       "type": "object"
+      },
+      "description": "Variables to include, each with object, name and type: object is module (the default), area, hero, controlled, a creature's key or an id; type is int (the default), float, string or object. A variable the object's scripts do not declare reads as 0 or empty."
+     },
+     "file": {
+      "type": "string",
+      "description": "A path to write the snapshot to as well, for snapshot_diff to read later."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
+   "name": "snapshot_diff",
+   "description": "Compares two snapshots and says what differs: the same save and inputs run in two engines, or the game at two moments. Pass `a` and `b`, each a snapshot or a file holding one. Creatures are matched by their key (tag|template#k), not by id.\n\nThe answer has `same`, `count` and `differences`, each with a JSON pointer `path`, the values `a` and `b`, and `by` for a distance or an amount. Where the game times differ past the tolerance, `skew` is b's minus a's: line the two up before reading the rest. `notCompared` lists fields only one side gave. Needs no game.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "a": {
+      "description": "A snapshot as `snapshot` answers it (or another engine writes it, the same schema), or the path of a file holding one."
+     },
+     "b": {
+      "description": "A snapshot as `snapshot` answers it (or another engine writes it, the same schema), or the path of a file holding one."
+     },
+     "tolerance": {
+      "type": "object",
+      "description": "How far a value may differ and still be the same: position (metres, default 0.01), facing (degrees, 1), health and stamina (points, 0), time (seconds, 0.05: the game time and an effect's time left)."
+     },
+     "most": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "The most differences to list. Default 200; `count` has them all."
+     }
+    },
+    "required": [
+     "a",
+     "b"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
    "name": "stage_cooldown",
    "description": "Sets how long is left on a creature's cooldown for one ability; 0 makes the ability ready. `abilities` lists a creature's abilities with their ids. The answer includes the `cooldown` afterwards (`remaining` and `total`). Refuses an ability the creature does not have.",
    "inputSchema": {

@@ -40,6 +40,7 @@ add_executable(
     test_mcp.cpp
     test_origin.cpp
     test_peek.cpp
+    test_snapshot.cpp
     test_picturesize.cpp
     test_registry.cpp
     test_requirements.cpp

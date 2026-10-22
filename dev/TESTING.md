@@ -549,3 +549,8 @@ Saves found by area, 2026-10-20 (#158): `game_saves` with `profile` default over
 - Positional: the ambience's loops at (123.6, 131.7, 2.0), its single sounds about (103, 101, 20); 92 footsteps (glo_fly_fs/humanoid/small) and 100 leather armour sounds in the walks.
 - Tamlen's shot: glo_fly_wep/weapon_impacts/bow/movement/load and fire where he stood (130.6, 115.3), the arrow's flight beside him, its impact on dirt 4 frames on at (132.7, 114.6).
 - 59.7 frames a second over 140 s, no stutter; audio_categories/CategoryDucking/combat about twice a second all session.
+
+`snapshot` and `snapshot_diff` in play, 2026-10-22 (#167, DAOLib `ccf32ed`), in instance eluvian-test with this branch's debug build staged, Lyna's saves of the forest clearing, by `--call`:
+- Manual 4: 11 creatures, inactive ones too: Lyna, Tamlen, Duncan (inactive), the three dead hunters and five genlocks (inactive), each keyed `tag|template#k`; the two `genlock_sbow_dagger_shield` as #0 and #1. The area file's creature list (ghilana's `resource` of bed100ar_forest_clearing.are) has them in the order of their ids, 0x106 Duncan to 0x134; its two wolves are not in the save. bed000pt_main's 30 flags by name, 5 set; MODULE_COUNTER_3 on the module 1, and an undeclared string on the hero empty.
+- Two snapshots 57 s apart diffed as one skew, nothing else differing in the idle party.
+- The world clock (DAOLib #232): manual 1 loaded at 450133:969714 ms, 20 s later 990615 (20.9 s of game time); loaded again, 969553, the save's time. The first snapshot and the one after the reload diffed `same` over 12 creatures with `time` 1; the scripts' GetTime had counted on from the process's start.

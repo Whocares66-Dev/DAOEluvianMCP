@@ -624,6 +624,22 @@ Json Effects(ObjectId id)
     return effects;
 }
 
+std::wstring PlotGuid(const std::string &asked, std::string_view tool)
+{
+    std::wstring guid = api::GetPlotGUID(Wide(asked));
+    if (guid.empty() && !api::GetPlotResRef(Wide(asked)).empty())
+    {
+        guid = Wide(asked); // given by its GUID
+    }
+    if (guid.empty())
+    {
+        throw ToolError(std::format("{}: the game has no plot \"{}\"; a plot is named by its "
+                                    "resource, like bed000pt_main",
+                                    tool, asked));
+    }
+    return guid;
+}
+
 std::set<ObjectId> PartyOf(ObjectId hero)
 {
     if (hero == kInvalidObject)

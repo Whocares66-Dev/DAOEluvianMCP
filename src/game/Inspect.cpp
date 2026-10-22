@@ -405,23 +405,6 @@ ToolResult KindData(const Watch &watch, const Json &raw)
     return read(args.String("path"));
 }
 
-// A plot named by its resource, or given by its GUID: its GUID.
-std::wstring PlotGuid(const std::string &asked)
-{
-    std::wstring guid = api::GetPlotGUID(Wide(asked));
-    if (guid.empty() && !api::GetPlotResRef(Wide(asked)).empty())
-    {
-        guid = Wide(asked); // given by its GUID
-    }
-    if (guid.empty())
-    {
-        throw ToolError(std::format("plot: the game has no plot \"{}\"; a plot is named by its "
-                                    "resource, like bed000pt_main",
-                                    asked));
-    }
-    return guid;
-}
-
 // One of a plot's flags: its number and name, whether the party has it
 // set, and its journal line where it is.
 Json PlotFlag(ObjectId party, const std::wstring &guid, std::int32_t flag, const std::wstring &name)
@@ -445,7 +428,7 @@ ToolResult KindPlot(const Watch &watch, const Json &raw)
     RequireWorld(watch, "plot");
     const Args args(raw, "plot");
     const std::string asked = args.String("plot");
-    const std::wstring guid = PlotGuid(asked);
+    const std::wstring guid = PlotGuid(asked, "plot");
     const ObjectId party = api::GetParty(api::GetHero());
     Json answer = {{"plot", Narrow(api::GetPlotResRef(guid))}, {"guid", Narrow(guid)}};
     if (const auto entry = api::GetPlotEntryName(guid); entry > 0)

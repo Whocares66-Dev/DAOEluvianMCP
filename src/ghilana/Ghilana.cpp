@@ -2,6 +2,8 @@
 
 #include "ghilana/Text.h"
 
+#include "core/Snapshot.h"
+
 #include <cstdint>
 #include <fstream>
 
@@ -100,6 +102,8 @@ void RegisterTools(Bench &bench, Ghilana &ghilana)
     detail::RegisterModTools(bench, ghilana);
     detail::RegisterTemplateTools(bench, ghilana);
     detail::RegisterLevelTools(bench, ghilana);
+    // Two snapshots compared need no game: the same tool as Eluvian's (#167).
+    AddSnapshotDiffTool(bench);
 }
 
 std::string Instructions()
@@ -112,7 +116,8 @@ std::string Instructions()
            "`strings` turns string ids to text and back; `query` searches every template or file of a type by its "
            "fields; `level`, `atmosphere`, `cutscene` and `stage` decode a level's rooms, models and lights, its sky, "
            "a "
-           "cutscene's actions and a stage's cameras. A resource read by its name is the copy the game takes, in the "
+           "cutscene's actions and a stage's cameras; `snapshot_diff` compares two of Eluvian's snapshots (or "
+           "another engine's). A resource read by its name is the copy the game takes, in the "
            "game's own order (read in the "
            "exe), for the campaign, language and texture quality ghilana was started with. The running game is "
            "Eluvian's server, not this one.";

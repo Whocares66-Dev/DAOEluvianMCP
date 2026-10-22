@@ -161,6 +161,7 @@ add_library(
     src/core/Origin.cpp
     src/core/Party.cpp
     src/core/Peek.cpp
+    src/core/Snapshot.cpp
     src/core/PictureSize.cpp
     src/core/GfxList.cpp
     src/core/Gift.cpp
@@ -290,6 +291,7 @@ add_library(
     src/game/Tactics.cpp
     src/game/Store.cpp
     src/game/Peek.cpp
+    src/game/Snapshot.cpp
     src/game/Warp.cpp
     src/game/WorldMap.cpp
     src/plugin/Tools.cpp

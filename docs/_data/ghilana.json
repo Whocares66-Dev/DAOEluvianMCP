@@ -575,6 +575,38 @@
    }
   },
   {
+   "name": "snapshot_diff",
+   "description": "Compares two snapshots and says what differs: the same save and inputs run in two engines, or the game at two moments. Pass `a` and `b`, each a snapshot or a file holding one. Creatures are matched by their key (tag|template#k), not by id.\n\nThe answer has `same`, `count` and `differences`, each with a JSON pointer `path`, the values `a` and `b`, and `by` for a distance or an amount. Where the game times differ past the tolerance, `skew` is b's minus a's: line the two up before reading the rest. `notCompared` lists fields only one side gave. Needs no game.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "a": {
+      "description": "A snapshot as `snapshot` answers it (or another engine writes it, the same schema), or the path of a file holding one."
+     },
+     "b": {
+      "description": "A snapshot as `snapshot` answers it (or another engine writes it, the same schema), or the path of a file holding one."
+     },
+     "tolerance": {
+      "type": "object",
+      "description": "How far a value may differ and still be the same: position (metres, default 0.01), facing (degrees, 1), health and stamina (points, 0), time (seconds, 0.05: the game time and an effect's time left)."
+     },
+     "most": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "The most differences to list. Default 200; `count` has them all."
+     }
+    },
+    "required": [
+     "a",
+     "b"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
    "name": "stage",
    "description": "A stage (.stg) a cutscene or a conversation's line is set on: its places (tag, position, orientation, default camera) and its cameras (position, orientation, field of view, the places in shot, and what it looks from and at, with its LookingAtType), in the stage's own frame.",
    "inputSchema": {

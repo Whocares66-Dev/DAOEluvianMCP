@@ -9,6 +9,7 @@
 #include "core/Party.h"
 #include "core/Ready.h"
 #include "core/Scenario.h"
+#include "core/Snapshot.h"
 #include "core/Travel.h"
 #include "core/Until.h"
 #include "core/Warp.h"
@@ -25,6 +26,7 @@ void RegisterTools(Bench &bench, const game::Watch &watch, const ToolSetup &setu
     AddLogTool(bench, setup.logDirectory);
     AddScenarioTool(bench, setup.whyNothing);
     AddWaitUntilTool(bench);
+    AddSnapshotDiffTool(bench);
     AddWaitReadyTool(bench);
     AddGiftTool(bench);
     AddTravelTool(bench);

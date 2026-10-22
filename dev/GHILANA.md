@@ -186,6 +186,8 @@ All of it into a mod folder of the user's naming, laid out as an override folder
 
 Each call took 21 to 78 ms after the index. Not yet: `material` (a `.mao`'s shader and textures, with ElgaraShaders' classification), `movie` (a GFx movie's ExternalInterface calls and fscommands, out of `GfxMovie.h`; DAOLib's `dev/GUI.md`).
 
+Since #167, `snapshot_diff`: two of Eluvian's snapshots (`snapshot`), or one another engine wrote to their schema, compared without the game. It is the core's tool (`core/Snapshot.h`), registered here as in the plugin, so DAOParagonEngine's file and a kept snapshot are compared with every game closed.
+
 ### Not ghilana's
 
 - Anything of the running game: Eluvian's. Eluvian gains one tool for ghilana's sake, a resource read through the engine's resource manager, as ElgaraShaders' `src/ResourceDump.cpp` does behind a file it watches: for the enciphered add-ins until DAOLib deciphers them, and to check ghilana's winners.
