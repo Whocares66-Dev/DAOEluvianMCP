@@ -678,6 +678,19 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(
             bridge_module.call_once(self.bridge, ["echo", "{not json"], out), 2
         )
+        self.assertNotIn("backslash", json.loads(out.getvalue())["error"])
+
+    def test_a_windows_path_in_the_arguments_is_said_how_to_write(self) -> None:
+        import io
+
+        out = io.StringIO()
+        code = bridge_module.call_once(
+            self.bridge, ["echo", '{"file": "C:\\Users\\me\\frame.json"}'], out
+        )
+        self.assertEqual(code, 2)
+        error = json.loads(out.getvalue())["error"]
+        self.assertIn("backslash in JSON is written twice", error)
+        self.assertIn("C:/Users/me", error)
 
     def test_a_journey_is_waited_for_as_long_as_it_may_take(self) -> None:
         travel = {"argument": "budgetMs", "defaultMs": 60000}

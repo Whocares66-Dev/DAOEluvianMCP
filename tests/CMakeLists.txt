@@ -41,6 +41,7 @@ add_executable(
     test_origin.cpp
     test_peek.cpp
     test_snapshot.cpp
+    test_frame_capture.cpp
     test_picturesize.cpp
     test_registry.cpp
     test_requirements.cpp

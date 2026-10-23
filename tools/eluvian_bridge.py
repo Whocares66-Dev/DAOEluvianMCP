@@ -2370,10 +2370,16 @@ def call_once(bridge: Bridge, call: list[str], out) -> int:
     try:
         arguments = json.loads(call[1]) if len(call) > 1 else {}
     except ValueError as error:
-        print(
-            json.dumps({"isError": True, "error": f"ARGUMENTS is not JSON: {error}"}),
-            file=out,
-        )
+        said = f"ARGUMENTS is not JSON: {error}"
+        # A Windows path as typed: JSON wants its backslashes doubled, and a
+        # lenient read would turn C:\temp's \t into a tab (paragon-agent's
+        # helper, 2026-10-23, #160).
+        if "\\" in call[1] and "escape" in str(error):
+            said += (
+                '. A backslash in JSON is written twice ("C:\\\\Users\\\\me"), '
+                'or a path written with / ("C:/Users/me")'
+            )
+        print(json.dumps({"isError": True, "error": said}), file=out)
         return 2
     bridge.send = lambda _message: None  # no client to notify
     answer = bridge.handle(

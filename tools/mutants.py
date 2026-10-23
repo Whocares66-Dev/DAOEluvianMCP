@@ -159,6 +159,7 @@ REQUIREMENTS = "src/core/Requirements.cpp"
 PICTURE_SIZE = "src/core/PictureSize.cpp"
 PEEK = "src/core/Peek.cpp"
 SNAPSHOT = "src/core/Snapshot.cpp"
+FRAME = "src/core/FrameCapture.cpp"
 SIGHT = "src/core/Sight.cpp"
 WARP = "src/core/Warp.cpp"
 STDIO = "src/core/Stdio.cpp"
@@ -2914,6 +2915,91 @@ MUTANTS = [
         SNAPSHOT,
         "if (inA && !Same(a.at(field), b.at(field)))",
         "if (inA && !Same(a.at(field), a.at(field)))",
+    ),
+    # frame_capture's answer over a frame's draws (#160)
+    Mutant(
+        "frame_capture ids a shader by FNV-1a 64",
+        FRAME,
+        "hash *= 0x100000001b3ULL;",
+        "hash += 0x100000001b3ULL;",
+    ),
+    Mutant(
+        "frame_capture takes a render state with D3DRS_",
+        FRAME,
+        "wanted.erase(0, 6);",
+        "wanted.erase(0, 5);",
+    ),
+    Mutant(
+        "frame_capture defaults the render states",
+        FRAME,
+        "return DefaultRenderStates();\n    }\n    if (!given->is_array())",
+        "return {};\n    }\n    if (!given->is_array())",
+    ),
+    Mutant(
+        "frame_capture matches a texture in any case",
+        FRAME,
+        "return Upper(text).find(Upper(part)) != std::string::npos;",
+        "return std::string(text).find(part) != std::string::npos;",
+    ),
+    Mutant(
+        "frame_capture matches a shader by the start of its id",
+        FRAME,
+        "bound.id.starts_with(shader)",
+        "bound.id == shader",
+    ),
+    Mutant(
+        "frame_capture filters by shader",
+        FRAME,
+        "(filter.shader.empty() || Runs(draw, filter.shader))",
+        "(filter.shader.empty() || Runs(draw, filter.texture))",
+    ),
+    Mutant(
+        "frame_capture leaves a sampler's constant to textures",
+        FRAME,
+        'if (constant.set == "sampler")',
+        'if (constant.set == "bool")',
+    ),
+    Mutant(
+        "frame_capture lists only the constants asked",
+        FRAME,
+        "if (!wanted.empty() && std::ranges::find(wanted, constant.name) == wanted.end())",
+        "if (!wanted.empty() && std::ranges::find(wanted, constant.name) != wanted.end())",
+    ),
+    Mutant(
+        "frame_capture names an unnamed sampler by its register",
+        FRAME,
+        'std::format("s{}", sampled.sampler)',
+        'std::format("s{}", 0)',
+    ),
+    Mutant(
+        "frame_capture skips `skip` matching draws",
+        FRAME,
+        "if (matched <= filter.skip || list.size() >= filter.most)",
+        "if (matched < filter.skip || list.size() >= filter.most)",
+    ),
+    Mutant(
+        "frame_capture says truncated after a skip",
+        FRAME,
+        '{"truncated", matched > filter.skip + listed}',
+        '{"truncated", matched > listed}',
+    ),
+    Mutant(
+        "frame_capture trims a register to the constant's width",
+        FRAME,
+        "if (i % 4 < width)",
+        "if (i % 4 <= width)",
+    ),
+    Mutant(
+        "frame_capture takes a column-major matrix's rows as its width",
+        FRAME,
+        "constant.columnMajor ? constant.rows : constant.columns",
+        "constant.columns",
+    ),
+    Mutant(
+        "frame_capture has no primitive type 0",
+        FRAME,
+        "if (type >= 1 && type < kNames.size())",
+        "if (type < kNames.size())",
     ),
     # the camera's angles for a point to be seen (#117)
     Mutant(

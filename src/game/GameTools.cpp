@@ -70,6 +70,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddWarpArea(bench);
     AddPeek(bench);
     AddSnapshot(bench, watch);
+    AddFrameCapture(bench);
 }
 
 namespace

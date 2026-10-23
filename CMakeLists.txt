@@ -162,6 +162,7 @@ add_library(
     src/core/Party.cpp
     src/core/Peek.cpp
     src/core/Snapshot.cpp
+    src/core/FrameCapture.cpp
     src/core/PictureSize.cpp
     src/core/GfxList.cpp
     src/core/Gift.cpp
@@ -292,6 +293,7 @@ add_library(
     src/game/Store.cpp
     src/game/Peek.cpp
     src/game/Snapshot.cpp
+    src/game/FrameCapture.cpp
     src/game/Warp.cpp
     src/game/WorldMap.cpp
     src/plugin/Tools.cpp

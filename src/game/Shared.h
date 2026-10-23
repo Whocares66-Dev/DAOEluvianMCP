@@ -340,6 +340,7 @@ void AddResources(Bench &bench);
 void AddWarpArea(Bench &bench); // warp.area, which core's warp reads an area's file by
 void AddPeek(Bench &bench);
 void AddSnapshot(Bench &bench, const Watch &watch);
+void AddFrameCapture(Bench &bench);                  // a listener tool: it waits for the render thread's frame
 void AddCharacter(Bench &bench, const Watch &watch); // character, abilities, equipment, inventory, item
 void AddGui(Bench &bench, const Watch &watch);       // gui, controls
 void AddStore(Bench &bench, const Watch &watch);

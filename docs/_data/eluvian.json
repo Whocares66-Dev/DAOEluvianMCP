@@ -474,6 +474,53 @@
    }
   },
   {
+   "name": "frame_capture",
+   "description": "Records the next frame the game draws, as Direct3D 9 was handed it: each draw call with its vertex and pixel shaders (by `id`, a hash of the bytecode, the same in every run), their constants by name with the values the device held (of each register as many floats or ints as the constant's type uses, a float1 one, a float4x4 sixteen; a bool each), the textures each sampler had (the .dds file), the primitive counts and the render states asked. `shaders` lists each listed draw's shaders once, with their constant tables. A frame has some 2,000 draws, so the answer lists `most` (20) of those matching `texture` (part of a .dds name) and `shader` (the start of an id), after `skip`; `constants` keeps only the values named. `file` writes every draw of the frame, unfiltered, for a diff with another engine's. The game must be drawing: a fullscreen game minimised draws nothing. Recording slows that one frame a little.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "states": {
+      "type": "array",
+      "description": "Render states to read at each draw, by name (ZENABLE, ALPHABLENDENABLE, or D3DRS_ZENABLE) or number. Default: depth, blending, alpha test, cull mode, colour writes, sRGB writes and stencil."
+     },
+     "texture": {
+      "type": "string",
+      "description": "List only draws sampling a .dds whose name has this."
+     },
+     "shader": {
+      "type": "string",
+      "description": "List only draws whose vertex or pixel shader id begins with this."
+     },
+     "constants": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "List only these constants' values, by name. Default: all."
+     },
+     "skip": {
+      "type": "integer",
+      "description": "Matching draws to pass over first. Default 0."
+     },
+     "most": {
+      "type": "integer",
+      "description": "Matching draws to list at most, 0 to 100000. Default 20."
+     },
+     "file": {
+      "type": "string",
+      "description": "A path to write the whole frame to as JSON, every draw and its values."
+     },
+     "timeout": {
+      "type": "integer",
+      "description": "Milliseconds to wait for the frame, 100 to 30000. Default 5000."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
    "name": "geometry",
    "description": "Measures from a creature (`id`) to another creature or object (`target`) or a `point`. Returns the straight-line distance, the line of sight as the engine judges it (eye height to eye height, and where it is blocked, if it is; only walls and placeables block it, not creatures), and the creature's current movement path with its length and how much is left. `beingWalked` says whether it is walking that path now.\n\nWith `walk: true`, it also asks the game's pathfinder for the path the creature would walk there now: `found` and its `length`, or why not. If a shut door or similar is in the way, `blocker` names it: use it first, then move. The creature is not moved.",
    "inputSchema": {

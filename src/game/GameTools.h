@@ -25,4 +25,9 @@ void DescribeTopics(EventCatalog &topics);
 // plugin load.
 void AddEngineEvents(Bench &bench);
 
+// Places DAOLib's watch on the game's draws, for frame_capture (#160). At
+// plugin load, before the game makes its device: one made before is not
+// watched.
+void WatchDraws();
+
 } // namespace eluvian::game
