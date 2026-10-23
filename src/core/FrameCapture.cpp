@@ -162,7 +162,9 @@ bool Runs(const CapturedDraw &draw, std::string_view shader)
 bool Matches(const CapturedDraw &draw, const CaptureFilter &filter)
 {
     return (filter.texture.empty() || Samples(draw, filter.texture)) &&
-           (filter.shader.empty() || Runs(draw, filter.shader));
+           (filter.shader.empty() || Runs(draw, filter.shader)) &&
+           (filter.material.empty() || (!draw.material.empty() && Contains(draw.material, filter.material))) &&
+           (filter.model.empty() || (!draw.model.empty() && Contains(draw.model, filter.model)));
 }
 
 // Of four values a register, the first `width` of each.
@@ -256,6 +258,20 @@ Json DrawJson(const CapturedDraw &draw, const CaptureFilter &filter)
                 {"minIndex", draw.minIndex},
                 {"vs", draw.vertex.id.empty() ? Json(nullptr) : Json(draw.vertex.id)},
                 {"ps", draw.pixel.id.empty() ? Json(nullptr) : Json(draw.pixel.id)}};
+    if (!draw.material.empty())
+    {
+        out["material"] = draw.material;
+    }
+    if (draw.object != 0)
+    {
+        out["object"] = std::format("0x{:x}", draw.object);
+        out["model"] = draw.model;
+    }
+    if (draw.node != 0)
+    {
+        out["node"] = std::format("0x{:x}", draw.node);
+        out["mesh"] = draw.mesh;
+    }
     PutStages(out, "constants", ConstantsJson(draw.vertex, filter.constants),
               ConstantsJson(draw.pixel, filter.constants));
     PutStages(out, "textures", TexturesJson(draw.vertex), TexturesJson(draw.pixel));
@@ -385,6 +401,8 @@ CaptureFilter CaptureFilterFrom(const Json &raw, std::string_view tool)
     CaptureFilter filter;
     filter.texture = args.String("texture", "");
     filter.shader = args.String("shader", "");
+    filter.material = args.String("material", "");
+    filter.model = args.String("model", "");
     if (args.Has("constants"))
     {
         const Json &constants = raw.at("constants");
@@ -413,8 +431,13 @@ std::string PrimitiveName(std::uint32_t type)
 Json CaptureJson(const FrameCaptured &captured, const CaptureFilter &filter)
 {
     std::set<std::string, std::less<>> textures;
+    std::set<std::string, std::less<>> materials;
     for (const auto &draw : captured.draws)
     {
+        if (!draw.material.empty())
+        {
+            materials.insert(draw.material);
+        }
         for (const CapturedShader *shader : {&draw.vertex, &draw.pixel})
         {
             for (const auto &sampled : shader->textures)
@@ -457,6 +480,7 @@ Json CaptureJson(const FrameCaptured &captured, const CaptureFilter &filter)
             {"listed", listed},
             {"truncated", matched > filter.skip + listed},
             {"textures", textures.size()},
+            {"materials", materials.size()},
             {"shaders", std::move(shaders)},
             {"list", std::move(list)}};
 }

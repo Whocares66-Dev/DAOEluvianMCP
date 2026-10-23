@@ -190,6 +190,11 @@ void OnDraw(const render::Draw &draw)
     {
         out.states.emplace_back(state.state, state.value);
     }
+    out.material = Narrow(draw.material); // the names are views for this call only
+    out.node = draw.node;
+    out.object = draw.object;
+    out.model = Narrow(draw.model);
+    out.mesh = Narrow(draw.mesh);
     capture.frame.draws.push_back(std::move(out));
 }
 
@@ -265,41 +270,49 @@ void WatchDraws()
 void AddFrameCapture(Bench &bench)
 {
     bench.Tools().Add(
-        Read("frame_capture",
-             "Records the next frame the game draws, as Direct3D 9 was handed it: each draw call with its vertex "
-             "and pixel shaders (by `id`, a hash of the bytecode, the same in every run), their constants by name "
-             "with the values the device held (of each register as many floats or ints as the constant's type uses, a "
-             "float1 one, a float4x4 sixteen; a bool each), the textures each "
-             "sampler had (the .dds file), the primitive counts and the render states asked. `shaders` lists each "
-             "listed draw's shaders once, with their constant tables. A frame has some 2,000 draws, so the answer "
-             "lists `most` (20) of those matching `texture` (part of a .dds name) and `shader` (the start of an "
-             "id), after `skip`; `constants` keeps only the values named. `file` writes every draw of the frame, "
-             "unfiltered, for a diff with another engine's. The game must be drawing: a fullscreen game "
-             "minimised draws nothing. Recording slows that one frame a little.",
-             Json{{"states",
-                   {{"type", "array"},
-                    {"description", "Render states to read at each draw, by name (ZENABLE, ALPHABLENDENABLE, or "
-                                    "D3DRS_ZENABLE) or number. Default: depth, blending, alpha test, cull mode, "
-                                    "colour writes, sRGB writes and stencil."}}},
-                  {"texture",
-                   {{"type", "string"}, {"description", "List only draws sampling a .dds whose name has this."}}},
-                  {"shader",
-                   {{"type", "string"},
-                    {"description", "List only draws whose vertex or pixel shader id begins with this."}}},
-                  {"constants",
-                   {{"type", "array"},
-                    {"items", {{"type", "string"}}},
-                    {"description", "List only these constants' values, by name. Default: all."}}},
-                  {"skip", {{"type", "integer"}, {"description", "Matching draws to pass over first. Default 0."}}},
-                  {"most",
-                   {{"type", "integer"}, {"description", "Matching draws to list at most, 0 to 100000. Default 20."}}},
-                  {"file",
-                   {{"type", "string"},
-                    {"description", "A path to write the whole frame to as JSON, every draw and its values."}}},
-                  {"timeout",
-                   {{"type", "integer"},
-                    {"description", "Milliseconds to wait for the frame, 100 to 30000. Default 5000."}}}},
-             {}, true, Thread::Listener),
+        Read(
+            "frame_capture",
+            "Records the next frame the game draws, as Direct3D 9 was handed it: each draw call with its vertex "
+            "and pixel shaders (by `id`, a hash of the bytecode, the same in every run), their constants by name "
+            "with the values the device held (of each register as many floats or ints as the constant's type uses, a "
+            "float1 one, a float4x4 sixteen; a bool each), the textures each "
+            "sampler had (the .dds file), the primitive counts and the render states asked. What the engine was "
+            "drawing: `material` (its .mao, no extension) for a draw a material makes, and for "
+            "a mesh's or "
+            "cloth's also `model`, `mesh` (the node's name in the model) and `object` and `node`, addresses "
+            "that group one object's draws in the frame; none for the interface, full-screen passes and most "
+            "effects. `shaders` lists each listed draw's shaders once, with their constant tables. A frame has "
+            "some 2,000 draws, so the answer lists `most` (20) of those matching `texture` (part of a .dds "
+            "name), `shader` (the start of an id), `material` and `model` (part of the name), after `skip`; "
+            "`constants` keeps only the values named. `file` writes every draw of the frame, "
+            "unfiltered, for a diff with another engine's. The game must be drawing: a fullscreen game "
+            "minimised draws nothing. Recording slows that one frame a little.",
+            Json{{"states",
+                  {{"type", "array"},
+                   {"description", "Render states to read at each draw, by name (ZENABLE, ALPHABLENDENABLE, or "
+                                   "D3DRS_ZENABLE) or number. Default: depth, blending, alpha test, cull mode, "
+                                   "colour writes, sRGB writes and stencil."}}},
+                 {"texture",
+                  {{"type", "string"}, {"description", "List only draws sampling a .dds whose name has this."}}},
+                 {"shader",
+                  {{"type", "string"},
+                   {"description", "List only draws whose vertex or pixel shader id begins with this."}}},
+                 {"material", {{"type", "string"}, {"description", "List only draws whose material's name has this."}}},
+                 {"model", {{"type", "string"}, {"description", "List only draws whose model's name has this."}}},
+                 {"constants",
+                  {{"type", "array"},
+                   {"items", {{"type", "string"}}},
+                   {"description", "List only these constants' values, by name. Default: all."}}},
+                 {"skip", {{"type", "integer"}, {"description", "Matching draws to pass over first. Default 0."}}},
+                 {"most",
+                  {{"type", "integer"}, {"description", "Matching draws to list at most, 0 to 100000. Default 20."}}},
+                 {"file",
+                  {{"type", "string"},
+                   {"description", "A path to write the whole frame to as JSON, every draw and its values."}}},
+                 {"timeout",
+                  {{"type", "integer"},
+                   {"description", "Milliseconds to wait for the frame, 100 to 30000. Default 5000."}}}},
+            {}, true, Thread::Listener),
         [](const Json &raw) -> ToolResult {
             const Args args(raw, "frame_capture");
             const Json *states = args.Has("states") ? &raw.at("states") : nullptr;

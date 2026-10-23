@@ -3001,6 +3001,31 @@ MUTANTS = [
         "if (type >= 1 && type < kNames.size())",
         "if (type < kNames.size())",
     ),
+    # what the engine drew (#168)
+    Mutant(
+        "frame_capture filters by material",
+        FRAME,
+        "(filter.material.empty() || (!draw.material.empty() && Contains(draw.material, filter.material)))",
+        "(filter.material.empty() || draw.material.empty() || Contains(draw.material, filter.material))",
+    ),
+    Mutant(
+        "frame_capture filters by model",
+        FRAME,
+        "(filter.model.empty() || (!draw.model.empty() && Contains(draw.model, filter.model)))",
+        "true",
+    ),
+    Mutant(
+        "frame_capture gives a node only where there is one",
+        FRAME,
+        "if (draw.node != 0)",
+        "if (true)",
+    ),
+    Mutant(
+        "frame_capture counts the frame's materials",
+        FRAME,
+        "            materials.insert(draw.material);",
+        "",
+    ),
     # the camera's angles for a point to be seen (#117)
     Mutant(
         "the camera faces a point from the point's own side",

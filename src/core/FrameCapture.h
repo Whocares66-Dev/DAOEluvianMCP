@@ -101,6 +101,14 @@ struct CapturedDraw
     CapturedShader vertex;
     CapturedShader pixel;
     std::vector<std::pair<std::uint32_t, std::uint32_t>> states; // state, value
+    // What the engine drew (DAOLib #247): the material's .mao for a draw a
+    // material instance makes; the graphics node and object, by address, and
+    // their model and mesh for a mesh's or cloth's; 0 and "" otherwise.
+    std::string material;
+    std::uint64_t node = 0;
+    std::uint64_t object = 0;
+    std::string model;
+    std::string mesh;
 };
 
 struct FrameCaptured
@@ -114,12 +122,15 @@ struct CaptureFilter
 {
     std::string texture;                // draws sampling a .dds whose name has this, any case
     std::string shader;                 // draws whose vertex or pixel shader's id begins with this
+    std::string material;               // draws whose material's name has this, any case
+    std::string model;                  // draws whose model's name has this, any case
     std::vector<std::string> constants; // only these constants' values; empty, all
     std::size_t skip = 0;               // matching draws passed over first
     std::size_t most = 20;              // matching draws listed at most
 };
 
-// The filter as a call gives it (texture, shader, constants, skip, most);
+// The filter as a call gives it (texture, shader, material, model, constants,
+// skip, most);
 // throws ToolError naming the tool for a wrong one.
 CaptureFilter CaptureFilterFrom(const Json &raw, std::string_view tool);
 
@@ -129,8 +140,10 @@ std::string PrimitiveName(std::uint32_t type);
 
 // The answer: `frame`, `draws` (all of the frame's), `matched`, `listed`,
 // `truncated`, `textures` (how many .dds the frame's draws sample, each
-// once), `shaders` (each listed draw's shaders once, by id: stage, target,
-// size and its table's constants) and `list`, the draws themselves.
+// once), `materials` (how many materials, each once), `shaders` (each listed
+// draw's shaders once, by id: stage, target, size and its table's
+// constants) and `list`, the draws themselves: a draw's `material`,
+// `object` and `model`, `node` and `mesh` only where the engine said.
 Json CaptureJson(const FrameCaptured &captured, const CaptureFilter &filter);
 
 } // namespace eluvian

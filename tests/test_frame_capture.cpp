@@ -40,12 +40,23 @@ FrameCaptured Frame()
     face.pixel.constants.push_back({"diffuseMap", "sampler", 0, 1, {}, {}, {}});
     face.pixel.textures.push_back({0, "diffuseMap", "uh_hed_elfm_0d.dds"});
     face.states = {{7, 1}, {27, 0}};
+    face.material = "uh_hed_elfm_0";
+    face.node = 0x1a2b0;
+    face.object = 0x3c4d0;
+    face.model = "uh_hed_elfm";
+    face.mesh = "head";
     frame.draws.push_back(face);
 
+    // A material and no node, as a tree's draw is.
     CapturedDraw wall = face;
     wall.index = 1;
     wall.pixel = Shader("cccc000000000001", "ps_3_0");
     wall.pixel.textures.push_back({1, "", "bed_wall_stone_0d.dds"});
+    wall.material = "bed_wall_stone";
+    wall.node = 0;
+    wall.object = 0;
+    wall.model.clear();
+    wall.mesh.clear();
     frame.draws.push_back(wall);
 
     CapturedDraw bare;
@@ -199,6 +210,44 @@ TEST_CASE("frame_capture keeps the draws of a shader by the start of its id", "[
     CHECK(CaptureJson(Frame(), filter).at("matched") == 2);
 }
 
+TEST_CASE("frame_capture says what the engine drew where it said", "[frame_capture]")
+{
+    const Json answer = CaptureJson(Frame(), CaptureFilter{});
+    CHECK(answer.at("materials") == 2);
+    const Json &face = answer.at("list").at(0);
+    CHECK(face.at("material") == "uh_hed_elfm_0");
+    CHECK(face.at("object") == "0x3c4d0");
+    CHECK(face.at("model") == "uh_hed_elfm");
+    CHECK(face.at("node") == "0x1a2b0");
+    CHECK(face.at("mesh") == "head");
+    // A material alone: no object, model, node or mesh.
+    const Json &wall = answer.at("list").at(1);
+    CHECK(wall.at("material") == "bed_wall_stone");
+    CHECK_FALSE(wall.contains("object"));
+    CHECK_FALSE(wall.contains("model"));
+    CHECK_FALSE(wall.contains("node"));
+    CHECK_FALSE(wall.contains("mesh"));
+    CHECK_FALSE(answer.at("list").at(2).contains("material"));
+}
+
+TEST_CASE("frame_capture keeps the draws of a material or a model, any case", "[frame_capture]")
+{
+    CaptureFilter filter;
+    filter.material = "WALL";
+    Json answer = CaptureJson(Frame(), filter);
+    CHECK(answer.at("matched") == 1);
+    CHECK(answer.at("list").at(0).at("index") == 1);
+    // The draw with none matches no material.
+    filter.material = "";
+    filter.model = "Elfm";
+    answer = CaptureJson(Frame(), filter);
+    CHECK(answer.at("matched") == 1);
+    CHECK(answer.at("list").at(0).at("index") == 0);
+    // Both: a draw must have each.
+    filter.material = "stone";
+    CHECK(CaptureJson(Frame(), filter).at("matched") == 0);
+}
+
 TEST_CASE("frame_capture lists only the constants asked for", "[frame_capture]")
 {
     CaptureFilter filter;
@@ -228,11 +277,18 @@ TEST_CASE("frame_capture skips and lists at most `most`, and says it is truncate
 
 TEST_CASE("frame_capture reads its filter from a call", "[frame_capture]")
 {
-    const auto filter = CaptureFilterFrom(
-        Json{{"texture", "dds"}, {"shader", "ab"}, {"constants", {"a", "b"}}, {"skip", 3}, {"most", 7}},
-        "frame_capture");
+    const auto filter = CaptureFilterFrom(Json{{"texture", "dds"},
+                                               {"shader", "ab"},
+                                               {"material", "mat"},
+                                               {"model", "mod"},
+                                               {"constants", {"a", "b"}},
+                                               {"skip", 3},
+                                               {"most", 7}},
+                                          "frame_capture");
     CHECK(filter.texture == "dds");
     CHECK(filter.shader == "ab");
+    CHECK(filter.material == "mat");
+    CHECK(filter.model == "mod");
     CHECK(filter.constants == std::vector<std::string>{"a", "b"});
     CHECK(filter.skip == 3);
     CHECK(filter.most == 7);

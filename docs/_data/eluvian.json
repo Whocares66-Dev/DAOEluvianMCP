@@ -475,7 +475,7 @@
   },
   {
    "name": "frame_capture",
-   "description": "Records the next frame the game draws, as Direct3D 9 was handed it: each draw call with its vertex and pixel shaders (by `id`, a hash of the bytecode, the same in every run), their constants by name with the values the device held (of each register as many floats or ints as the constant's type uses, a float1 one, a float4x4 sixteen; a bool each), the textures each sampler had (the .dds file), the primitive counts and the render states asked. `shaders` lists each listed draw's shaders once, with their constant tables. A frame has some 2,000 draws, so the answer lists `most` (20) of those matching `texture` (part of a .dds name) and `shader` (the start of an id), after `skip`; `constants` keeps only the values named. `file` writes every draw of the frame, unfiltered, for a diff with another engine's. The game must be drawing: a fullscreen game minimised draws nothing. Recording slows that one frame a little.",
+   "description": "Records the next frame the game draws, as Direct3D 9 was handed it: each draw call with its vertex and pixel shaders (by `id`, a hash of the bytecode, the same in every run), their constants by name with the values the device held (of each register as many floats or ints as the constant's type uses, a float1 one, a float4x4 sixteen; a bool each), the textures each sampler had (the .dds file), the primitive counts and the render states asked. What the engine was drawing: `material` (its .mao, no extension) for a draw a material makes, and for a mesh's or cloth's also `model`, `mesh` (the node's name in the model) and `object` and `node`, addresses that group one object's draws in the frame; none for the interface, full-screen passes and most effects. `shaders` lists each listed draw's shaders once, with their constant tables. A frame has some 2,000 draws, so the answer lists `most` (20) of those matching `texture` (part of a .dds name), `shader` (the start of an id), `material` and `model` (part of the name), after `skip`; `constants` keeps only the values named. `file` writes every draw of the frame, unfiltered, for a diff with another engine's. The game must be drawing: a fullscreen game minimised draws nothing. Recording slows that one frame a little.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -490,6 +490,14 @@
      "shader": {
       "type": "string",
       "description": "List only draws whose vertex or pixel shader id begins with this."
+     },
+     "material": {
+      "type": "string",
+      "description": "List only draws whose material's name has this."
+     },
+     "model": {
+      "type": "string",
+      "description": "List only draws whose model's name has this."
      },
      "constants": {
       "type": "array",
