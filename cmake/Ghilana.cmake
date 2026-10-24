@@ -7,15 +7,15 @@
 # The names of GFF4 fields and GDA columns, from DAOLib's tables
 # (ghilana/Names.h), written at configure into ghilana_names.inc.
 set(_gh_fields_csv "${EL_DAOLIB}/dev/gff4_fields.csv")
-set(_gh_columns_csv "${EL_DAOLIB}/dev/gda_tables.csv")
+set(_gh_columns_txt "${EL_DAOLIB}/dev/gda_column_names.txt")
 set_property(
     DIRECTORY
     APPEND
-    PROPERTY CMAKE_CONFIGURE_DEPENDS "${_gh_fields_csv}" "${_gh_columns_csv}"
+    PROPERTY CMAKE_CONFIGURE_DEPENDS "${_gh_fields_csv}" "${_gh_columns_txt}"
 )
 file(STRINGS "${_gh_fields_csv}" _gh_field_lines REGEX "^[0-9]+,")
 set(_gh_names
-    "// Written by cmake/Ghilana.cmake from DAOLib's dev/gff4_fields.csv and\n// dev/gda_tables.csv: do not edit.\n"
+    "// Written by cmake/Ghilana.cmake from DAOLib's dev/gff4_fields.csv and\n// dev/gda_column_names.txt: do not edit.\n"
 )
 string(APPEND _gh_names "constexpr FieldName kGff4Fields[] = {\n")
 foreach(_line IN LISTS _gh_field_lines)
@@ -28,23 +28,10 @@ foreach(_line IN LISTS _gh_field_lines)
     string(APPEND _gh_names "${_entry}")
 endforeach()
 string(APPEND _gh_names "};\n")
-# Each table's line ends with its columns, "Name:type Name:type ...", a name
-# nothing knows written "#hash".
-file(STRINGS "${_gh_columns_csv}" _gh_table_lines)
-list(REMOVE_AT _gh_table_lines 0)
-set(_gh_columns "")
-foreach(_line IN LISTS _gh_table_lines)
-    string(REGEX REPLACE "^.*,([^,]*)$" "\\1" _cols "${_line}")
-    string(REPLACE " " ";" _cols "${_cols}")
-    foreach(_col IN LISTS _cols)
-        string(REGEX REPLACE ":[^:]*$" "" _name "${_col}")
-        if(_name AND NOT _name MATCHES "^#")
-            list(APPEND _gh_columns "${_name}")
-        endif()
-    endforeach()
-endforeach()
-list(REMOVE_DUPLICATES _gh_columns)
-list(SORT _gh_columns)
+# Every column name known, one a line under '#' comments: xoreos' 2,205,
+# each checked against its hash, where until #172 they were gda_tables.csv's
+# 1,250, the columns of the GOG install's tables alone (DAOLib #106 step 6).
+file(STRINGS "${_gh_columns_txt}" _gh_columns REGEX "^[^#]")
 string(APPEND _gh_names "constexpr const char *kGdaColumns[] = {\n")
 foreach(_name IN LISTS _gh_columns)
     string(APPEND _gh_names "    \"${_name}\",\n")

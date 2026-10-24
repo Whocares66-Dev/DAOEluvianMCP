@@ -20,7 +20,8 @@ struct FieldName
     const char *name;
 };
 
-// kGff4Fields, kGdaColumns: written by CMakeLists.txt from DAOLib's CSVs.
+// kGff4Fields, kGdaColumns: written by cmake/Ghilana.cmake from DAOLib's
+// dev/gff4_fields.csv and dev/gda_column_names.txt.
 #include "ghilana_names.inc"
 
 // Made once, from the tables; a constructor of its own, which may throw
