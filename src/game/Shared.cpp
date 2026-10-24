@@ -299,22 +299,22 @@ std::wstring Shown(std::wstring_view text)
 
 // A conversation's line as the screen has it: its place in the file, who
 // speaks as the file writes it (a tag, or OWNER or PLAYER), and its text in
-// the player's language, in the form for the hero's sex, its tokens filled
-// in and its markup taken out. A line may have no text: an NPC line that
-// only routes, a "continue" reply (DAOLib's Dialogue.h, seen at Highever,
-// 2026-09-30).
-Json LineJson(const dao::dialogue::Line &line, bool female, const dao::dialogue::Conversation *conversation)
+// the player's language, its tokens filled in and its markup taken out. The
+// engine's own order of its talk tables gives the hero's sex's form; the
+// sex once passed for it did nothing (DAOLib #106, #169). A line may have
+// no text: an NPC line that only routes, a "continue" reply (DAOLib's
+// Dialogue.h, seen at Highever, 2026-09-30).
+Json LineJson(const dao::dialogue::Line &line, const dao::dialogue::Conversation *conversation)
 {
     if (conversation == nullptr)
     {
         conversation = dao::dialogue::Current();
     }
-    Json json = {
-        {"index", line.index},
-        {"speaker", Narrow(line.speaker)},
-        {"by", SpeakerJson(line, conversation)},
-        {"to", ListenerJson(line, conversation)},
-        {"text", line.text == 0xFFFFFFFF ? std::string() : Narrow(Shown(dao::tlk::String(line.text, female)))}};
+    Json json = {{"index", line.index},
+                 {"speaker", Narrow(line.speaker)},
+                 {"by", SpeakerJson(line, conversation)},
+                 {"to", ListenerJson(line, conversation)},
+                 {"text", line.text == 0xFFFFFFFF ? std::string() : Narrow(Shown(dao::tlk::String(line.text)))}};
     if (line.kind == dao::dialogue::Line::Kind::Player)
     {
         json["icon"] = line.icon;
@@ -322,20 +322,14 @@ Json LineJson(const dao::dialogue::Line &line, bool female, const dao::dialogue:
     return json;
 }
 
-bool HeroIsFemale()
-{
-    return api::GetCreatureGender(api::GetHero()) == k::GENDER_FEMALE;
-}
-
 // The replies on the screen, each with its `place` among them: the number
 // a choice names.
-Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female,
-                 const dao::dialogue::Conversation *conversation)
+Json RepliesJson(std::span<const dao::dialogue::Line> replies, const dao::dialogue::Conversation *conversation)
 {
     Json list = Json::array();
     for (std::size_t place = 0; place < replies.size(); ++place)
     {
-        Json reply = LineJson(replies[place], female, conversation);
+        Json reply = LineJson(replies[place], conversation);
         reply["place"] = place;
         list.push_back(std::move(reply));
     }

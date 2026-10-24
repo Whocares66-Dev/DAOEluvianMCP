@@ -432,7 +432,7 @@ Json TlkContent(std::span<const std::byte> bytes, std::size_t items)
     }
     return Json{{"count", table->Size()},
                 {"strings", std::move(strings)},
-                {"note", "`strings` looks ids and text up across every talk table of a language"}};
+                {"note", "`strings` looks ids and text up across the talk tables the game searches, in its order"}};
 }
 
 Json Gff4Content(std::span<const std::byte> bytes, const Limits &limits, std::string &format)

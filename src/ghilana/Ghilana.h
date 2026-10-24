@@ -14,23 +14,17 @@
 #include "ghilana/GameFiles.h"
 #include "ghilana/Tables.h"
 
-#include <dao/core/TalkTable.h>
+#include <dao/core/TalkTables.h>
 
-#include <map>
+#include <array>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
 
 namespace eluvian::ghilana
 {
-
-struct LoadedTalkTable
-{
-    std::string name; // "core_en-us.tlk"
-    Json from;        // GameFiles::Describe of its copy
-    dao::core::TalkTableFile table;
-};
 
 class Ghilana
 {
@@ -60,10 +54,12 @@ class Ghilana
     // building took, for the answer, when this call built it, else null.
     Json Indexed();
 
-    // The talk tables of a language, read the first time asked: every
-    // "<name>_<language>.tlk", or "<name>_<language>_f.tlk" with `female`
-    // (the text a female player's character is spoken to with).
-    const std::vector<LoadedTalkTable> &TalkTables(const std::string &language, bool female);
+    // The talk tables the game searches once the campaign has loaded with a
+    // hero of this sex, in its order, and an id's text as it finds it; read
+    // the first time asked. DAOLib's, read in the exe (#106): until #169
+    // ghilana took every table of the language by name, and only the _f
+    // ones for a female hero.
+    const dao::core::install::Strings &TalkStrings(bool female);
 
     // m2da_base.gda's and 2da_base.gda's tables, read once.
     const std::vector<dao::core::m2da::Worksheet> &Worksheets();
@@ -74,7 +70,7 @@ class Ghilana
     fs::path cache_;
     std::string version_;
     std::mutex lock_;
-    std::map<std::string, std::vector<LoadedTalkTable>> talk_;
+    std::array<std::optional<dao::core::install::Strings>, 2> strings_; // male, female
     std::optional<std::vector<dao::core::m2da::Worksheet>> worksheets_;
 };
 

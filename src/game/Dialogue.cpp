@@ -80,13 +80,12 @@ void AddDialogue(Bench &bench, const Watch &watch)
         }
         const auto place =
             static_cast<std::size_t>(args.Integer("place", 0, 0, static_cast<std::int64_t>(replies.size()) - 1));
-        const bool female = HeroIsFemale();
         if (replies[place].text == 0xFFFFFFFF)
         {
             throw ToolError("dialogue: that reply has no text, which the game goes through on action "
                             "continue, not choose");
         }
-        answer["reply"] = LineJson(replies[place], female);
+        answer["reply"] = LineJson(replies[place]);
         if (!dao::dialogue::Choose(place))
         {
             throw ToolError("dialogue: the game took no choice; dialogue action=look says where the "

@@ -150,9 +150,8 @@ std::vector<ObjectId> ItemsIn(ObjectId container);
 std::optional<ObjectId> StoreUp();
 Json StoreJson();
 
-Json LineJson(const dao::dialogue::Line &line, bool female, const dao::dialogue::Conversation *conversation = nullptr);
-bool HeroIsFemale();
-Json RepliesJson(std::span<const dao::dialogue::Line> replies, bool female,
+Json LineJson(const dao::dialogue::Line &line, const dao::dialogue::Conversation *conversation = nullptr);
+Json RepliesJson(std::span<const dao::dialogue::Line> replies,
                  const dao::dialogue::Conversation *conversation = nullptr);
 
 Json RoomJson(ObjectId id);

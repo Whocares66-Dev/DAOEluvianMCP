@@ -724,17 +724,12 @@ Json CutsceneTool(Ghilana &ghilana, const Json &raw)
         asked.at = cutscene::FrameTime(static_cast<float>(args.Number("at")), cut.fps);
         out["clock_at"] = *asked.at;
     }
-    const std::string language = ghilana.Files().Where().language;
-    const auto &tables = ghilana.TalkTables(language, false);
-    asked.line = [&tables](std::uint32_t strref) {
+    const auto &strings = ghilana.TalkStrings(false);
+    asked.line = [&strings](std::uint32_t strref) {
         Json line = {{"strref", strref}};
-        for (const auto &table : tables)
+        if (const auto found = strings.Lookup(strref))
         {
-            if (const auto text = table.table.String(strref))
-            {
-                line["text"] = Utf8(*text);
-                break;
-            }
+            line["text"] = Utf8(found->text);
         }
         return line;
     };

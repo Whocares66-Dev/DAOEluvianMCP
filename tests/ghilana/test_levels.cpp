@@ -34,7 +34,8 @@ struct Level
         put(L"slab.mmh", SlabModel());
         put(L"jowan_attack.stg", levels::StageFile());
         put(L"bhmcs_intro.cut", levels::CutsceneFile());
-        put(L"cut_en-us.tlk", Tlk({{6081234, "Jowan, stop!"}}));
+        // The campaign's own table, which the game searches; a table of another name it does not (#169).
+        put(L"singleplayer_en-us.tlk", Tlk({{6081234, "Jowan, stop!"}}));
     }
 };
 

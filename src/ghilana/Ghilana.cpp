@@ -50,36 +50,17 @@ Json Ghilana::Indexed()
                          "from the archives."}};
 }
 
-const std::vector<LoadedTalkTable> &Ghilana::TalkTables(const std::string &language, bool female)
+const dao::core::install::Strings &Ghilana::TalkStrings(bool female)
 {
     files_.Index();
-    const std::string suffix = "_" + Lower(language) + (female ? "_f" : "") + ".tlk";
     const std::scoped_lock guard(lock_);
-    const auto found = talk_.find(suffix);
-    if (found != talk_.end())
+    auto &kept = strings_.at(female ? 1 : 0);
+    if (!kept)
     {
-        return found->second;
+        const auto &index = files_.Installed();
+        kept.emplace(index, dao::core::install::TalkTables(index, female));
     }
-    std::vector<LoadedTalkTable> tables;
-    for (const auto &[name, copies] : files_.Resources())
-    {
-        if (!name.ends_with(suffix))
-        {
-            continue;
-        }
-        // "core_en-us.tlk" ends with "_en-us.tlk" and "core_en-us_f.tlk" does
-        // not, so only `female` reads the _f ones. Of a talk table's copies,
-        // the first, the one the game takes; it is marked unused where the
-        // language asked is not the index's, so that is not asked of it.
-        const Copy &copy = GameFiles::Choose(copies);
-        const auto bytes = files_.Read(copy);
-        auto table = bytes ? dao::core::TalkTableFile::Parse(*bytes) : std::nullopt;
-        if (table)
-        {
-            tables.push_back(LoadedTalkTable{name, files_.Describe(copy), std::move(*table)});
-        }
-    }
-    return talk_.emplace(suffix, std::move(tables)).first->second;
+    return *kept;
 }
 
 const std::vector<dao::core::m2da::Worksheet> &Ghilana::Worksheets()

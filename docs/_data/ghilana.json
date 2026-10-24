@@ -627,7 +627,7 @@
   },
   {
    "name": "strings",
-   "description": "Turns string ids (strrefs, as templates, tables and conversations hold them) into the game's text, and text into string ids, across every talk table of a language: the core's, the campaign's and each add-in's. With neither, lists the talk tables read.",
+   "description": "Turns string ids (strrefs, as templates, tables and conversations hold them) into the game's text, and text into string ids, over the talk tables the game searches, in its order: the core's, each enabled add-in's, and the campaign's (the server's --campaign), in the server's --language or en-us where a table has none. An id's `text` is what the game shows; `in` lists every table that has it where more than one does. With neither, lists the tables in that order.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -649,13 +649,9 @@
       "type": "boolean",
       "description": "`text` is the whole string, not part of it. Default false."
      },
-     "language": {
-      "type": "string",
-      "description": "en-us, fr-fr, de-de, ... Default: the server's (--language)."
-     },
      "female": {
       "type": "boolean",
-      "description": "The talk tables a female player's character is spoken to with (_f). Default false."
+      "description": "Text as a female hero is shown it: the _f tables ahead, the rest behind them. Default false."
      },
      "limit": {
       "type": "integer",

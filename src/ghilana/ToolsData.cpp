@@ -489,7 +489,7 @@ Json Table(Ghilana &ghilana, const Json &raw)
 
 // ---------------------------------------------------------------- strings
 
-Json StringsById(const std::vector<LoadedTalkTable> &tables, const Json &id)
+Json StringsById(const GameFiles &files, const dao::core::install::Strings &strings, const Json &id)
 {
     Json found = Json::array();
     for (const auto &one : id.is_array() ? id : Json::array({id}))
@@ -499,51 +499,52 @@ Json StringsById(const std::vector<LoadedTalkTable> &tables, const Json &id)
             throw ToolError("strings: `id` is a string id (a strref), or an array of them");
         }
         const auto wanted = static_cast<std::uint32_t>(one.get<std::int64_t>());
-        Json hits = Json::array();
-        for (const auto &table : tables)
-        {
-            if (const auto text = table.table.String(wanted))
-            {
-                hits.push_back(Json{{"text", Utf8(*text)}, {"table", table.name}, {"source", table.from["source"]}});
-            }
-        }
+        // In the game's order, so the first is what it shows (DAOLib #106).
+        const auto hits = strings.All(wanted);
         Json item = {{"id", wanted}};
         if (hits.empty())
         {
             item["text"] = nullptr;
-            item["why"] = "no talk table of this language has it";
+            item["why"] = "no talk table the game searches has it";
         }
         else
         {
-            item["text"] = hits[0]["text"];
-            item["table"] = hits[0]["table"];
+            item["text"] = Utf8(hits.front().text);
+            item["table"] = strings.Tables().at(hits.front().table).name;
         }
         if (hits.size() > 1)
         {
-            item["in"] = std::move(hits);
-            item["note"] = "more than one talk table has this id; which the game shows is unread";
+            Json in = Json::array();
+            for (const auto &hit : hits)
+            {
+                const auto &table = strings.Tables().at(hit.table);
+                in.push_back(Json{
+                    {"text", Utf8(hit.text)}, {"table", table.name}, {"source", files.Describe(table.copy)["source"]}});
+            }
+            item["in"] = std::move(in);
+            item["note"] = "more than one talk table has this id; the game shows the first, in the order it searches";
         }
         found.push_back(std::move(item));
     }
     return found;
 }
 
-void StringsByText(const std::vector<LoadedTalkTable> &tables, const std::string &text, bool exact, const Page &page,
+void StringsByText(const dao::core::install::Strings &strings, const std::string &text, bool exact, const Page &page,
                    Json &out)
 {
     const std::string lowerText = Lower(text);
     Json found = Json::array();
     std::size_t count = 0;
-    for (const auto &table : tables)
+    for (std::size_t i = 0; i < strings.Tables().size(); ++i)
     {
-        for (const auto &[id, wide] : table.table.Strings())
+        for (const auto &[id, wide] : strings.Table(i).Strings())
         {
             const std::string utf8 = Utf8(wide);
             const std::string lower = Lower(utf8);
             const bool match = exact ? lower == lowerText : lower.find(lowerText) != std::string::npos;
             if (match && page.Takes(count++, found.size()))
             {
-                found.push_back(Json{{"id", id}, {"text", utf8}, {"table", table.name}});
+                found.push_back(Json{{"id", id}, {"text", utf8}, {"table", strings.Tables()[i].name}});
             }
         }
     }
@@ -553,35 +554,39 @@ void StringsByText(const std::vector<LoadedTalkTable> &tables, const std::string
 Json Strings(Ghilana &ghilana, const Json &raw)
 {
     const Args args(raw, "strings");
-    const std::string language = Lower(args.String("language", ghilana.Files().Where().language));
+    const std::string &language = ghilana.Files().Where().language;
     const bool female = args.Bool("female", false);
     const Page page(args, 50, 5000);
     Json indexed = ghilana.Indexed();
-    const auto &tables = ghilana.TalkTables(language, female);
-    if (tables.empty())
+    const auto &strings = ghilana.TalkStrings(female);
+    if (strings.Tables().empty())
     {
-        throw ToolError("strings: no talk table of language \"" + language + "\" (files named <name>_" + language +
-                        ".tlk); `resources` with type tlk lists them");
+        throw ToolError("strings: the game searches no talk table here in \"" + language +
+                        "\" or en-us; `resources` with type tlk lists the files");
     }
     Json out = Json::object();
     Put(out, "index", indexed);
     out["language"] = language;
+    out["female"] = female;
     if (args.Has("id"))
     {
-        out["strings"] = StringsById(tables, args.Raw().at("id"));
+        out["strings"] = StringsById(ghilana.Files(), strings, args.Raw().at("id"));
         return out;
     }
     const std::string text = args.String("text", "");
     if (!text.empty())
     {
-        StringsByText(tables, text, args.Bool("exact", false), page, out);
+        StringsByText(strings, text, args.Bool("exact", false), page, out);
         return out;
     }
     Json tableNames = Json::array();
-    for (const auto &table : tables)
+    for (std::size_t i = 0; i < strings.Tables().size(); ++i)
     {
-        tableNames.push_back(
-            Json{{"name", table.name}, {"source", table.from["source"]}, {"strings", table.table.Size()}});
+        const auto &table = strings.Tables()[i];
+        tableNames.push_back(Json{{"name", table.name},
+                                  {"female", table.female},
+                                  {"source", ghilana.Files().Describe(table.copy)["source"]},
+                                  {"strings", strings.Table(i).Size()}});
     }
     out["tables"] = std::move(tableNames);
     out["note"] = "give `id` to read strings, or `text` to find them";
@@ -1166,16 +1171,17 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
         {"text",
          {{"type", "string"}, {"description", "Text to find, without case: the ids of the strings holding it."}}},
         {"exact", {{"type", "boolean"}, {"description", "`text` is the whole string, not part of it. Default false."}}},
-        {"language",
-         {{"type", "string"}, {"description", "en-us, fr-fr, de-de, ... Default: the server's (--language)."}}},
         {"female",
          {{"type", "boolean"},
-          {"description", "The talk tables a female player's character is spoken to with (_f). Default false."}}}};
+          {"description", "Text as a female hero is shown it: the _f tables ahead, the rest behind them. Default "
+                          "false."}}}};
     stringsProperties.update(PageProperties(50, 5000));
     tools.Add(Spec("strings",
                    "Turns string ids (strrefs, as templates, tables and conversations hold them) into the game's "
-                   "text, and text into string ids, across every talk table of a language: the core's, the "
-                   "campaign's and each add-in's. With neither, lists the talk tables read.",
+                   "text, and text into string ids, over the talk tables the game searches, in its order: the "
+                   "core's, each enabled add-in's, and the campaign's (the server's --campaign), in the server's "
+                   "--language or en-us where a table has none. An id's `text` is what the game shows; `in` lists "
+                   "every table that has it where more than one does. With neither, lists the tables in that order.",
                    std::move(stringsProperties)),
               [&ghilana](const Json &args) -> ToolResult { return Strings(ghilana, args); });
 

@@ -162,12 +162,14 @@ struct Install
         return cif.bytes;
     }
 
-    eluvian::ghilana::Paths Paths(std::string campaign = "Single Player", bool staged = false) const
+    eluvian::ghilana::Paths Paths(std::string campaign = "Single Player", bool staged = false,
+                                  std::string language = "en-us") const
     {
         eluvian::ghilana::Paths paths;
         paths.game = game;
         paths.documents = documents;
         paths.campaign = std::move(campaign);
+        paths.language = std::move(language);
         if (staged)
         {
             paths.plugins = root.path / L"stage" / L"plugins";
@@ -184,8 +186,10 @@ struct Served
     eluvian::Bench bench;
 
     // `staged`: started with --plugins, the build tree's staged plugins (#145).
-    explicit Served(const std::string &campaign = "Single Player", bool staged = false)
-        : ghilana{install.Paths(campaign, staged), {}, install.root.path / L"cache", "test"}
+    // `language`: started with --language.
+    explicit Served(const std::string &campaign = "Single Player", bool staged = false,
+                    const std::string &language = "en-us")
+        : ghilana{install.Paths(campaign, staged, language), {}, install.root.path / L"cache", "test"}
     {
         eluvian::ghilana::RegisterTools(bench, ghilana);
     }

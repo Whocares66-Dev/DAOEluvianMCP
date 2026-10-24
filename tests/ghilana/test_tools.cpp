@@ -292,7 +292,7 @@ TEST_CASE("table: an M2DA as the game merges it, an ID's first file's row kept",
     CHECK_THAT(Message(served, "table", {{"table", 1}, {"where", {{"Nope", 1}}}}), ContainsSubstring("Label"));
 }
 
-TEST_CASE("strings: ids to text across the language's talk tables, and text to ids", "[ghilana][tools]")
+TEST_CASE("strings: ids to text across the talk tables the game searches, and text to ids", "[ghilana][tools]")
 {
     Served served;
     Json s = served.Call("strings", {{"id", Json::array({100, 5000, 42})}});
@@ -304,9 +304,49 @@ TEST_CASE("strings: ids to text across the language's talk tables, and text to i
     s = served.Call("strings", {{"text", "ogre"}});
     REQUIRE(s["count"] == 1);
     CHECK(s["strings"][0]["id"] == 100);
-    s = served.Call("strings", {{"id", 100}, {"language", "fr-fr"}});
+}
+
+TEST_CASE("strings: an id's text is the first table's in the game's order, the others under `in`", "[ghilana][tools]")
+{
+    Served served;
+    // An enabled add-in's core table with an id the core's has too. For a male
+    // hero the plain tables come reversed, the add-in's ahead (DAOLib #106).
+    served.install.root.Write(L"game/Addins/dao_prc_cp_1/core/data/talktables/dao_prc_cp_1_c_en-us.tlk",
+                              Tlk({{101, "Hurlock CP"}}));
+    Json s = served.Call("strings", {{"id", 101}});
+    const Json &hurlock = s["strings"][0];
+    CHECK(hurlock["text"] == "Hurlock CP");
+    CHECK(hurlock["table"] == "dao_prc_cp_1_c_en-us.tlk");
+    REQUIRE(hurlock["in"].size() == 2);
+    CHECK(hurlock["in"][1]["text"] == "Hurlock");
+    CHECK(hurlock["in"][1]["table"] == "core_en-us.tlk");
+    // With neither, the tables in that order.
+    s = served.Call("strings");
+    CHECK(s["tables"][0]["name"] == "singleplayer_en-us.tlk");
+    CHECK(s["tables"].back()["name"] == "core_en-us.tlk");
+}
+
+TEST_CASE("strings: a female hero's _f text ahead of the plain, which stays behind it", "[ghilana][tools]")
+{
+    Served served;
+    served.install.root.Write(L"game/packages/core/data/talktables/core_en-us_f.tlk", Tlk({{100, "Ogre F"}}));
+    Json s = served.Call("strings", {{"id", Json::array({100, 5000})}, {"female", true}});
+    CHECK(s["female"] == true);
+    CHECK(s["strings"][0]["text"] == "Ogre F");
+    CHECK(s["strings"][0]["table"] == "core_en-us_f.tlk");
+    CHECK(s["strings"][1]["text"] == "Hello");
+    // A male hero never sees the _f text first.
+    CHECK(served.Call("strings", {{"id", 100}})["strings"][0]["text"] == "Ogre");
+}
+
+TEST_CASE("strings: the server's language, or en-us where a table has none in it", "[ghilana][tools]")
+{
+    Served served("Single Player", false, "fr-fr");
+    const Json s = served.Call("strings", {{"id", Json::array({100, 5000})}});
+    CHECK(s["language"] == "fr-fr");
     CHECK(s["strings"][0]["text"] == "Ogre FR");
-    CHECK_THAT(Message(served, "strings", {{"id", 1}, {"language", "xx-xx"}}), ContainsSubstring("tlk"));
+    CHECK(s["strings"][1]["text"] == "Hello");
+    CHECK(s["strings"][1]["table"] == "singleplayer_en-us.tlk");
 }
 
 TEST_CASE("query: templates by a field's value, the fields asked, counts by a field", "[ghilana][tools]")

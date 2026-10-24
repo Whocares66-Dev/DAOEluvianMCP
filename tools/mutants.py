@@ -3563,6 +3563,14 @@ MUTANTS = [
         "in = in;",
         "ghilana",
     ),
+    # An id's text as the game shows it, of the tables in its order (#169).
+    Mutant(
+        "ghilana strings: an id's text is the first table's in the game's order",
+        "src/ghilana/ToolsData.cpp",
+        'item["text"] = Utf8(hits.front().text);',
+        'item["text"] = Utf8(hits.back().text);',
+        "ghilana",
+    ),
     # A mod packed for players (#140).
     Mutant(
         "ghilana mods: a talk table goes in the add-in's talktables",
@@ -3617,8 +3625,8 @@ MUTANTS = [
     Mutant(
         "ghilana cutscene: a spoken line without its text",
         "src/ghilana/ToolsLevels.cpp",
-        'line["text"] = Utf8(*text);',
-        "(void)text;",
+        'line["text"] = Utf8(found->text);',
+        "(void)found;",
         "ghilana",
     ),
     Mutant(

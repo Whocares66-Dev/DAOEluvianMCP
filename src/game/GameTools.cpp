@@ -398,13 +398,13 @@ void AddEngineEvents(Bench &bench)
     // Conversations, as DAOLib's hooks see them: inside the engine's own
     // work, so each does no more than read the line and put it on the bus.
     dao::dialogue::OnNpcLine([&bench](dao::dialogue::Conversation &talk, const dao::dialogue::Line &line) {
-        bench.Events().Emit("eluvian.dialogue.line", LineJson(line, HeroIsFemale(), &talk));
+        bench.Events().Emit("eluvian.dialogue.line", LineJson(line, &talk));
     });
     dao::dialogue::OnReplies([&bench](dao::dialogue::Conversation &talk, std::span<const dao::dialogue::Line> replies) {
-        bench.Events().Emit("eluvian.dialogue.replies", Json{{"replies", RepliesJson(replies, HeroIsFemale(), &talk)}});
+        bench.Events().Emit("eluvian.dialogue.replies", Json{{"replies", RepliesJson(replies, &talk)}});
     });
     dao::dialogue::OnReplyChosen([&bench](dao::dialogue::Conversation &talk, const dao::dialogue::Line &reply) {
-        bench.Events().Emit("eluvian.dialogue.chosen", LineJson(reply, HeroIsFemale(), &talk));
+        bench.Events().Emit("eluvian.dialogue.chosen", LineJson(reply, &talk));
     });
     // Who the player controls, and what goes on or comes off whom, by any
     // cause: DAOLib #22's hooks at the engine's own functions, so an order

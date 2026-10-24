@@ -546,11 +546,10 @@ ToolResult KindDialogue(const Watch &watch, const Json & /*args*/)
         answer["note"] = "no conversation is on the screen";
         return answer;
     }
-    const bool female = HeroIsFemale();
     const auto current = conversation->CurrentLine();
     const auto line = current ? conversation->LineAt(*current) : std::nullopt;
-    answer["line"] = line ? LineJson(*line, female, conversation) : Json(nullptr);
-    answer["replies"] = RepliesJson(dao::dialogue::Replies(), female, conversation);
+    answer["line"] = line ? LineJson(*line, conversation) : Json(nullptr);
+    answer["replies"] = RepliesJson(dao::dialogue::Replies(), conversation);
     // Whose conversation it is (DAOLib's Owner, #23).
     const ObjectId owner = conversation->Owner();
     answer["owner"] = owner != kInvalidObject ? Brief(owner) : Json(nullptr);
