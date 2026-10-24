@@ -1301,8 +1301,7 @@ void Uses(Ghilana &ghilana, const std::string &name, const Json &content, const 
           Json &out)
 {
     UsesFound found(ghilana, name, limit);
-    Walk(content, "",
-         [&](const std::string &path, const Json &value) { found.Take(path, value, holdings.At(path)); });
+    Walk(content, "", [&](const std::string &path, const Json &value) { found.Take(path, value, holdings.At(path)); });
     found.Answer(out);
 }
 

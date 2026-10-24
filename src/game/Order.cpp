@@ -144,16 +144,25 @@ bool OrderByClick(const Args &args, const std::string &action, ObjectId who, Jso
     {
         const auto ability = AbilityArg(args);
         const auto target = args.OptionalId("target", kCreatureHint);
+        const ObjectId item = ItemArg(args, who);
         answer["ability"] = AbilityJson(ability);
         answer["target"] = target ? Brief(*target) : Json(nullptr);
+        if (item != kInvalidObject)
+        {
+            answer["item"] = Brief(item);
+        }
         if (target)
         {
             explore->SelectTarget(*target); // as the cycle-target keys select it
         }
+        // The message's third word is the item the ability comes from, 0 for a
+        // talent or spell, as the quickbar sends it; until #173 it was given
+        // the target, a creature the engine took for the item (lib-agent-3's
+        // reading of 0x00711B50 for DAOLib #253, 2026-10-24).
         auto message = dao::messages::Make<dao::messages::PerformAbilityMessage>();
         message.ability = ability;
         message.caster = who;
-        message.target = target.value_or(kInvalidObject);
+        message.item = item != kInvalidObject ? item : ObjectId{0};
         return dao::messages::Send(explore, message);
     }
     // attack and use: the click's primary action on the object under the
