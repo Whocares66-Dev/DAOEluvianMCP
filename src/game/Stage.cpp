@@ -330,8 +330,8 @@ ObjectId StageKill(const Args &args, Json &answer)
     {
         throw ToolError(args.Tool() + ": the engine made no damage effect");
     }
+    Deaths().Forget(id); // the damage is no one's, so neither is the death
     api::Engine_ApplyEffectOnObject(k::EFFECT_DURATION_TYPE_INSTANT, *damage.get(), id, 0.0F, kInvalidObject, 0);
-    Deaths().Note(id, kInvalidObject);
     answer["dealt"] = health + 1000;
     // A death is the game's to play out, and a paused game plays nothing: a
     // wolf killed while a fight's start had the game paused was dead only
@@ -457,11 +457,14 @@ ObjectId StageSpawn(const Args &args, Json &answer)
     }
     // Read in the frame it was made, a spawned creature is not set up yet:
     // health 1 of 1 in the answer, 85 of 85 three seconds on (2026-09-30).
+    // Since #177 its spawn script's end is an event, DAOLib #255's OnReady.
     answer["note"] = moved > 1.0F
                          ? "the point asked for is not a place to stand: the creature was made `moved` meters from "
                            "it, perhaps in another room (see `creature`'s position and room). It is set up over "
-                           "the next frames; creature reads its health"
-                         : "a creature spawned is set up over the next frames; creature reads its health";
+                           "the next frames: wait_for eluvian.creature.ready from `cursor`, then creature reads "
+                           "its health"
+                         : "a creature spawned is set up over the next frames: wait_for eluvian.creature.ready "
+                           "from `cursor`, then creature reads its health";
     return id;
 }
 
@@ -566,7 +569,8 @@ void AddStage(Bench &bench, const Watch &watch)
         "hurlock_epic_archer).\n\n"
         "The game places the creature at the nearest spot it can stand. `moved` says how far from `point` "
         "that was; a point inside a wall may put it in the next room. The creature finishes setting up over the "
-        "next few frames, so read its health later with `creature`. With `group`, it joins that group at once, "
+        "next few frames: wait_for eluvian.creature.ready from `cursor`, then read its health with `creature`. "
+        "With `group`, it joins that group at once, "
         "and the answer says whether it is `hostileToParty`.",
         Json{{"template", {{"type", "string"}, {"description", "The creature's template."}}},
              {"point", {{"description", "Where to create it: {x, y, z} or [x, y, z]."}}},

@@ -202,8 +202,12 @@ A mod that registers with Eluvian (through `src/api/EluvianAPI.h`) appears in `h
 | `eluvian.paused` | The game was paused or unpaused: `paused`. |
 | `eluvian.game.loaded` | A save loaded and the world is in place: `character`, `kind`, `number`. |
 | `eluvian.game.saved` | The game wrote a save, including its own autosaves. |
-| `eluvian.creature.died` | A creature died, the moment it did: `id`, `name`, `killer`. Eluvian sees this by checking every frame the creatures that were hurt or staged. |
-| `eluvian.script.death` | The game's own death event, 1.5 to 2.5 s after `eluvian.creature.died`, once the death has played out. |
+| `eluvian.creature.died` | A creature died, on the frame its health reached 0, any creature: `id`, `name`, `killer` (null for `stage_kill`'s). Bodies a save restores dead are not deaths. |
+| `eluvian.creature.revived` | A dead creature or fallen party member came back: `id`, `name`, `tag`. |
+| `eluvian.creature.ready` | A creature just made is set up by its spawn script, its health its own: wait for it after `stage_spawn` before reading the creature. |
+| `eluvian.area.loaded` | An area finished loading, the party placed and its load scripts run: `area`. |
+| `eluvian.input.back` | The game takes the player's input again, explore or combat entered from another mode: `mode`. |
+| `eluvian.script.death` | The game's own death event, about 2 s after `eluvian.creature.died`, once the death has played out. |
 | `eluvian.script.<event>` | One of the game's script events, as the scripts receive it: `receiver`, `creator`, `objects`, `integers`, `floats`. `<event>` is one of damaged, death, attack_impact, combat_initiated, ability_cast_start, ability_cast_impact, apply_effect, remove_effect, gamemode_change, area_loaded, partymember_added, order_received, popup_result. |
 
 For the `eluvian.script.*` events:

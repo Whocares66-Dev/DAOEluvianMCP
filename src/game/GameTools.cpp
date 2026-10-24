@@ -4,7 +4,9 @@
 
 #include "dao/Animation.h"
 #include "dao/Audio.h"
+#include "dao/Creatures.h"
 #include "dao/Equipment.h"
+#include "dao/GameModes.h"
 #include "dao/Party.h"
 
 #include <unordered_map>
@@ -205,6 +207,26 @@ void SoundPlayed(Bench &bench, const dao::audio::EventStart &start)
     bench.Events().Emit("eluvian.sound.played", std::move(payload));
 }
 
+// The moments DAOLib hears (#255), all on the game's thread (#177).
+void AddMoments(Bench &bench)
+{
+    dao::creatures::OnDeath([&bench](ObjectId creature, ObjectId killer) { Deaths().Died(bench, creature, killer); });
+    dao::creatures::OnRevive(
+        [&bench](ObjectId creature) { bench.Events().Emit("eluvian.creature.revived", Brief(creature)); });
+    dao::creatures::OnReady(
+        [&bench](ObjectId creature) { bench.Events().Emit("eluvian.creature.ready", Brief(creature)); });
+    dao::modes::OnAreaLoaded([&bench] {
+        Deaths().AreaLoaded();
+        const ObjectId area = api::GetArea(api::GetMainControlled());
+        bench.Events().Emit("eluvian.area.loaded", Json{{"area", Brief(area)}});
+    });
+    dao::modes::OnInputBack([&bench] {
+        const auto mode = dao::CClientExoApp::CurrentMode();
+        bench.Events().Emit("eluvian.input.back",
+                            Json{{"mode", mode ? Json(ModeName(static_cast<std::int32_t>(*mode))) : Json(nullptr)}});
+    });
+}
+
 } // namespace
 
 void DescribeTopics(EventCatalog &topics)
@@ -270,12 +292,27 @@ void DescribeTopics(EventCatalog &topics)
              Json{{"replies", "each reply with its position, index, text and icon"}});
     describe("eluvian.dialogue.chosen", "The player chose a reply, and the conversation continues from it.",
              Json{{"index", "the reply's position in the conversation file"}, {"text", "the reply's text"}});
-    describe(
-        "eluvian.creature.died",
-        "A creature died, or a party member fell, at the moment it happened. It is noticed only for "
-        "creatures that were hurt, or killed with `stage_kill`. The engine's own eluvian.script.death fires "
-        "1.5 to 2.5 seconds later, once the death has played out.",
-        Json{{"id", "the creature's id"}, {"name", "its name"}, {"killer", "the last creature to hurt it, if known"}});
+    describe("eluvian.creature.died",
+             "A creature died, or a party member fell, on the frame its health reached 0: any creature. The "
+             "engine's own eluvian.script.death fires about 2 seconds later, once the death has played out.",
+             Json{{"id", "the creature's id"},
+                  {"name", "its name"},
+                  {"killer", "who killed it: the death's own creator, else the last creature to hurt it; null for "
+                             "`stage_kill`'s, whose damage comes from no one"}});
+    describe("eluvian.creature.revived", "A dead creature or a fallen party member came back to life.",
+             Json{{"id", "the creature's id"}, {"name", "its name"}, {"tag", "its tag"}});
+    describe("eluvian.creature.ready",
+             "A creature just made (stage_spawn, a script's) is set up by its spawn script: its health, "
+             "equipment and abilities are now its own. A creature restored from a save gives none.",
+             Json{{"id", "the creature's id"}, {"name", "its name"}, {"tag", "its tag"}});
+    describe("eluvian.area.loaded",
+             "An area finished loading: the party is placed in it and its load scripts have run. Once per load, "
+             "a save's own load aside (that is eluvian.game.loaded).",
+             Json{{"area", "the area"}});
+    describe("eluvian.input.back",
+             "The game takes the player's input again: explore or combat entered from another mode (a load, a "
+             "conversation, a cutscene, a screen).",
+             Json{{"mode", "the mode entered: explore or combat"}});
     describe("eluvian.animation.played",
              "A creature began a clip on its base layer, by the engine's own play call: a command's step (a "
              "swing, an evade, a deathblow, a knockdown), a conversation line, a walk, the idle. Clips the "
@@ -472,7 +509,7 @@ void AddEngineEvents(Bench &bench)
             }
         });
     }
-    dao::OnFrame([&bench] { Deaths().Tick(bench); });
+    AddMoments(bench);
 }
 
 } // namespace eluvian::game

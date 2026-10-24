@@ -181,53 +181,59 @@ bool UsedOnOneself(std::int32_t ability);
 Json Abilities(ObjectId id);
 Json Effects(ObjectId id);
 
-// Deaths, watched as well as heard. A creature that is hurt (a damage or
-// an attack's impact) or staged is looked at every frame until it is dead,
-// gone, or a minute passes with no more harm, and its death is
-// eluvian.creature.died with the last one who hurt it. The engine's own
-// EVENT_TYPE_DEATH was not heard at all before DAOLib bc081ea; since, it
-// comes as eluvian.script.death 1.5 to 2.5 s after this, once the death
-// has played out (play, 2026-09-30). So this is the moment of the death,
-// and that its end. On the game's thread only, as every caller is.
+// Deaths, as DAOLib hears them since #255 (dao::creatures::OnDeath, on the
+// frame health crosses 0): eluvian.creature.died for every creature. Until
+// #177 a creature hurt (a damage or an attack's impact) or staged was
+// looked at every frame for a minute, so the death of one never hurt was
+// not said. The engine's EVENT_TYPE_DEATH comes as eluvian.script.death
+// some 2 s later, once the death has played out (play, 2026-09-30).
+// The last one who hurt each creature is noted for the killer where the
+// death effect names none, as stage_kill's damage comes from no one. On
+// the game's thread only, as every caller is.
 class DeathWatch
 {
   public:
     void Note(ObjectId id, ObjectId harmer)
     {
-        if (id == kInvalidObject)
+        if (id != kInvalidObject && harmer != kInvalidObject)
         {
-            return;
+            harmers_[id] = harmer;
         }
-        Entry &entry = watched_[id];
-        if (harmer != kInvalidObject)
-        {
-            entry.killer = harmer;
-        }
-        entry.since = std::chrono::steady_clock::now();
     }
 
-    void Tick(Bench &bench)
+    // A creature killed by no one (stage_kill): its last harmer is not its
+    // killer. Tamlen's stage_kill named a wolf dead a minute before, its last
+    // harmer (2026-10-24, #177).
+    void Forget(ObjectId id)
     {
-        const auto now = std::chrono::steady_clock::now();
-        for (auto it = watched_.begin(); it != watched_.end();)
+        harmers_.erase(id);
+    }
+
+    // The death of `id`, its killer the death effect's creator if any. None
+    // comes while a load restores the area: DAOLib's OnDeath fired then for
+    // the bodies a save holds, the forest clearing's three hunters, and a
+    // reset took them as a fight's dead, until its b321ffe (2026-10-24, #177).
+    void Died(Bench &bench, ObjectId id, ObjectId killer)
+    {
+        const auto noted = harmers_.find(id);
+        if (killer == kInvalidObject && noted != harmers_.end())
         {
-            const ObjectId id = it->first;
-            if (api::GetObjectType(id) != k::OBJECT_TYPE_CREATURE)
-            {
-                it = watched_.erase(it); // gone from the world
-                continue;
-            }
-            if (api::IsDead(id) != 0)
-            {
-                bench.Events().Emit(
-                    "eluvian.creature.died",
-                    Json{{"id", IdJson(id)}, {"name", Narrow(api::GetName(id))}, {"killer", Brief(it->second.killer)}});
-                fallen_.insert(id);
-                it = watched_.erase(it);
-                continue;
-            }
-            it = now - it->second.since > std::chrono::minutes(1) ? watched_.erase(it) : std::next(it);
+            killer = noted->second;
         }
+        if (noted != harmers_.end())
+        {
+            harmers_.erase(noted);
+        }
+        bench.Events().Emit("eluvian.creature.died",
+                            Json{{"id", IdJson(id)}, {"name", Narrow(api::GetName(id))}, {"killer", Brief(killer)}});
+        fallen_.insert(id);
+    }
+
+    // An area loaded: the creatures hurt in the one left are gone, and with
+    // them their harmers.
+    void AreaLoaded()
+    {
+        harmers_.clear();
     }
 
     // The creatures seen to die since the last call: a fight's dead, which
@@ -241,12 +247,7 @@ class DeathWatch
 
   private:
     std::set<ObjectId> fallen_;
-    struct Entry
-    {
-        ObjectId killer = kInvalidObject;
-        std::chrono::steady_clock::time_point since;
-    };
-    std::map<ObjectId, Entry> watched_;
+    std::map<ObjectId, ObjectId> harmers_; // the last one who hurt each, until it died
 };
 
 // A row of one of the game's rule tables: its id, the designers' label, and
