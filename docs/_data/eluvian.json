@@ -363,7 +363,7 @@
   },
   {
    "name": "equip",
-   "description": "Puts an item from the pack on a party member, or takes one off, the way the inventory screen does, so the game's rules apply (requirements, which items fit which slot).\n\n`action` is one of:\n- equip (default): puts `item` in `slot`. Whatever the slot held goes back to the pack. Returns what the slot held `before` and holds `after`, and whether it worked (`equipped`). If it did not, the answer says whether the game thinks the creature can use the item (`canUse`), with its `requirements` and `restrictions` where known.\n- unequip: takes `item` off and puts it in the pack. Returns whether it came off (`unequipped`).\n\nIt acts on the party member selected in the interface. If `id` names another, that one is selected for the call and control is handed back afterwards (`selectedFirst`).",
+   "description": "Puts an item from the pack on a party member, or takes one off, the way the inventory screen does, so the game's rules apply (requirements, which items fit which slot).\n\n`action` is one of:\n- equip (default): puts `item` in `slot`. Whatever the slot held goes back to the pack. Returns what the slot held `before` and holds `after`, and whether it worked (`equipped`). If it did not, the answer says whether the game thinks the creature can use the item (`canUse`), with its `requirements` and `restrictions` where known.\n- unequip: takes `item` off and puts it in the pack. Returns whether it came off (`unequipped`).\n\nIt acts on `id`, by default the party member selected in the interface, and selects nobody: the selection and control stay as they were.",
    "inputSchema": {
     "type": "object",
     "properties": {

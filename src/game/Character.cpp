@@ -792,21 +792,36 @@ void AddCharacter(Bench &bench, const Watch &watch)
 // one of the item's EquippableSlots (the base item table's mask: a
 // longsword's main or offhand, a ring's either finger), and
 // "GUI.SelectedChar.UnequipItem <item>"; both reach the creature the
-// interface has selected (the engine's EquipItemMessage and
-// UnequipItemMessage are CCCreature's). Not yet seen in play.
+// interface has selected. The engine's EquipItemMessage and
+// UnequipItemMessage are CCCreature's handlers (DAOLib #253), so since #174
+// they are sent to the creature itself, typed, and no party member need be
+// selected first, which a selection at camp once failed to do (#31).
 namespace
 {
 
-// The equip tool's handler, registered by AddEquip.
+// The creature's own object, which the equip messages are sent to.
+dao::CCCreature &CreatureObject(ObjectId who)
+{
+    auto *app = dao::CClientExoApp::Get();
+    auto *creature = app != nullptr ? app->GetCreatureById(who) : nullptr;
+    if (creature == nullptr)
+    {
+        throw ToolError(std::format("equip: {} is no creature in the area; state lists the party", FormatId(who)));
+    }
+    return *creature;
+}
+
 // Taken off as the paperdoll does: back to the pack.
-Json Unequip(ObjectId item, Json answer)
+Json Unequip(ObjectId who, ObjectId item, Json answer)
 {
     const auto slot = api::GetItemEquipSlot(item);
     if (SlotName(slot).empty())
     {
         throw ToolError("equip: that item is not worn; equipment says what is");
     }
-    if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.UnequipItem {}", item)))
+    auto message = dao::messages::Make<dao::messages::UnequipItemMessage>();
+    message.item = item;
+    if (!dao::messages::Send(&CreatureObject(who), message))
     {
         throw ToolError("equip: the game took no unequip");
     }
@@ -947,14 +962,6 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
     const auto selected = static_cast<ObjectId>(
         dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
     const ObjectId who = args.OptionalId("id", kCreatureHint).value_or(selected);
-    // The inventory screen equips whom the interface has selected; the
-    // scripts' hand-over (control's) selects a party
-    // member wherever the party is, where the binding
-    // SelectPartyMemberIndexMessage selected nobody at camp
-    // (turn-based-agent, 2026-10-03, #31). Another one is selected so,
-    // equipped, and control given back, where the driver did both by
-    // hand (#86).
-    const SelectedFor selection(who, selected, "equip");
     const auto set = api::GetActiveWeaponSet(who);
     Json answer = {{"action", action},
                    {"item", ItemJson(item, false)},
@@ -962,18 +969,18 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
                    {"cursor", bench.Events().Next()}};
     if (action == "unequip")
     {
-        answer = Unequip(item, std::move(answer));
-        selection.Say(answer);
-        return answer;
+        return Unequip(who, item, std::move(answer));
     }
     const auto mask = api::GetM2DAInt(k::TABLE_ITEMS, L"EquippableSlots", api::GetBaseItemType(item));
     const std::int32_t slot = SlotFor(args, mask);
     const auto weaponSet = slot <= 2 ? set : -1;
     const ObjectId before = ItemInSlot(who, slot, weaponSet);
-    if (!dao::messages::SendText(std::format(L"GUI.SelectedChar.EquipItem {} {}", item, slot)))
-    {
-        throw ToolError("equip: the game took no equip");
-    }
+    auto message = dao::messages::Make<dao::messages::EquipItemMessage>();
+    message.item = item;
+    message.slot = static_cast<std::uint32_t>(slot);
+    // Its handler answers true even when the engine refuses the equip
+    // (DAOLib #253): `after` says what came of it.
+    dao::messages::Send(&CreatureObject(who), message);
     const ObjectId after = ItemInSlot(who, slot, weaponSet);
     answer["slot"] = std::string(SlotName(slot));
     answer["before"] = ItemJson(before, false);
@@ -983,7 +990,6 @@ ToolResult ToolEquip(Bench &bench, const Watch &watch, const Json &raw)
     {
         WhyNotOn(item, who, answer);
     }
-    selection.Say(answer);
     return answer;
 }
 
@@ -1002,8 +1008,8 @@ static void AddEquip(Bench &bench, const Watch &watch)
                  "(`canUse`), with its `requirements` and `restrictions` where known.\n"
                  "- unequip: takes `item` off and puts it in the pack. Returns whether it came off "
                  "(`unequipped`).\n\n"
-                 "It acts on the party member selected in the interface. If `id` names another, that one is "
-                 "selected for the call and control is handed back afterwards (`selectedFirst`).",
+                 "It acts on `id`, by default the party member selected in the interface, and selects "
+                 "nobody: the selection and control stay as they were.",
                  Json{{"type", "object"},
                       {"properties",
                        {{"action",
