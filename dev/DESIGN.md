@@ -179,18 +179,18 @@ Where it stands, 2026-10-01: all five built but `screen` and the arenas, and see
 
 ## What DAOLib gives, and what it was asked for
 
-Answered by lib-agent, 2026-09-30. `DAOLib\dev\PLUGINS.md` is the API table, `DAOLib\dev\LIBRARY.md` what is verified in play; what is marked "not yet seen in play" there is unproven here too.
+Answered by lib-agent, 2026-09-30, and kept as that day's answer: the "Since" column says what each ask became (2026-10-24). What DAOLib gives today is its own `dev/PLUGINS.md`, the API table, and `dev/LIBRARY.md`, what is verified in play; what is marked "not yet seen in play" there is unproven here too.
 
-| Need | DAOLib today | Asked for |
-|---|---|---|
-| Finding each other | Nothing: `LoaderInfo` is paths and a version. Plugins load sorted by name. | Nothing yet: `GetProcAddress` on eluvian.dll, resolved on the first frame. A loader registry if a second host needs one. |
-| Script commands by name | `dao::script::Invoke<R>(id, args...)`, typed at compile time; `generated/ScriptApi.h` has an id and a wrapper per command | 1st: a run-time table (name, id, parameter types and defaults, return type) from `gen_script_api.py`, and a dynamic `Invoke` over values |
-| Orders as the player | `CCObject::QueuePlayerCommand` (0x0073D060), the engine's own path, `QueueNewCommand` with playerIssued set. It reaches `QueueCommand` from 0x0073D054, a caller turnbased's gate knows, and the gate reads `Command::PlayerIssued` alone for `from player`. | 2nd: a wrapper doing what explore mode's click handlers do around it |
-| Creatures | `CCObject::Position`, `AreaId`, `Area`; `CCCreature::Property` for vitals; `CurrentCommand`, `CommandAt`, `CommandQueueSize`; the scripts' `GetPartyList`, `GetObjectsInArea`, `GetNearestObjectByHostility`, `IsObjectHostile`, `HasAbility`, `GetRemainingCooldown` | |
-| Effects | `CGameEffect`'s type, creator, ability, duration, remaining and parameters; `GetEffects` as an array | 5th: a native walk |
-| Events | `dao::OnScriptEvent`; `dao::messages::OnAnyMessage`, `OnMessage<M>`; `CClientExoApp::CurrentMode()`; `dao::saves::OnGameLoaded`. `COMMAND_COMPLETE` reaches script events only sometimes. | 3rd: command start and end |
-| Save, load, pause, speed | `SaveGameMessage`, `LoadGameMessage` typed (sending them from a plugin untested); `CClientExoApp::SetPaused`; `dao::clock::SetSpeed` (seen at 2x) | |
-| Screenshot | No D3D9 access. Leads: the device's `Present` through the engine's D3DDriver classes, or the engine's own save thumbnail (`SaveLoadProxy::ScreenshotPath`). | 4th |
+| Need | DAOLib on 2026-09-30 | Asked for | Since |
+|---|---|---|---|
+| Finding each other | Nothing: `LoaderInfo` is paths and a version. Plugins load sorted by name. | Nothing yet: `GetProcAddress` on eluvian.dll, resolved on the first frame. A loader registry if a second host needs one. | As asked: `Eluvian_GetInterface` (`src/api/EluvianAPI.h`) |
+| Script commands by name | `dao::script::Invoke<R>(id, args...)`, typed at compile time; `generated/ScriptApi.h` has an id and a wrapper per command | 1st: a run-time table (name, id, parameter types and defaults, return type) from `gen_script_api.py`, and a dynamic `Invoke` over values | `dao/ScriptCall.h`, a command called by name with its arguments' types known at run time: `script` |
+| Orders as the player | `CCObject::QueuePlayerCommand` (0x0073D060), the engine's own path, `QueueNewCommand` with playerIssued set. It reaches `QueueCommand` from 0x0073D054, a caller turnbased's gate knows, and the gate reads `Command::PlayerIssued` alone for `from player`. | 2nd: a wrapper doing what explore mode's click handlers do around it | `dao/Orders.h`, the click handlers' own functions: `order` via command; the clicks themselves as typed messages (`dao/Messages.h`, #253): `order` via click, `equip` |
+| Creatures | `CCObject::Position`, `AreaId`, `Area`; `CCCreature::Property` for vitals; `CurrentCommand`, `CommandAt`, `CommandQueueSize`; the scripts' `GetPartyList`, `GetObjectsInArea`, `GetNearestObjectByHostility`, `IsObjectHostile`, `HasAbility`, `GetRemainingCooldown` | | |
+| Effects | `CGameEffect`'s type, creator, ability, duration, remaining and parameters; `GetEffects` as an array | 5th: a native walk | |
+| Events | `dao::OnScriptEvent`; `dao::messages::OnAnyMessage`, `OnMessage<M>`; `CClientExoApp::CurrentMode()`; `dao::saves::OnGameLoaded`. `COMMAND_COMPLETE` reaches script events only sometimes. | 3rd: command start and end | `dao/CommandEvents.h`: eluvian.command.started and .ended. A death, a made creature ready, an area loaded and the game taking input again are DAOLib #255 |
+| Save, load, pause, speed | `SaveGameMessage`, `LoadGameMessage` typed (sending them from a plugin untested); `CClientExoApp::SetPaused`; `dao::clock::SetSpeed` (seen at 2x) | | The game's speed belongs to one plugin (CLAUDE.md) |
+| Screenshot | No D3D9 access. Leads: the device's `Present` through the engine's D3DDriver classes, or the engine's own save thumbnail (`SaveLoadProxy::ScreenshotPath`). | 4th | Eluvian draws the window itself (PrintWindow) and sends the game's TakeScreenshotMessage; a frame's draws as Direct3D 9 gets them are `dao/Render.h` (#160) |
 
 Rules that come with it: script commands only on the scripts' thread, and not while the mode is `Loading`, when objects come and go; no conversation started or area changed from inside another hook's callback (a frame callback is fine); `OBJECT_INVALID` is 0xFFFFFFFF; every callback wrapped so no exception reaches the game (`dao::detail::Guard`); the listener never reads game memory itself.
 
