@@ -3571,6 +3571,21 @@ MUTANTS = [
         'item["text"] = Utf8(hits.back().text);',
         "ghilana",
     ),
+    # A data table's cells by DAOLib's schema (#170).
+    Mutant(
+        "ghilana references: a table's string id column by the schema, whatever its name",
+        "src/ghilana/ToolsData.cpp",
+        "column != nullptr && column->kind == Kind::StrRef ? IsStringId(value)",
+        "column != nullptr && column->kind == Kind::Plain ? IsStringId(value)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana references: a schema's resource column names its one extension's file",
+        "src/ghilana/ToolsData.cpp",
+        "if (column != nullptr && column->kind == Kind::Resource)",
+        "if (column != nullptr && column->kind == Kind::StrRef)",
+        "ghilana",
+    ),
     # A mod packed for players (#140).
     Mutant(
         "ghilana mods: a talk table goes in the add-in's talktables",

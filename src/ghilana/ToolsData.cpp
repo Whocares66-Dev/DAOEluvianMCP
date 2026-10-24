@@ -12,6 +12,7 @@
 #include <dao/core/Gff3.h>
 #include <dao/core/Gff4.h>
 #include <dao/core/M2da.h>
+#include <dao/core/generated/GdaSchema.h>
 
 #include <algorithm>
 #include <charconv>
@@ -990,24 +991,65 @@ std::vector<std::string> Named(const GameFiles &files, const std::string &text, 
     return named;
 }
 
-bool IsStrref(const std::string &path, const Json &value)
+bool IsStringId(const Json &value)
 {
-    if (!value.is_number_integer() || !Lower(path).ends_with("strref"))
-    {
-        return false;
-    }
-    const auto id = value.get<std::int64_t>();
-    return id >= 0 && id != std::int64_t{0xFFFFFFFF};
+    return value.is_number_integer() && value.get<std::int64_t>() >= 0 &&
+           value.get<std::int64_t>() != std::int64_t{0xFFFFFFFF};
 }
 
-// What a file's content names: resources, and string ids.
-void Uses(const GameFiles &files, const std::string &name, const Json &content, std::size_t limit, Json &out)
+bool IsStrref(const std::string &path, const Json &value)
 {
+    return Lower(path).ends_with("strref") && IsStringId(value);
+}
+
+// A table's columns as its rows' JSON names them (ColumnName of the hash),
+// with what DAOLib's schema says each holds; empty for a file of no
+// worksheet the schema has.
+using SchemaColumns = std::map<std::string, const dao::core::tables::Column *, std::less<>>;
+
+SchemaColumns ColumnsOf(const dao::core::tables::Worksheet *sheet)
+{
+    SchemaColumns columns;
+    if (sheet != nullptr)
+    {
+        for (const auto &column : sheet->columns)
+        {
+            columns.emplace(ColumnName(column.hash), &column);
+        }
+    }
+    return columns;
+}
+
+// The schema's column a table's cell is in, at "rows[3].NameStrRef"; null
+// for a field of a GFF file or a column the schema does not have.
+const dao::core::tables::Column *ColumnAt(const SchemaColumns &columns, const std::string &path)
+{
+    const auto dot = path.rfind('.');
+    if (columns.empty() || !path.starts_with("rows[") || dot == std::string::npos)
+    {
+        return nullptr;
+    }
+    const auto found = columns.find(std::string_view(path).substr(dot + 1));
+    return found != columns.end() ? found->second : nullptr;
+}
+
+// What a file's content names: resources, and string ids. A table's column
+// the schema calls a string id is one whatever its name (StrID_Effect,
+// NameStrID); a column it calls a resource names its one extension's file.
+// Elsewhere both are guessed: a field ending "strref", a text some file is
+// named (#170).
+void Uses(const GameFiles &files, const std::string &name, const Json &content, const SchemaColumns &columns,
+          std::size_t limit, Json &out)
+{
+    using dao::core::tables::Kind;
     Json uses = Json::array();
     Json strrefs = Json::array();
     std::set<std::string> seen;
     Walk(content, "", [&](const std::string &path, const Json &value) {
-        if (IsStrref(path, value))
+        const auto *column = ColumnAt(columns, path);
+        const bool stringId =
+            column != nullptr && column->kind == Kind::StrRef ? IsStringId(value) : IsStrref(path, value);
+        if (stringId)
         {
             if (strrefs.size() < limit)
             {
@@ -1020,7 +1062,20 @@ void Uses(const GameFiles &files, const std::string &name, const Json &content, 
         {
             return;
         }
-        if (auto named = Named(files, text, name); !named.empty())
+        std::vector<std::string> named;
+        if (column != nullptr && column->kind == Kind::Resource)
+        {
+            const std::string file = text + "." + std::string(column->extension);
+            if (files.Find(file) != nullptr)
+            {
+                named.push_back(file);
+            }
+        }
+        if (named.empty())
+        {
+            named = Named(files, text, name);
+        }
+        if (!named.empty())
         {
             seen.insert(text);
             uses.push_back(Json{{"field", path}, {"value", value}, {"resources", std::move(named)}});
@@ -1108,7 +1163,22 @@ Json References(Ghilana &ghilana, const Json &raw)
     }
     Json out = Chosen(files, name, *files.Find(name), copy);
     Put(out, "index", indexed);
-    Uses(files, name, content, limit, out);
+    // A table file's worksheet, whose columns DAOLib's schema says the kinds of.
+    const dao::core::tables::Worksheet *schema = nullptr;
+    if (Extension(name) == "gda")
+    {
+        const auto &sheets = ghilana.Worksheets();
+        if (const auto sheet = SheetOfFile(sheets, Stem(name)))
+        {
+            schema = dao::core::tables::Find(sheets[*sheet].id);
+        }
+    }
+    if (schema != nullptr)
+    {
+        out["worksheet"] = {
+            {"id", schema->id}, {"label", std::string(schema->label)}, {"name", std::string(schema->name)}};
+    }
+    Uses(files, name, content, ColumnsOf(schema), limit, out);
     if (usedByTypes.empty())
     {
         out["used_by"] = "not searched: give `used_by_types` (\"utc\", \"dlg\", \"gda\"...) to search every file of "
@@ -1238,7 +1308,10 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
     tools.Add(Spec("references",
                    "What a resource names and what names it. `uses`: every field of the resource (a template, a "
                    "conversation, a plot, a data table's cells) whose text is another resource's name, with or "
-                   "without its extension, and the string ids it holds. `used_by`: with `used_by_types`, every "
+                   "without its extension, and the string ids it holds. A data table of a worksheet DAOLib's schema "
+                   "has (`worksheet`) is read by what each column holds: a string id whatever its name, a file of "
+                   "the column's one extension; other fields are guessed, a string id by a name ending in strref. "
+                   "`used_by`: with `used_by_types`, every "
                    "file of those types with a field naming this resource. Follows a creature to its "
                    "conversation and scripts, a table row to its models.",
                    std::move(referencesProperties), {"name"}),

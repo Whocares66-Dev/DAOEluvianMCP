@@ -459,7 +459,7 @@
   },
   {
    "name": "references",
-   "description": "What a resource names and what names it. `uses`: every field of the resource (a template, a conversation, a plot, a data table's cells) whose text is another resource's name, with or without its extension, and the string ids it holds. `used_by`: with `used_by_types`, every file of those types with a field naming this resource. Follows a creature to its conversation and scripts, a table row to its models.",
+   "description": "What a resource names and what names it. `uses`: every field of the resource (a template, a conversation, a plot, a data table's cells) whose text is another resource's name, with or without its extension, and the string ids it holds. A data table of a worksheet DAOLib's schema has (`worksheet`) is read by what each column holds: a string id whatever its name, a file of the column's one extension; other fields are guessed, a string id by a name ending in strref. `used_by`: with `used_by_types`, every file of those types with a field naming this resource. Follows a creature to its conversation and scripts, a table row to its models.",
    "inputSchema": {
     "type": "object",
     "properties": {

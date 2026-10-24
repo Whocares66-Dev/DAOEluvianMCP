@@ -432,6 +432,32 @@ TEST_CASE("references: what a template names, and what names a conversation", "[
     CHECK(r["used_by"].empty());
 }
 
+TEST_CASE("references: a data table's cells by what DAOLib's schema says each column holds", "[ghilana][tools]")
+{
+    Served served;
+    // Abilities' StrID_Effect is a string id, its name not ending "strref";
+    // Portraits' Override a .dds, though a model has the name too (#170).
+    const std::vector<std::string> abi{"ID", "Label", "StrID_Effect", "Cost"};
+    served.install.root.Write(L"game/packages/core/override/abi_refs.gda",
+                              Gda(abi, {{1, std::string("Flurry"), 100, 7}}, Hashes(abi)));
+    const std::vector<std::string> portraits{"ID", "Label", "Override"};
+    served.install.root.Write(L"game/packages/core/override/portraits_mine.gda",
+                              Gda(portraits, {{1, std::string("mine"), std::string("ogre_d")}}, Hashes(portraits)));
+    served.install.root.Write(L"game/packages/core/override/ogre_d.mmh", FromText("a model of that name"));
+
+    Json r = served.Call("references", {{"name", "abi_refs.gda"}});
+    CHECK(r["worksheet"]["id"] == 1);
+    CHECK(r["worksheet"]["name"] == "AbilitiesTalents");
+    REQUIRE(r["strrefs"].size() == 1);
+    CHECK(r["strrefs"][0]["id"] == 100);
+    CHECK_THAT(r["strrefs"][0]["field"].get<std::string>(), ContainsSubstring("StrID_Effect"));
+
+    r = served.Call("references", {{"name", "portraits_mine.gda"}});
+    CHECK(r["worksheet"]["id"] == 7);
+    REQUIRE(r["uses"].size() == 1);
+    CHECK(r["uses"][0]["resources"] == Json::array({"ogre_d.dds"}));
+}
+
 TEST_CASE("the index keeps the archives' directories in the cache, for the next process", "[ghilana][tools]")
 {
     // Each --call is a process of its own (#146).
