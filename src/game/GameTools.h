@@ -11,6 +11,9 @@
 #include "core/Bench.h"
 #include "game/Health.h"
 
+#include <cstdint>
+#include <optional>
+
 namespace eluvian::game
 {
 
@@ -29,5 +32,22 @@ void AddEngineEvents(Bench &bench);
 // plugin load, before the game makes its device: one made before is not
 // watched.
 void WatchDraws();
+
+// Keeps a copy the bridge launched (ELUVIAN_BEHIND=1) behind the window in
+// front: its own calls that would bring it forward are made not to (#175).
+// At plugin load, before the game makes its window. Nothing in a game the
+// player started.
+void KeepBehind();
+
+// What a copy kept behind was kept from: SetForegroundWindow calls refused,
+// ShowWindow and SetWindowPos calls made not to activate; none in a copy
+// not kept behind.
+struct BehindCounts
+{
+    std::uint32_t refused = 0;
+    std::uint32_t shown = 0;
+    std::uint32_t placed = 0;
+};
+std::optional<BehindCounts> KeptBehind();
 
 } // namespace eluvian::game

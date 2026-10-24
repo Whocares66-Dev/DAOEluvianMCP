@@ -1571,6 +1571,10 @@ class Bridge:
         # is was asked again and again, and once got wrong (2026-10-01).
         owner = arguments.get("owner")
         environment["ELUVIAN_OWNER"] = owner if isinstance(owner, str) else ""
+        # Kept behind the window in front by Eluvian itself: the game brings itself forward
+        # with its own calls, which the launch's SW_SHOWNOACTIVATE does not stop, and twice
+        # took the user's mouse after a force quit (elgara-agent, 2026-10-24, #175).
+        environment["ELUVIAN_BEHIND"] = "1"
         if self.instance:
             environment["DAOLIB_INSTANCE"] = self.instance
         # The plugins of a build tree in place of the game folder's (DAOLib #67's

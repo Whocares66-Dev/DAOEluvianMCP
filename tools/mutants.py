@@ -160,6 +160,7 @@ PICTURE_SIZE = "src/core/PictureSize.cpp"
 PEEK = "src/core/Peek.cpp"
 SNAPSHOT = "src/core/Snapshot.cpp"
 FRAME = "src/core/FrameCapture.cpp"
+BEHIND = "src/core/Behind.cpp"
 SIGHT = "src/core/Sight.cpp"
 WARP = "src/core/Warp.cpp"
 STDIO = "src/core/Stdio.cpp"
@@ -3000,6 +3001,37 @@ MUTANTS = [
         FRAME,
         "if (type >= 1 && type < kNames.size())",
         "if (type < kNames.size())",
+    ),
+    # a launched copy kept behind the window in front (#175)
+    Mutant(
+        "behind: a normal or restoring show does not activate",
+        BEHIND,
+        "        return kShowNoActivate;",
+        "        return command;",
+    ),
+    Mutant(
+        "behind: a minimising show does not activate",
+        BEHIND,
+        "        return kShowMinNoActive;",
+        "        return command;",
+    ),
+    Mutant(
+        "behind: a plain or maximising show does not activate",
+        BEHIND,
+        "        return kShowNa;",
+        "        return command;",
+    ),
+    Mutant(
+        "behind: SetWindowPos never activates",
+        BEHIND,
+        "return flags | kNoActivate | kNoZOrder;",
+        "return flags | kNoZOrder;",
+    ),
+    Mutant(
+        "behind: SetWindowPos never raises the window",
+        BEHIND,
+        "return flags | kNoActivate | kNoZOrder;",
+        "return flags | kNoActivate;",
     ),
     # what the engine drew (#168)
     Mutant(

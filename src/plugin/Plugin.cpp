@@ -271,6 +271,7 @@ extern "C" __declspec(dllexport) bool DAOLib_Load(const dao::LoaderInfo *info)
     plugin::RegisterTools(g->bench, g->watch, plugin::ToolSetup{whyNothing, health, dao::LogDirectory()});
     game::AddEngineEvents(g->bench);
     game::WatchDraws();
+    game::KeepBehind();
     plugin::BindHostApi(g->bench);
 
     dao::OnFrame([] {

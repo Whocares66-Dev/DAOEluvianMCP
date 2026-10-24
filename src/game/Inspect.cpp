@@ -8,6 +8,7 @@
 #include "core/Placeables.h"
 
 #include "game/Capture.h"
+#include "game/GameTools.h"
 
 #include "dao/Data.h"
 
@@ -525,6 +526,12 @@ ToolResult KindWindow(const Json & /*args*/)
     Json answer{{"client", {{"x", place.x}, {"y", place.y}, {"width", place.width}, {"height", place.height}}},
                 {"minimised", place.minimised},
                 {"foreground", place.foreground}};
+    if (const auto kept = KeptBehind())
+    {
+        answer["keptBehind"] = {{"foregroundRefused", kept->refused},
+                                {"showNotActivating", kept->shown},
+                                {"placeNotRaising", kept->placed}};
+    }
     if (place.minimised)
     {
         answer["note"] =
@@ -1188,7 +1195,9 @@ void AddInspect(Bench &bench, const Watch &watch)
              "Returns where the game's window is on the desktop, for tests that must use the real mouse: "
              "`client`, the top left corner of the game's picture in desktop pixels (`x`, `y`) and its "
              "`width` and `height`, and whether the window is `minimised` or the `foreground` window (the "
-             "one that gets mouse and keyboard input).\n\n"
+             "one that gets mouse and keyboard input). A copy game_launch started is kept behind the window in "
+             "front: `keptBehind` counts the game's own calls that would have brought it forward and were made "
+             "not to.\n\n"
              "To click a spot seen in a screenshot, take its position as a fraction of the picture, multiply "
              "by the size and add the corner. Works in any mode.",
              Json::object(), {}),

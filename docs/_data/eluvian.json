@@ -2027,7 +2027,7 @@
   },
   {
    "name": "window",
-   "description": "Returns where the game's window is on the desktop, for tests that must use the real mouse: `client`, the top left corner of the game's picture in desktop pixels (`x`, `y`) and its `width` and `height`, and whether the window is `minimised` or the `foreground` window (the one that gets mouse and keyboard input).\n\nTo click a spot seen in a screenshot, take its position as a fraction of the picture, multiply by the size and add the corner. Works in any mode.",
+   "description": "Returns where the game's window is on the desktop, for tests that must use the real mouse: `client`, the top left corner of the game's picture in desktop pixels (`x`, `y`) and its `width` and `height`, and whether the window is `minimised` or the `foreground` window (the one that gets mouse and keyboard input). A copy game_launch started is kept behind the window in front: `keptBehind` counts the game's own calls that would have brought it forward and were made not to.\n\nTo click a spot seen in a screenshot, take its position as a fraction of the picture, multiply by the size and add the corner. Works in any mode.",
    "inputSchema": {
     "type": "object",
     "properties": {}

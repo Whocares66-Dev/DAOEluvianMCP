@@ -338,7 +338,8 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(result["structuredContent"]["health"]["state"], "running")
         self.assertEqual(
             self.processes.environment,
-            {"DAOLIB_LOG_LEVEL": "debug", "ELUVIAN_OWNER": ""},
+            # ELUVIAN_BEHIND: Eluvian keeps the copy behind the window in front (#175).
+            {"DAOLIB_LOG_LEVEL": "debug", "ELUVIAN_OWNER": "", "ELUVIAN_BEHIND": "1"},
         )
         self.assertIn(
             {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
@@ -1517,7 +1518,11 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(answer["instance"], "two")
         self.assertEqual(
             self.made["two"].environment,
-            {"ELUVIAN_OWNER": "tester-a", "DAOLIB_INSTANCE": "two"},
+            {
+                "ELUVIAN_OWNER": "tester-a",
+                "ELUVIAN_BEHIND": "1",
+                "DAOLIB_INSTANCE": "two",
+            },
         )
         self.assertEqual(self.made[""].started, 0)
         record = (
