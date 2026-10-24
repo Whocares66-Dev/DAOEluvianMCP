@@ -13,6 +13,7 @@
 #include <dao/core/Gff4.h>
 #include <dao/core/M2da.h>
 #include <dao/core/generated/GdaSchema.h>
+#include <dao/core/generated/Gff3Schema.h>
 
 #include <algorithm>
 #include <charconv>
@@ -1002,91 +1003,307 @@ bool IsStrref(const std::string &path, const Json &value)
     return Lower(path).ends_with("strref") && IsStringId(value);
 }
 
-// A table's columns as its rows' JSON names them (ColumnName of the hash),
-// with what DAOLib's schema says each holds; empty for a file of no
-// worksheet the schema has.
-using SchemaColumns = std::map<std::string, const dao::core::tables::Column *, std::less<>>;
-
-SchemaColumns ColumnsOf(const dao::core::tables::Worksheet *sheet)
+// What DAOLib's schema says a field holds (#106 step 5): a table's column
+// (generated/GdaSchema.h) or a template's field (generated/Gff3Schema.h),
+// both told the same way here.
+enum class Holds : std::uint8_t
 {
-    SchemaColumns columns;
-    if (sheet != nullptr)
+    Unknown, // the schema has no such field: guessed by its name and value
+    Plain,
+    StrRef,
+    Resource,
+    Row,
+};
+
+struct Holding
+{
+    Holds holds = Holds::Unknown;
+    std::string_view extension; // a Resource's
+    std::int64_t target = -1;   // a Row's worksheet
+};
+
+template <class Kind> Holds HoldsOf(Kind kind)
+{
+    switch (kind)
     {
-        for (const auto &column : sheet->columns)
+    case Kind::StrRef:
+        return Holds::StrRef;
+    case Kind::Resource:
+        return Holds::Resource;
+    case Kind::Row:
+        return Holds::Row;
+    default:
+        return Holds::Plain;
+    }
+}
+
+// What the fields of a file's JSON hold, by the schema of its kind: a
+// table's worksheet's columns, or a template kind's fields; none, every
+// field guessed.
+class Holdings
+{
+  public:
+    Holdings() = default;
+    explicit Holdings(const dao::core::tables::Worksheet &sheet) : sheet_(&sheet)
+    {
+    }
+    explicit Holdings(std::string_view type) : type_(type)
+    {
+    }
+
+    // What the field at `path` holds.
+    [[nodiscard]] Holding At(const std::string &path) const
+    {
+        if (sheet_ != nullptr)
         {
-            columns.emplace(ColumnName(column.hash), &column);
+            return OfCell(path);
+        }
+        return type_.empty() ? Holding{} : OfField(path);
+    }
+
+  private:
+    // A table's cell, at "rows[3].NameStrRef", by its column as the rows'
+    // JSON names it (ColumnName of the hash).
+    [[nodiscard]] Holding OfCell(const std::string &path) const
+    {
+        const auto dot = path.rfind('.');
+        if (!path.starts_with("rows[") || dot == std::string::npos)
+        {
+            return {};
+        }
+        const std::string_view name = std::string_view(path).substr(dot + 1);
+        for (const auto &column : sheet_->columns)
+        {
+            if (ColumnName(column.hash) == name)
+            {
+                return Holding{HoldsOf(column.kind), column.extension, column.target};
+            }
+        }
+        return {};
+    }
+
+    // A template's field, at "TalentList[2].TalentNumber", by its struct's
+    // path with each list's index left out and its levels by "/"
+    // ("TalentList[]"), and its label.
+    [[nodiscard]] Holding OfField(const std::string &path) const
+    {
+        const auto dot = path.rfind('.');
+        const std::string label = dot == std::string::npos ? path : path.substr(dot + 1);
+        std::string at;
+        for (std::size_t i = 0; dot != std::string::npos && i < dot; ++i)
+        {
+            if (path[i] == '[')
+            {
+                at += "[]";
+                i = std::min(path.find(']', i), dot);
+            }
+            else
+            {
+                at += path[i] == '.' ? '/' : path[i];
+            }
+        }
+        const auto *field = dao::core::templates::FieldOf(type_, at, label);
+        return field != nullptr ? Holding{HoldsOf(field->kind), field->extension, field->target} : Holding{};
+    }
+
+    const dao::core::tables::Worksheet *sheet_ = nullptr;
+    std::string_view type_; // a template kind's extension: the caller's, which outlives this
+};
+
+// The column a row is named by: Label, or where a table has none (Properties
+// names its rows by Stat) its first column of text.
+std::optional<std::size_t> NameColumn(const m2da::Merged &merged)
+{
+    if (const auto label = ColumnNamed(merged, "Label"))
+    {
+        return label;
+    }
+    for (std::size_t c = 0; c < merged.columns.size(); ++c)
+    {
+        if (merged.columns[c].type == dao::core::gff4::Type::String)
+        {
+            return c;
         }
     }
-    return columns;
+    return std::nullopt;
 }
 
-// The schema's column a table's cell is in, at "rows[3].NameStrRef"; null
-// for a field of a GFF file or a column the schema does not have.
-const dao::core::tables::Column *ColumnAt(const SchemaColumns &columns, const std::string &path)
+// The rows Row fields name, each worksheet merged once as the game merges
+// it, and a row's name. The tables' files are found in one pass over the
+// install's: a pass a table took 3 s of the GOG install's 239,418 names,
+// five of them 17 s for a creature (2026-10-24).
+class RowLabels
 {
-    const auto dot = path.rfind('.');
-    if (columns.empty() || !path.starts_with("rows[") || dot == std::string::npos)
+  public:
+    explicit RowLabels(Ghilana &ghilana) : ghilana_(ghilana)
     {
-        return nullptr;
     }
-    const auto found = columns.find(std::string_view(path).substr(dot + 1));
-    return found != columns.end() ? found->second : nullptr;
-}
 
-// What a file's content names: resources, and string ids. A table's column
-// the schema calls a string id is one whatever its name (StrID_Effect,
-// NameStrID); a column it calls a resource names its one extension's file.
-// Elsewhere both are guessed: a field ending "strref", a text some file is
-// named (#170).
-void Uses(const GameFiles &files, const std::string &name, const Json &content, const SchemaColumns &columns,
-          std::size_t limit, Json &out)
-{
-    using dao::core::tables::Kind;
-    Json uses = Json::array();
-    Json strrefs = Json::array();
-    std::set<std::string> seen;
-    Walk(content, "", [&](const std::string &path, const Json &value) {
-        const auto *column = ColumnAt(columns, path);
-        const bool stringId =
-            column != nullptr && column->kind == Kind::StrRef ? IsStringId(value) : IsStrref(path, value);
-        if (stringId)
+    // The row's worksheet and its name; `found` false for an ID the table
+    // has no row of.
+    Json Of(std::int64_t worksheet, std::int64_t id)
+    {
+        auto it = merged_.find(worksheet);
+        if (it == merged_.end())
         {
-            if (strrefs.size() < limit)
+            const PartsRead read = ReadParts(ghilana_.Files(), FilesOf(worksheet));
+            it = merged_.emplace(worksheet, MergeParts(read.parts)).first;
+        }
+        const m2da::Merged &merged = it->second;
+        const auto *sheet = dao::core::tables::Find(worksheet);
+        Json out = {{"table", sheet != nullptr ? Json(std::string(sheet->label)) : Json(worksheet)}, {"id", id}};
+        const auto row = std::ranges::find_if(merged.rows, [id](const m2da::Row &r) { return r.taken && r.id == id; });
+        out["found"] = row != merged.rows.end();
+        const auto name = NameColumn(merged);
+        if (row != merged.rows.end() && name)
+        {
+            out["label"] = CellJson(row->cells[*name]);
+            if (Lower(ColumnName(merged.columns[*name].hash)) != "label")
             {
-                strrefs.push_back(Json{{"field", path}, {"id", value}});
+                out["label_column"] = ColumnName(merged.columns[*name].hash);
+            }
+        }
+        return out;
+    }
+
+  private:
+    // The .gda files of a worksheet, by m2da_base's ID.
+    std::vector<std::string> FilesOf(std::int64_t worksheet)
+    {
+        const auto &sheets = ghilana_.Worksheets();
+        if (!byFile_)
+        {
+            byFile_.emplace();
+            for (const auto &[name, copies] : ghilana_.Files().Resources())
+            {
+                if (Extension(name) == "gda")
+                {
+                    for (const std::size_t i : m2da::WorksheetsOf(sheets, Wide(Stem(name))))
+                    {
+                        (*byFile_)[sheets[i].id].push_back(name);
+                    }
+                }
+            }
+        }
+        const auto found = byFile_->find(worksheet);
+        return found != byFile_->end() ? found->second : std::vector<std::string>{};
+    }
+
+    Ghilana &ghilana_;
+    std::map<std::int64_t, m2da::Merged> merged_;
+    std::optional<std::map<std::int64_t, std::vector<std::string>>> byFile_;
+};
+
+// What a file's content names: resources, string ids and other tables'
+// rows. A field the schema calls a string id is one whatever its name
+// (StrID_Effect, NameStrID); one it calls a resource names its one
+// extension's file; one it calls a row is followed to that row's Label.
+// What the schema has not is guessed: a field ending "strref", a text some
+// file is named (#170, #171).
+class UsesFound
+{
+  public:
+    UsesFound(Ghilana &ghilana, const std::string &name, std::size_t limit)
+        : files_(ghilana.Files()), labels_(ghilana), name_(name), limit_(limit)
+    {
+    }
+
+    void Take(const std::string &path, const Json &value, const Holding &holding)
+    {
+        if (holding.holds == Holds::Row && value.is_number_integer())
+        {
+            Row(path, value.get<std::int64_t>(), holding.target);
+            return;
+        }
+        if (holding.holds == Holds::StrRef ? IsStringId(value) : IsStrref(path, value))
+        {
+            if (strrefs_.size() < limit_)
+            {
+                strrefs_.push_back(Json{{"field", path}, {"id", value}});
             }
             return;
         }
-        const std::string text = value.is_string() ? Lower(value.get<std::string>()) : "";
-        if (text.empty() || text.size() > 64 || seen.contains(text) || uses.size() >= limit)
+        if (value.is_string())
+        {
+            Resource(path, value, holding);
+        }
+    }
+
+    void Answer(Json &out)
+    {
+        out["uses"] = std::move(uses_);
+        if (!strrefs_.empty())
+        {
+            out["strrefs"] = std::move(strrefs_);
+            out["strrefs_note"] = "`strings` with these ids gives their text";
+        }
+        if (!rows_.empty())
+        {
+            out["rows"] = std::move(rows_);
+            out["rows_note"] = "`table` with a row's table and `id` gives the whole row";
+        }
+    }
+
+  private:
+    void Row(const std::string &path, std::int64_t id, std::int64_t worksheet)
+    {
+        // -1 is none, an item's AbilityID without an ability (2026-10-24).
+        if (id >= 0 && rows_.size() < limit_)
+        {
+            Json row = labels_.Of(worksheet, id);
+            row["field"] = path;
+            rows_.push_back(std::move(row));
+        }
+    }
+
+    void Resource(const std::string &path, const Json &value, const Holding &holding)
+    {
+        const std::string text = Lower(value.get<std::string>());
+        if (text.empty() || text.size() > 64 || seen_.contains(text) || uses_.size() >= limit_)
         {
             return;
         }
         std::vector<std::string> named;
-        if (column != nullptr && column->kind == Kind::Resource)
+        if (holding.holds == Holds::Resource)
         {
-            const std::string file = text + "." + std::string(column->extension);
-            if (files.Find(file) != nullptr)
+            const std::string file = text + "." + std::string(holding.extension);
+            if (file == name_)
+            {
+                return; // a template's TemplateResRef is its own name
+            }
+            if (files_.Find(file) != nullptr)
             {
                 named.push_back(file);
             }
         }
         if (named.empty())
         {
-            named = Named(files, text, name);
+            named = Named(files_, text, name_);
         }
         if (!named.empty())
         {
-            seen.insert(text);
-            uses.push_back(Json{{"field", path}, {"value", value}, {"resources", std::move(named)}});
+            seen_.insert(text);
+            uses_.push_back(Json{{"field", path}, {"value", value}, {"resources", std::move(named)}});
         }
-    });
-    out["uses"] = std::move(uses);
-    if (!strrefs.empty())
-    {
-        out["strrefs"] = std::move(strrefs);
-        out["strrefs_note"] = "`strings` with these ids gives their text";
     }
+
+    const GameFiles &files_;
+    RowLabels labels_;
+    const std::string &name_;
+    std::size_t limit_;
+    Json uses_ = Json::array();
+    Json strrefs_ = Json::array();
+    Json rows_ = Json::array();
+    std::set<std::string> seen_;
+};
+
+void Uses(Ghilana &ghilana, const std::string &name, const Json &content, const Holdings &holdings, std::size_t limit,
+          Json &out)
+{
+    UsesFound found(ghilana, name, limit);
+    Walk(content, "",
+         [&](const std::string &path, const Json &value) { found.Take(path, value, holdings.At(path)); });
+    found.Answer(out);
 }
 
 // Every file of the types asked with a field naming `name`.
@@ -1163,22 +1380,27 @@ Json References(Ghilana &ghilana, const Json &raw)
     }
     Json out = Chosen(files, name, *files.Find(name), copy);
     Put(out, "index", indexed);
-    // A table file's worksheet, whose columns DAOLib's schema says the kinds of.
-    const dao::core::tables::Worksheet *schema = nullptr;
-    if (Extension(name) == "gda")
+    // What DAOLib's schema says the file's fields hold: a table file's
+    // worksheet's columns, or a template kind's fields.
+    Holdings holdings;
+    const std::string type = Extension(name);
+    if (type == "gda")
     {
         const auto &sheets = ghilana.Worksheets();
-        if (const auto sheet = SheetOfFile(sheets, Stem(name)))
+        const auto sheet = SheetOfFile(sheets, Stem(name));
+        if (const auto *schema = sheet ? dao::core::tables::Find(sheets[*sheet].id) : nullptr)
         {
-            schema = dao::core::tables::Find(sheets[*sheet].id);
+            out["worksheet"] = {
+                {"id", schema->id}, {"label", std::string(schema->label)}, {"name", std::string(schema->name)}};
+            holdings = Holdings(*schema);
         }
     }
-    if (schema != nullptr)
+    else if (!dao::core::templates::Fields(type).empty())
     {
-        out["worksheet"] = {
-            {"id", schema->id}, {"label", std::string(schema->label)}, {"name", std::string(schema->name)}};
+        out["schema"] = type;
+        holdings = Holdings(std::string_view(type));
     }
-    Uses(files, name, content, ColumnsOf(schema), limit, out);
+    Uses(ghilana, name, content, holdings, limit, out);
     if (usedByTypes.empty())
     {
         out["used_by"] = "not searched: give `used_by_types` (\"utc\", \"dlg\", \"gda\"...) to search every file of "
@@ -1309,8 +1531,11 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
                    "What a resource names and what names it. `uses`: every field of the resource (a template, a "
                    "conversation, a plot, a data table's cells) whose text is another resource's name, with or "
                    "without its extension, and the string ids it holds. A data table of a worksheet DAOLib's schema "
-                   "has (`worksheet`) is read by what each column holds: a string id whatever its name, a file of "
-                   "the column's one extension; other fields are guessed, a string id by a name ending in strref. "
+                   "has (`worksheet`) and a template of a kind it has (`schema`: utc) are read by what each field "
+                   "holds: a string id whatever its name, a file of the field's one extension, and `rows`, each a "
+                   "row of another table its field names (a creature's appearance, race, talents) with that "
+                   "table's name for it (`label`, or the column `label_column` says). Other fields are guessed, a "
+                   "string id by a name ending in strref. "
                    "`used_by`: with `used_by_types`, every "
                    "file of those types with a field naming this resource. Follows a creature to its "
                    "conversation and scripts, a table row to its models.",

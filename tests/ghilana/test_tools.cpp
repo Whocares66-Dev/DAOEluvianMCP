@@ -458,6 +458,65 @@ TEST_CASE("references: a data table's cells by what DAOLib's schema says each co
     CHECK(r["uses"][0]["resources"] == Json::array({"ogre_d.dds"}));
 }
 
+TEST_CASE("references: a creature template's row fields followed to their rows by DAOLib's schema", "[ghilana][tools]")
+{
+    Served served;
+    // Its appearance a row of Appearances, which this install has no table of,
+    // and two talents, rows of Abilities: one there, one not; and a race of
+    // -1, none, which is no row (#171).
+    Gff3 utc("UTC");
+    utc.Struct(0xFFFFFFFF, {{"Appearance Data", 14, 1}, {"TalentList", 15, 0}, {"Race", 5, 0xFFFFFFFF}});
+    utc.Struct(0, {{"Appearance_Type", 4, 80}});
+    const std::uint32_t known = utc.Struct(0, {{"TalentNumber", 5, 1}});
+    const std::uint32_t unknown = utc.Struct(0, {{"TalentNumber", 5, 4242}});
+    utc.List({known, unknown});
+    served.install.root.Write(L"game/packages/core/override/talented.utc", utc.Done());
+
+    const Json r = served.Call("references", {{"name", "talented.utc"}});
+    CHECK(r["schema"] == "utc");
+    REQUIRE(r["rows"].size() == 3);
+    const Json &appearance = r["rows"][0];
+    CHECK(appearance["field"] == "Appearance Data.Appearance_Type");
+    CHECK(appearance["table"] == "Appearances");
+    CHECK(appearance["id"] == 80);
+    CHECK(appearance["found"] == false);
+    const Json &talent = r["rows"][1];
+    CHECK(talent["field"] == "TalentList[0].TalentNumber");
+    CHECK(talent["table"] == "Abilities");
+    CHECK(talent["found"] == true);
+    // The row the game keeps of ID 1, as `table` gives it.
+    const Json row = served.Call("table", {{"table", 1}, {"id", 1}})["rows"][0];
+    CHECK(talent["label"] == row["Label"]);
+    CHECK(r["rows"][2]["found"] == false);
+    CHECK_FALSE(r["rows"][2].contains("label"));
+}
+
+TEST_CASE("references: a row of a table with no Label is named by its first column of text", "[ghilana][tools]")
+{
+    Served served;
+    // Properties names its rows by Stat (the GOG install's, #171): this
+    // install's m2da_base lists it, and a creature names its row 1.
+    const std::vector<std::string> sheetColumns{"ID", "Label", "Worksheet"};
+    served.install.root.Write(L"game/packages/core/override/m2da_base.gda",
+                              Gda(sheetColumns,
+                                  {{1, std::string("Abilities"), std::string("ABI_")},
+                                   {98, std::string("Properties"), std::string("properties")}},
+                                  Hashes(sheetColumns)));
+    const std::vector<std::string> properties{"ID", "Stat", "NameStrID"};
+    served.install.root.Write(L"game/packages/core/override/properties.gda",
+                              Gda(properties, {{1, std::string("Strength"), 238932}}, Hashes(properties)));
+    Gff3 utc("UTC");
+    utc.Struct(0xFFFFFFFF, {{"PropertyList", 15, 0}});
+    utc.List({utc.Struct(0, {{"Index", 5, 1}})});
+    served.install.root.Write(L"game/packages/core/override/strong.utc", utc.Done());
+
+    const Json r = served.Call("references", {{"name", "strong.utc"}});
+    REQUIRE(r["rows"].size() == 1);
+    CHECK(r["rows"][0]["table"] == "Properties");
+    CHECK(r["rows"][0]["label"] == "Strength");
+    CHECK(r["rows"][0]["label_column"] == "Stat");
+}
+
 TEST_CASE("the index keeps the archives' directories in the cache, for the next process", "[ghilana][tools]")
 {
     // Each --call is a process of its own (#146).

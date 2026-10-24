@@ -3575,15 +3575,44 @@ MUTANTS = [
     Mutant(
         "ghilana references: a table's string id column by the schema, whatever its name",
         "src/ghilana/ToolsData.cpp",
-        "column != nullptr && column->kind == Kind::StrRef ? IsStringId(value)",
-        "column != nullptr && column->kind == Kind::Plain ? IsStringId(value)",
+        "holding.holds == Holds::StrRef ? IsStringId(value)",
+        "holding.holds == Holds::Plain ? IsStringId(value)",
         "ghilana",
     ),
     Mutant(
         "ghilana references: a schema's resource column names its one extension's file",
         "src/ghilana/ToolsData.cpp",
-        "if (column != nullptr && column->kind == Kind::Resource)",
-        "if (column != nullptr && column->kind == Kind::StrRef)",
+        "if (holding.holds == Holds::Resource)",
+        "if (holding.holds == Holds::StrRef)",
+        "ghilana",
+    ),
+    # A template's row fields followed to their rows (#171).
+    Mutant(
+        "ghilana references: a schema's row field is followed to its row",
+        "src/ghilana/ToolsData.cpp",
+        "if (holding.holds == Holds::Row && value.is_number_integer())",
+        "if (holding.holds == Holds::Plain && value.is_number_integer())",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana references: a row field of -1 names no row",
+        "src/ghilana/ToolsData.cpp",
+        "if (id >= 0 && rows_.size() < limit_)",
+        "if (rows_.size() < limit_)",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana references: a row is the one the game keeps of its ID",
+        "src/ghilana/ToolsData.cpp",
+        "return r.taken && r.id == id;",
+        "return r.id != id;",
+        "ghilana",
+    ),
+    Mutant(
+        "ghilana references: a table with no Label names its rows by its first text column",
+        "src/ghilana/ToolsData.cpp",
+        "        if (merged.columns[c].type == dao::core::gff4::Type::String)",
+        "        if (c > merged.columns.size())",
         "ghilana",
     ),
     # A mod packed for players (#140).
