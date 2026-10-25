@@ -40,7 +40,6 @@ inline void AddReads(Bench &bench, const std::function<ToolResult(const Json &)>
         {"controls", "controls"},
         {"worldmap", "worldmap"},
         {"dialogue.read", "dialogue"},
-        {"levelup.screen", "levelup"},
         {"tactics.read", "tactics"},
     };
     for (const auto &[tool, kind] : kReads)

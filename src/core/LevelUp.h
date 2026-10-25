@@ -4,14 +4,16 @@
 // driven by MCP alone stayed banked: spending them by script would skip the
 // screen's rules (turn-based-agent, 2026-10-02, #5).
 //
-// The screen's own messages, read from levelup.gfx and portraits.gfx and
-// seen in play on Lyna (2026-10-02): "GUI.GoToLevelUp <id> 0" opens it for
-// a creature, "GUILevelUp.AutoLevelUp <id>" spends every point as its Auto
-// Level Up does, "GUILevelUp.CharGenEnd <id> 1 1" ends it complete, and
-// "GUI.HideFullScreenGUI" closes it. It decides over other tools' answers
-// alone (`input` sends those, `gui` says the screen is up,
-// character and abilities read the creature before and after),
-// so it lives here and is tested with stand-ins, as travel and loot are.
+// Since #180 the steps are DAOLib's dao::levelup (DAOLib #259), with no
+// screen: levelup.offers, levelup.take, levelup.raise, levelup.auto and
+// levelup.finish, each refused by the engine's own test where it pressed
+// the screen's icons through its movie. The screen is only shown, for
+// whoever watches (#14): "GUI.GoToLevelUp <id> 0" opens it for a creature,
+// a pick shows on it, and its exit point set and "GUI.HideFullScreenGUI"
+// end it as its Done does (levelup.gfx, seen in play on Lyna, 2026-10-02).
+// It decides over other tools' answers alone (those, `input`, `movie` and
+// `gui` for the screen, character and abilities before and after), so it
+// lives here and is tested with stand-ins, as travel and loot are.
 #pragma once
 
 #include "core/Bench.h"

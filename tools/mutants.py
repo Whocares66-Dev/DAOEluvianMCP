@@ -1110,68 +1110,116 @@ MUTANTS = [
         "if (!handler)",
         "if (false)",
     ),
-    # levelup (#5): the level-up screen's own messages, in order, for the
-    # creature named in decimal; refused without auto or points; rounds
-    # while points are left and fewer; what was raised and gained.
+    # levelup (#5, #180): its steps by dao::levelup, each refusal said and
+    # what was taken before it kept and ended; a specialization first, by
+    # name in any case; the screen only shown, ended by its own Done.
     Mutant(
-        "levelup reads the specialization icons before the screen has made them",
+        "levelup ends a level-up with no screen up without levelup.finish",
         LEVELUP,
-        "if (!read || !read->empty() || Clock::now() >= deadline)",
-        "if (true)",
+        'return Step("levelup.finish", Json{{"id", id_}}).has_value();',
+        "return true;",
     ),
     Mutant(
-        "levelup reads a creature's id in decimal, not hex",
+        "levelup asks levelup.finish as well where the screen's Done ended it",
         LEVELUP,
-        "value, 16);",
-        "value, 10);",
+        "        if (!screenUp_)\n        {\n            return Step(",
+        "        if (!screenUp_ || show_.count() > 0)\n        {\n            return Step(",
     ),
     Mutant(
-        "levelup levels a creature with no points",
+        "levelup leaves a level-up unended over abilities taken before a refusal",
         LEVELUP,
-        "if (!offers_ && !canLevelUp_)",
-        "if (false)",
+        "Settle(!taken.empty());",
+        "Settle(false);",
     ),
     Mutant(
-        "levelup counts no rounds",
+        "levelup leaves a level-up unended over attributes raised before a refusal",
         LEVELUP,
-        "last = *read;\n            ++rounds_;",
-        "last = *read;",
+        "Settle(!taken.empty() || raised_);",
+        "Settle(!taken.empty());",
     ),
     Mutant(
-        "levelup stops after one round with points left",
+        "levelup closes the screen complete where nothing was taken",
+        LEVELUP,
+        "            screenUp_ = false;\n            Close(false);",
+        "            screenUp_ = false;\n            Close(true);",
+    ),
+    Mutant(
+        "levelup takes a step's refusal for a step taken",
+        LEVELUP,
+        'if (answer && !answer->value("taken", true))',
+        'if (answer && !answer->value("taken", true) && args.contains("never"))',
+    ),
+    Mutant(
+        "levelup takes a specialization as an ability",
+        LEVELUP,
+        '{"specialization", isSpecial}',
+        '{"specialization", false}',
+    ),
+    Mutant(
+        "levelup takes a specialization after the abilities named",
+        LEVELUP,
+        "chosen_.insert(chosen_.begin(), id);",
+        "chosen_.push_back(id);",
+    ),
+    Mutant(
+        "levelup matches a specialization's name in its own case",
+        LEVELUP,
+        'lower(special.value("name", std::string())) ==',
+        'special.value("name", std::string()) ==',
+    ),
+    Mutant(
+        "levelup says a locked specialization is locked as an ability is",
+        LEVELUP,
+        'refused_ += args.value("specialization", false)',
+        "refused_ += false",
+    ),
+    Mutant(
+        "levelup's auto stops after a round that spent",
         LEVELUP,
         'if (!last.value("canLevelUp", false) || !spent)',
         'if (!last.value("canLevelUp", false) || spent)',
     ),
     Mutant(
-        "levelup goes round again when the auto spent nothing",
+        "levelup's offers give the attributes' bases, not their totals",
         LEVELUP,
-        "const bool spent = PointsLeft(*read) < PointsLeft(last);",
-        "const bool spent = PointsLeft(*read) <= PointsLeft(last);",
+        'attributes[name] = value.value("total", 0.0);',
+        'attributes[name] = value.value("base", 0.0);',
     ),
     Mutant(
-        "levelup says levelled when nothing was spent",
+        "levelup shows the screen with showMs 0",
         LEVELUP,
-        "if (PointsLeft(last) >= PointsLeft(first))",
-        "if (PointsLeft(last) > PointsLeft(first))",
+        "if (show_.count() == 0)",
+        "if (show_.count() < 0)",
     ),
     Mutant(
-        "levelup counts an attribute's whole base as raised",
+        "levelup says nothing of a screen that would not open",
         LEVELUP,
-        "raised[name] = to - from;",
-        "raised[name] = to;",
+        'answer_["screen"] = "not shown: " + refused_;',
+        'answer_.erase("screen");',
     ),
     Mutant(
-        "levelup lists the abilities it had as gained",
+        "levelup's refusal lists every offer, not the learnable",
         LEVELUP,
-        'if (!had.contains(ability.value("id", 0)))',
-        'if (had.contains(ability.value("id", 0)))',
+        'answer_["offers"] = Learnable(*now);',
+        'answer_["offers"] = *now;',
     ),
     Mutant(
-        "levelup waits for the screen the wrong way round",
+        "levelup says nothing was spent where some was",
         LEVELUP,
-        "if (shown == up)",
-        "if (shown != up)",
+        'return taken.empty() ? "; nothing was spent"',
+        'return !taken.empty() ? "; nothing was spent"',
+    ),
+    Mutant(
+        "levelup refuses a creature with only a specialization point (#64)",
+        LEVELUP,
+        '!first.value("canLevelUp", false) && PointsLeft(first) <= 0',
+        '!first.value("canLevelUp", false)',
+    ),
+    Mutant(
+        "levelup raises strength whatever attribute is named",
+        LEVELUP,
+        '{"attribute", AttributeIndex(name)}',
+        '{"attribute", 1}',
     ),
     # dialogue (#17): one step without `until`; with it, on through lines to
     # the next real choice, an ignored choice asked again, a reply with no
@@ -1552,81 +1600,9 @@ MUTANTS = [
         'doors_.back().value("id", std::string()) != blocker',
         'doors_.back().value("id", std::string()) != "never"',
     ),
-    Mutant(
-        "levelup goes on with no way to level given",
-        LEVELUP,
-        "if ((auto_ ? 1 : 0) + (offers_ ? 1 : 0) + (chosen ? 1 : 0) != 1)",
-        "if ((auto_ ? 1 : 0) + (offers_ ? 1 : 0) + (chosen ? 1 : 0) > 1)",
-    ),
-    Mutant(
-        "levelup abandons the screen where it should keep what was spent",
-        LEVELUP,
-        '(complete ? "LEVELUP_EXIT_COMPLETE" : "LEVELUP_EXIT_ABORT")',
-        '(complete ? "LEVELUP_EXIT_ABORT" : "LEVELUP_EXIT_ABORT")',
-    ),
-    Mutant(
-        "levelup hides the screen with its exit point unset",
-        LEVELUP,
-        '{"set", "LevelUp.nExitPoint"}',
-        '{"set", "LevelUp.nOtherPoint"}',
-    ),
-    Mutant(
-        "levelup hides the screen though its exit point was not taken",
-        LEVELUP,
-        'if (!set->value("done", false))',
-        'if (set->value("nothing", false))',
-    ),
     # #5's choices: offers read with nothing spent; an ability not learnable
     # now refuses the lot; attributes spent as the screen's buttons do.
-    Mutant(
-        "levelup keeps what a look at the offers spent",
-        LEVELUP,
-        "Close(false); // abandoned: a look spends nothing",
-        "Close(true); // abandoned: a look spends nothing",
-    ),
-    Mutant(
-        "levelup spends an ability the screen does not offer now",
-        LEVELUP,
-        'if (state != "learnable")',
-        "if (false)",
-    ),
-    Mutant(
-        "levelup tells only the paperdoll of an attribute",
-        LEVELUP,
-        'Send("GUICharGen.CharGenAssignAttribute " + spend)',
-        'Send("Paperdoll.CharGenAssignAttribute " + spend)',
-    ),
     # The paperdoll's message is sent and not waited on (#126).
-    Mutant(
-        "levelup takes a game with no paperdoll for a refusal",
-        LEVELUP,
-        '!Ask("input", Json{{"message", "Paperdoll.CharGenAssignAttribute " + spend}})',
-        '!Send("Paperdoll.CharGenAssignAttribute " + spend)',
-    ),
-    Mutant(
-        "levelup tells the paperdoll of no attribute",
-        LEVELUP,
-        'if (!took || !Ask("input", Json{{"message", "Paperdoll.CharGenAssignAttribute " + spend}}))',
-        "if (!took)",
-    ),
-    Mutant(
-        "levelup forgets the raises taken before one refused",
-        LEVELUP,
-        "if (took || raised)",
-        "if (took)",
-    ),
-    Mutant(
-        "levelup says raises stay where none was taken",
-        LEVELUP,
-        "if (took || raised)",
-        "if (true)",
-    ),
-    Mutant(
-        "levelup takes an attribute it does not know",
-        LEVELUP,
-        "if (AttributeIndex(name) == 0 ||",
-        "if (",
-    ),
     # #37: in combat mode a fight far off is walked on, one near stops it.
     Mutant(
         "travel stops for a fight far off",
@@ -1685,81 +1661,6 @@ MUTANTS = [
         'step > 0 && read->value(Json::json_pointer("/walk/found"), false)',
         "step > 0",
     ),
-    # #54: abilities taken as the screen's selection takes them.
-    # levelup by name presses the ability's own icon (#58)
-    Mutant(
-        "levelup says nothing was spent after taking some",
-        LEVELUP,
-        'taken.empty() ? "; nothing was spent"',
-        'taken.size() < 99 ? "; nothing was spent"',
-    ),
-    Mutant(
-        "levelup counts a press that took no point as taken",
-        LEVELUP,
-        "if (*after < *before)",
-        "if (*after <= *before)",
-    ),
-    Mutant(
-        "levelup presses the first icon whatever the ability",
-        LEVELUP,
-        "icons_.find(ability)",
-        "icons_.begin()",
-    ),
-    Mutant(
-        "levelup plays the page again for each ability",
-        LEVELUP,
-        "if (shown_ == page.scene)",
-        "if (false)",
-    ),
-    Mutant(
-        "levelup shows the talents' page for a skill",
-        LEVELUP,
-        'if (page == "skills")',
-        'if (page == "never")',
-    ),
-    Mutant(
-        "levelup asks a spell's chains as a talent's",
-        LEVELUP,
-        'page == "spells" ? 2 : 1',
-        'page == "never" ? 2 : 1',
-    ),
-    Mutant(
-        "levelup reads one chain of a page",
-        LEVELUP,
-        "from = comma + 1;",
-        "from = text.size();",
-    ),
-    Mutant(
-        "levelup presses before the page shows its abilities",
-        LEVELUP,
-        "if (!icons->empty())",
-        "if (icons->size() < 99)",
-    ),
-    Mutant(
-        "levelup presses on another screen",
-        LEVELUP,
-        'args["screen"] = "LevelUp";',
-        'args["screen"] = "Options";',
-    ),
-    Mutant(
-        "levelup says a refused press had no points when it had",
-        LEVELUP,
-        "*before < 1 ?",
-        "*before < -1 ?",
-    ),
-    Mutant(
-        "levelup forgets what it took before a refusal",
-        LEVELUP,
-        "taken.push_back(ability);",
-        "(void)ability;",
-    ),
-    Mutant(
-        "levelup says no level-up is waiting for one that has",
-        LEVELUP,
-        "if (!canLevelUp_)",
-        "if (canLevelUp_)",
-    ),
-    # #54: each kind's points counted by levelup itself.
     # an argument a tool does not have is refused (#61, #147)
     Mutant(
         "an argument a tool does not have is let through",
@@ -1979,86 +1880,6 @@ MUTANTS = [
         "pieces.push_back(answer.substr(from));",
         "(void)from;",
     ),
-    # levelup finds a skill in the skills page's own scroller (#63)
-    Mutant(
-        "levelup looks for a skill in the talents' scroller",
-        LEVELUP,
-        '3, "ScrollingSkills_mc.Scrollable_mc"',
-        '3, "ScrollingAbilities_mc.Scrollable_mc"',
-    ),
-    Mutant(
-        "levelup walks class containers only where the scroller has chains of its own",
-        LEVELUP,
-        "if (chains->empty())",
-        "if (!chains->empty())",
-    ),
-    # levelup's specializations, as the screen's icons have them (#64)
-    Mutant(
-        "levelup lists no specializations in its offers",
-        LEVELUP,
-        'answer_["specializations"] = std::move(listed);',
-        'answer_["noSpecializations"] = std::move(listed);',
-    ),
-    Mutant(
-        "levelup reads a specialization had as not had",
-        LEVELUP,
-        'const bool had = selected->value("value", Json()) == true;',
-        'const bool had = selected->value("value", Json()) == false;',
-    ),
-    Mutant(
-        "levelup reads a grey specialization as open",
-        LEVELUP,
-        'const bool shut = grey->value("value", Json()) == true;',
-        'const bool shut = grey->value("value", Json()) == false;',
-    ),
-    Mutant(
-        "levelup calls a grey specialization locked though no point is left",
-        LEVELUP,
-        "else if (points < 1)",
-        "else if (points < -1)",
-    ),
-    Mutant(
-        "levelup presses a specialization had already",
-        LEVELUP,
-        'if (it->state == "has")',
-        'if (it->state == "never")',
-    ),
-    Mutant(
-        "levelup counts a specialization the screen took no point for",
-        LEVELUP,
-        "if (*left < *before)",
-        "if (*left <= *before)",
-    ),
-    Mutant(
-        "levelup takes no specialization by name",
-        LEVELUP,
-        "if (const auto taking = Specialization(ability))",
-        "if (const auto taking = std::optional<bool>{}; ability < 0 && taking)",
-    ),
-    Mutant(
-        "levelup goes on past a refused specialization",
-        LEVELUP,
-        "if (!*taking)",
-        "if (!*taking && ability < 0)",
-    ),
-    Mutant(
-        "levelup forgets a specialization taken before a refusal",
-        LEVELUP,
-        "taken.emplace_back(ability);",
-        "(void)ability;",
-    ),
-    Mutant(
-        "levelup takes only canLevelUp for a level-up waiting",
-        LEVELUP,
-        'first.value("canLevelUp", false) || PointsLeft(first) > 0;',
-        'first.value("canLevelUp", false) || PointsLeft(first) > 99;',
-    ),
-    Mutant(
-        "levelup says points are left when none are",
-        LEVELUP,
-        'PointsLeft(last) > 0 ? "levelled; points are left to spend"',
-        'PointsLeft(last) >= 0 ? "levelled; points are left to spend"',
-    ),
     # #55: a full pack's panel closed by loot itself.
     Mutant(
         "loot leaves a full pack's panel up",
@@ -2188,12 +2009,6 @@ MUTANTS = [
         "            swapped_ = false;\n",
     ),
     # the screen's ability page, passed on (#71)
-    Mutant(
-        "levelup's offers leave the screen's ability page out",
-        LEVELUP,
-        'if (read->contains("abilityPage"))',
-        'if (read->contains("abilityPages"))',
-    ),
     # from c9a2cc5
     Mutant(
         "the event file's writer leaves half of each batch out",
@@ -2676,25 +2491,6 @@ MUTANTS = [
         TRAVEL,
         '            walk.at("blocker").value("action", kActionAreaTransition) == kActionAreaTransition;',
         '            walk.at("blocker").value("action", 0) == kActionAreaTransition;',
-    ),
-    # a specialization listed by its icons and taken by name (#106)
-    Mutant(
-        "levelup lists the specializations by the screen's count, not its icons",
-        LEVELUP,
-        "        for (int n = 0; n < kMostSpecializations; ++n)",
-        '        for (int n = 0; n < static_cast<int>(Number("LevelUp.nSpecializationsFound").value_or(0)); ++n)',
-    ),
-    Mutant(
-        "levelup takes a specialization last, after the abilities",
-        LEVELUP,
-        "                chosen_.insert(chosen_.begin(), special.id);",
-        "                chosen_.push_back(special.id);",
-    ),
-    Mutant(
-        "levelup takes the specialization asked by name in its own case only",
-        LEVELUP,
-        "specialization_.is_string() && lower(special.name) == lower(specialization_.get<std::string>());",
-        "specialization_.is_string() && special.name == specialization_.get<std::string>();",
     ),
     # a tool's budget in its listing (#108)
     Mutant(

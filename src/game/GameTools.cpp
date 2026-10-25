@@ -59,6 +59,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddWorldMap(bench, watch);
     AddTactics(bench, watch);
     AddBoard(bench, watch);
+    AddLevelUp(bench, watch);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);

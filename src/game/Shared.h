@@ -347,5 +347,6 @@ void AddStore(Bench &bench, const Watch &watch);
 void AddWorldMap(Bench &bench, const Watch &watch); // worldmap
 void AddTactics(Bench &bench, const Watch &watch);
 void AddBoard(Bench &bench, const Watch &watch);
+void AddLevelUp(Bench &bench, const Watch &watch); // levelup.*, which core's levelup asks (#180)
 
 } // namespace eluvian::game
