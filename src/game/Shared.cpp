@@ -5,6 +5,7 @@
 #include "core/Placeables.h"
 
 #include "dao/Data.h"
+#include "dao/Party.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -427,48 +428,41 @@ Json Rule(std::int32_t table, std::int32_t row)
 
 ObjectId SelectedCharacter()
 {
-    return static_cast<ObjectId>(
-        dao::data::Number(L"GUI.SelectedChar.ID").value_or(static_cast<double>(api::GetMainControlled())));
+    const ObjectId selected = dao::party::ScreenCharacter();
+    return selected != kInvalidObject ? selected : api::GetMainControlled();
 }
 
-SelectedFor::SelectedFor(ObjectId who, ObjectId selected, std::string_view tool) : before_(api::GetMainControlled())
+SelectedFor::SelectedFor(ObjectId who, ObjectId selected, std::string_view tool) : before_(selected)
 {
     if (who == selected)
     {
         return;
     }
-    if (!PartyOf(api::GetHero()).contains(who))
+    if (!dao::party::SetScreenCharacter(who))
     {
-        throw ToolError(std::format("{}: {} is not in the party; the screen acts on a party member ("
-                                    "state lists the party)",
+        throw ToolError(std::format("{}: {} is not a party member the screens can select (state lists the party; "
+                                    "at camp, only those there); nothing was done",
                                     tool, FormatId(who)));
     }
-    api::SetPrimaryControlled(who);
-    handed_ = true;
-    if (const ObjectId now = SelectedCharacter(); now != who)
-    {
-        throw ToolError(std::format("{}: control passed to {} but the interface still selects {}, and the screen "
-                                    "acts on that one; nothing was done. order {{\"action\": \"control\", \"id\": "
-                                    "\"{}\"}}, then {} again",
-                                    tool, FormatId(who), FormatId(now), FormatId(who), tool));
-    }
+    chosen_ = true;
 }
 
 SelectedFor::~SelectedFor()
 {
-    if (handed_ && before_ != kInvalidObject)
+    if (chosen_ && before_ != kInvalidObject)
     {
-        api::SetPrimaryControlled(before_);
+        dao::party::SetScreenCharacter(before_);
     }
 }
 
 void SelectedFor::Say(Json &answer) const
 {
-    if (handed_)
+    if (chosen_)
     {
         answer["selectedFirst"] = true;
-        answer["controlled"] = Brief(before_);
-        answer["note"] = "control passed to the creature for the screen's work and back to whom had it";
+        answer["selectedBefore"] = Brief(before_);
+        answer["note"] = "the screens' character set to the creature for the call and back after; control stayed "
+                         "where it was";
     }
 }
 

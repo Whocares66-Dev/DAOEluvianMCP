@@ -319,7 +319,8 @@ void AddTactics(Bench &bench, const Watch &watch)
             "tactics",
             "Reads and sets a party member's tactics (what they do on their own in a fight), the way the "
             "tactics screen does. If `id` is not the party member selected in the interface, it is selected "
-            "for the call and control is handed back afterwards (`selectedFirst`).\n\n"
+            "for the call and the one before selected again afterwards (`selectedFirst`), control staying where "
+            "it is.\n\n"
             "`action` is one of:\n"
             "- look: returns `slots` (how many there are), `preset` (null when none is chosen), "
             "`behaviour`, and `tactics`: each slot in order with `enabled`, `target`, `condition`, "
