@@ -609,8 +609,12 @@ class Processes:
         return found
 
     def start(self, environment: dict[str, str]) -> int:
-        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
-            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        # Above normal, as the user wants games to lag less while builds run below normal
+        # (2026-10-24, relayed by paragon-agent; build.ps1 lowers its own) (#183).
+        flags = (
+            getattr(subprocess, "DETACHED_PROCESS", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "ABOVE_NORMAL_PRIORITY_CLASS", 0)
         )
         # The game opens behind the window in front, shown and not activated: one that came
         # to the front took the keys typed in another window, a session's game opening a

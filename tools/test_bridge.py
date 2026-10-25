@@ -636,6 +636,16 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(startup.wShowWindow, bridge_module.SW_SHOWNOACTIVATE)
         self.assertEqual(popen.call_args.kwargs["env"]["DAOLIB_INSTANCE"], "mine")
 
+    @unittest.skipUnless(sys.platform == "win32", "a priority class is Windows'")
+    def test_a_game_is_started_above_normal_priority(self) -> None:
+        exe = self.folder / "DAOrigins.exe"
+        with mock.patch.object(subprocess, "Popen") as popen:
+            popen.return_value.pid = 42
+            bridge_module.Processes(exe).start({})
+        flags = popen.call_args.kwargs["creationflags"]
+        self.assertTrue(flags & subprocess.ABOVE_NORMAL_PRIORITY_CLASS)
+        self.assertTrue(flags & subprocess.DETACHED_PROCESS)
+
     def test_a_bridge_in_a_games_plugin_folder_takes_that_game(self) -> None:
         game = self.folder / "bin_ship"
         plugin = game / "daolib" / "plugins" / "eluvian"
