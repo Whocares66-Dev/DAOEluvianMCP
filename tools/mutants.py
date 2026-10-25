@@ -1506,12 +1506,19 @@ MUTANTS = [
         'if (Names(candidate) && (pin == nullptr || (live && pin->value("state", std::string()) != "active")))',
         "if (Names(candidate) && live == live)",
     ),
-    # #30: the map marked closed by travel before the pin's transition.
+    # #30, #184: the world's map clicked by DAOLib's worldmap::Travel, which
+    # marks it closed by travel; its refusal said.
     Mutant(
-        "travel to sends the transition with the map not marked closed by travel",
+        "travel to clicks the world's map as the Fade's",
         TRAVEL,
-        '{"set", "WorldMap.m_bClosedByTravel"}, {"value", true}});',
-        '{"set", "WorldMap.m_bClosedByTravel"}, {"value", false}});',
+        'if (map.value("map", std::string("world")) != "fade")',
+        'if (map.value("map", std::string("world")) == "fade")',
+    ),
+    Mutant(
+        "travel to goes on past a pin the world map refused",
+        TRAVEL,
+        'if (!took->value("taken", false))',
+        'if (took->contains("never"))',
     ),
     # #34: the Fade's own map is clicked as its pin does, with no mark.
     Mutant(

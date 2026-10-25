@@ -459,30 +459,42 @@ class Journey
     }
 
     // The pin clicked as its own click does: nothing, or the refusal.
+    //
+    // What the pin's own click does before the transition (worldmap.gfx,
+    // MapPinIcon.PinClicked): the map marks itself closed by travel, and the
+    // pin's index goes in the data tree. Without the mark the map closed
+    // saying "not by travel", which at camp is the player backing out: the
+    // followers went back to their places and the hero arrived alone, four
+    // times of four from camp to the area it was entered from; with it, all
+    // four arrived (turn-based-agent's reading and trial, 2026-10-03, #30).
+    // The world's map is clicked by DAOLib's dao::worldmap::Travel since
+    // #184, which takes those steps and refuses as PinClicked does.
     std::optional<Json> ClickPin(const Json &map, const Json &pin, const std::string &name)
     {
-        // What the pin's own click does before the transition (worldmap.gfx,
-        // MapPinIcon.PinClicked): the map marks itself closed by travel, and
-        // the pin's index goes in the data tree. Without the mark the map
-        // closed saying "not by travel", which at camp is the player backing
-        // out: the followers went back to their places and the hero arrived
-        // alone, four times of four from camp to the area it was entered
-        // from; with it, all four arrived (turn-based-agent's reading and
-        // trial, 2026-10-03, #30).
         const int index = pin.value("index", 0);
-        // The map shown: the world's, or the Fade's own (fademap.gfx), whose
-        // pin sets the index and sends the transition with no mark (#34).
-        const std::string screen = map.value("screen", Json("WorldMap")).is_string()
-                                       ? map.value("screen", std::string("WorldMap"))
-                                       : std::string("WorldMap");
         if (map.value("map", std::string("world")) != "fade")
         {
-            const auto marked =
-                Ask("movie", Json{{"screen", screen}, {"set", "WorldMap.m_bClosedByTravel"}, {"value", true}});
-            steps_.push_back(
-                Json{{"did", "mark the map closed by travel"},
-                     {"result", marked && marked->value("done", false) ? "done" : stopped_.value_or("not done")}});
+            const auto took = Ask("worldmap.travel", Json{{"index", index}});
+            if (!took)
+            {
+                return End(false, "the world map's pin " + name + " was not clicked: " + stopped_.value_or(""));
+            }
+            if (!took->value("taken", false))
+            {
+                const std::string refusal = took->value("refusal", std::string("refused"));
+                return End(false,
+                           "the world map refused its pin " + name + ": " + refusal +
+                               (refusal == "read only" ? " (shown only to look at, or the party is travelling already)"
+                                                       : std::string()));
+            }
+            steps_.push_back(Json{{"did", "the world map's pin " + name}, {"result", "asked"}});
+            return std::nullopt;
         }
+        // The Fade's own map (fademap.gfx), whose pin sets the index and
+        // sends the transition with no mark (#34), DAOLib's not yet.
+        const std::string screen = map.value("screen", Json("FadeMap")).is_string()
+                                       ? map.value("screen", std::string("FadeMap"))
+                                       : std::string("FadeMap");
         Ask("movie", Json{{"screen", screen},
                           {"call", "ExternalCommands.SetValue"},
                           {"args", Json::array({"WorldMap.LastClickedPinIndex", index})}});

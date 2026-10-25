@@ -94,6 +94,7 @@ struct World
     bool closedByTravel = false;       // the map movie's mark, as a pin's click sets it
     bool partyKept = false;            // whether the party went with the hero
     bool fadeMap = false;              // whether the map up is the Fade's own
+    std::string travelRefusal;         // worldmap.travel's refusal, if it refuses
     std::string shownMap = "Ferelden"; // the map shown, of a city's two
     std::string otherMap;              // the other, its toggle's, if any
     Json otherPins = Json::array();    // the other map's pins
@@ -115,6 +116,19 @@ struct World
                           [this](const Json &args) -> ToolResult { return FakeInput(args); });
         bench.Tools().Add(ToolSpec{"movie", "", {}, Thread::Listener},
                           [this](const Json &args) -> ToolResult { return FakeInput(args); });
+        // DAOLib's worldmap::Travel (#184): the pin's click, its mark set.
+        bench.Tools().Add(ToolSpec{"worldmap.travel", "", {}, Thread::Listener},
+                          [this](const Json &args) -> ToolResult {
+                              const int index = args.value("index", -1);
+                              messages.push_back("worldmap.travel " + std::to_string(index));
+                              if (!travelRefusal.empty())
+                              {
+                                  return Json{{"taken", false}, {"refusal", travelRefusal}};
+                              }
+                              closedByTravel = true;
+                              Click(index);
+                              return Json{{"taken", true}};
+                          });
         AddTravelTool(bench);
     }
 
@@ -507,28 +521,39 @@ struct World
         // A pin's click: the party goes there, or into an encounter on
         // the way, over a load.
         const std::string click = "GameModeController.AreaTransition " + area + " ";
-        if (mapUp && message.starts_with(click))
+        if (message.starts_with(click))
         {
-            const Json &pin = pins.at(std::stoi(message.substr(click.size())));
-            if (pin.value("state", "") == "active" && pin.value("area", "") == area)
-            {
-                // The pin of the area the party is in: the map closes,
-                // nothing loads (#95).
-                mapUp = false;
-            }
-            else if (pin.value("state", "") == "active")
-            {
-                // At camp, a map closed not by travel sends the
-                // followers home and the hero goes alone.
-                partyKept = closedByTravel;
-                mapUp = false;
-                area = encounter.empty() ? pin.value("area", "") : encounter;
-                mode = "loading";
-                loadingFor = 1;
-                bench.Events().Emit("eluvian.script.area_loaded", Json::object());
-            }
+            Click(std::stoi(message.substr(click.size())));
         }
         return Json{{"message", message}, {"sent", true}};
+    }
+
+    // A pin's click: the party goes there, or into an encounter on the way,
+    // over a load.
+    void Click(int index)
+    {
+        if (!mapUp)
+        {
+            return;
+        }
+        const Json &pin = pins.at(index);
+        if (pin.value("state", "") == "active" && pin.value("area", "") == area)
+        {
+            // The pin of the area the party is in: the map closes, nothing
+            // loads (#95).
+            mapUp = false;
+        }
+        else if (pin.value("state", "") == "active")
+        {
+            // At camp, a map closed not by travel sends the followers home
+            // and the hero goes alone.
+            partyKept = closedByTravel;
+            mapUp = false;
+            area = encounter.empty() ? pin.value("area", "") : encounter;
+            mode = "loading";
+            loadingFor = 1;
+            bench.Events().Emit("eluvian.script.area_loaded", Json::object());
+        }
     }
 
     Json Travel(Json args = Json::object())
@@ -975,12 +1000,10 @@ TEST_CASE("a pin of the world map, the map up, is travelled to by its name in an
     CHECK(answer["arrived"] == true);
     CHECK(answer["reason"] == "through to Lothering");
     CHECK(answer["area"]["tag"] == "lot100ar");
-    REQUIRE(world.messages.size() == 1);
-    CHECK(world.messages[0] == "GameModeController.AreaTransition ruins 1"); // where the party is, the pin
-    // As the pin's own click: marked closed by travel, the index set, then
-    // the transition; the party goes with the hero.
-    REQUIRE(world.screenCalls.size() == 2);
-    CHECK(world.screenCalls[1]["args"] == Json::array({"WorldMap.LastClickedPinIndex", 1}));
+    // By DAOLib's worldmap::Travel, as the pin's own click: marked closed by
+    // travel, so the party goes with the hero (#30, #184).
+    CHECK(world.messages == std::vector<std::string>{"worldmap.travel 1"});
+    CHECK(world.screenCalls.empty());
     CHECK(world.partyKept);
     CHECK(world.orders.empty());
 }
@@ -1002,7 +1025,20 @@ TEST_CASE("a pin on the other of a city's two maps is swapped to and travelled t
     CHECK(answer["swapped"] == true);
     REQUIRE(world.messages.size() == 2);
     CHECK(world.messages[0] == "WorldMap.WorldMapSwapMaps");
-    CHECK(world.messages[1] == "GameModeController.AreaTransition ruins 1");
+    CHECK(world.messages[1] == "worldmap.travel 1");
+}
+
+TEST_CASE("a pin the world map refuses is said with the map's reason", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.travelRefusal = "read only";
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    const std::string reason = answer["reason"];
+    CHECK_THAT(reason, ContainsSubstring("the world map refused its pin Lothering: read only"));
+    CHECK_THAT(reason, ContainsSubstring("only to look at"));
+    CHECK(world.mapUp);
 }
 
 TEST_CASE("a pin on neither of a city's maps is said of both, swapped once", "[travel]")
@@ -1056,6 +1092,8 @@ TEST_CASE("on the Fade's own map a pin is clicked as its pin does, with no mark"
     REQUIRE(world.screenCalls.size() == 1); // the index only: the Fade's map has no closed-by-travel mark
     CHECK(world.screenCalls[0]["screen"] == "FadeMap");
     CHECK(world.screenCalls[0]["call"] == "ExternalCommands.SetValue");
+    // Its own path still, DAOLib's Travel being the world's map's (#184).
+    CHECK(world.messages == std::vector<std::string>{"GameModeController.AreaTransition ruins 1"});
 }
 
 TEST_CASE("a pin is named by its tag or its index too", "[travel]")

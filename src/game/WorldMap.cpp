@@ -15,11 +15,17 @@
 // on the way, as a click does. A list's member is found by its index as a
 // path component (DAOLib 5e10b31's notes), so the pins are read until one
 // is not there.
+//
+// A pin of the world's map is travelled to by DAOLib's dao::worldmap::Travel
+// since #184 (DAOLib #259, f9754a7, lib-agent-3): the click's own steps, its
+// closed-by-travel mark, the index and the transition, refused as
+// PinClicked refuses, through the unlisted worldmap.travel.
 #include "game/Shared.h"
 
 #include "dao/Data.h"
 #include "dao/Gui.h"
 #include "dao/Resources.h"
+#include "dao/WorldMap.h"
 #include "dao/core/Gff4.h"
 
 #include <algorithm>
@@ -245,6 +251,27 @@ void AddWorldMap(Bench &bench, const Watch &watch)
         [&watch](const Json &args) -> ToolResult {
             return Args(args, "worldmap").Bool("all", false) ? KindMaps(watch) : KindWorldmap(watch, args);
         });
+
+    ToolSpec travel =
+        Spec("worldmap.travel",
+             "Travels to a pin of the world's map, by its `index`, as a click on it does: `taken`, or the "
+             "`refusal` (not shown, read only, no pin, not active).",
+             Json{{"index", {{"type", "integer"}, {"minimum", 0}}}}, {"index"});
+    travel.listed = false;
+    bench.Tools().Add(std::move(travel), [&watch](const Json &raw) -> ToolResult {
+        RequireWorld(watch, "worldmap.travel");
+        const Args args(raw, "worldmap.travel");
+        const auto refusal = dao::worldmap::Travel(static_cast<std::int32_t>(args.Integer("index", 0, 0, 9999)));
+        if (refusal == dao::worldmap::Refusal::None)
+        {
+            return Json{{"taken", true}};
+        }
+        return Json{{"taken", false},
+                    {"refusal", Label(refusal, {{dao::worldmap::Refusal::NotShown, "not shown"},
+                                                {dao::worldmap::Refusal::ReadOnly, "read only"},
+                                                {dao::worldmap::Refusal::NoPin, "no pin"},
+                                                {dao::worldmap::Refusal::NotActive, "not active"}})}};
+    });
 }
 
 } // namespace eluvian::game
