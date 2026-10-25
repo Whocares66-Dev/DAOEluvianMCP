@@ -413,7 +413,7 @@ class Looting
             return End(false, "Take All was refused: " + refused_);
         }
         const Json &pressed = *press;
-        for (const char *key : {"container", "taken", "left", "full", "backpack", "sent"})
+        for (const char *key : {"container", "taken", "left", "full", "backpack"})
         {
             if (pressed.contains(key))
             {

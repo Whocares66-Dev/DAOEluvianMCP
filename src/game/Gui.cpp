@@ -1,44 +1,17 @@
 // `gui`: what the interface has up, for an agent that cannot
 // see it: the game's screens shown (#2), its message box and its loot panel
-// (#1). And the loot panel's two buttons, pressed as the panel's own script
-// presses them, for press and the loot tool.
+// (#1). And the loot panel's two buttons, pressed as the panel's own buttons
+// do them, for press and the loot tool.
 #include "game/Shared.h"
 
 #include "dao/Data.h"
+#include "dao/Loot.h"
 
 #include <algorithm>
 #include <charconv>
 
 namespace eluvian::game
 {
-
-namespace
-{
-
-// The loot panel is the container part of the inventory movie
-// (inventory.gfx in guiexport.erf, its ActionScript class Container), read
-// by disassembly 2026-10-02 (#1). What it shows is the data tree's:
-// GUIInventory.ShowContainer, a bool, is true while it is up, and
-// Container.* is in the tree only while a container is open (read in the
-// game that night). Its buttons send texts through the FSCommand
-// SendMessage, the path dao::messages::SendText takes, the panel joining a
-// message's arguments with spaces:
-//
-// - Take All sends "SelectedChar.AcquireAllItems <Container.ID>"; then, if
-//   the container still holds items and Party.BackpackSize is not below
-//   Party.BackpackMaxSize, flashes the backpack-full overlay and stays
-//   open, and otherwise does what Close does.
-// - Close sets GUIInventory.ShowContainer to 0, then sends
-//   "Container.InventoryClosedMessage", "GameModeController.PerformUseObject
-//   <SelectedChar.ID> <Container.ID> 2" and "GUI.HideFullScreenGUI".
-//
-// Take All goes here as "GUI.SelectedChar..." rather than the movie's
-// "SelectedChar...": the same node of the tree (both read 269 for 0x10d),
-// and the form turn-based-agent sent through `input` the same night, which
-// emptied a body bag, a pile of bones, a chest and a cocoon and closed the
-// panel each time.
-
-} // namespace
 
 // An object id the tree holds as text, in decimal ("1004").
 std::optional<ObjectId> TreeId(std::wstring_view path)
@@ -57,22 +30,6 @@ std::optional<ObjectId> TreeId(std::wstring_view path)
     }
     return value;
 }
-
-namespace
-{
-
-std::wstring TakeAllText(ObjectId container)
-{
-    return std::format(L"GUI.SelectedChar.AcquireAllItems {}", container);
-}
-
-std::vector<std::wstring> CloseTexts(ObjectId selected, ObjectId container)
-{
-    return {L"Container.InventoryClosedMessage",
-            std::format(L"GameModeController.PerformUseObject {} {} 2", selected, container), L"GUI.HideFullScreenGUI"};
-}
-
-} // namespace
 
 ObjectId Selected()
 {
@@ -102,14 +59,19 @@ Json Backpack()
 
 } // namespace
 
+// The loot panel is the container part of the inventory movie
+// (inventory.gfx, its ActionScript class Container), read by disassembly
+// 2026-10-02 (#1). Until #181 Eluvian read it from the data tree
+// (GUIInventory.ShowContainer, Container.ID) and sent its buttons' texts as
+// the movie sends them: "GUI.SelectedChar.AcquireAllItems <container>" for
+// Take All, and for Close "Container.InventoryClosedMessage",
+// "GameModeController.PerformUseObject <selected> <container> 2" and
+// "GUI.HideFullScreenGUI". DAOLib's dao::loot (#259, 1ef662d, lib-agent-3,
+// 2026-10-24) does both as the buttons do, Take All leaving the panel up
+// where the backpack filled with items left.
 std::optional<ObjectId> LootPanelContainer()
 {
-    const auto *shown = dao::data::Find(L"GUIInventory.ShowContainer");
-    if (shown == nullptr || shown->Number() == 0)
-    {
-        return std::nullopt;
-    }
-    return TreeId(L"Container.ID");
+    return dao::loot::Container();
 }
 
 Json LootPanelJson()
@@ -124,21 +86,15 @@ Json LootPanelJson()
     {
         items.push_back(ItemJson(item, false));
     }
-    Json close = Json::array();
-    for (const auto &text : CloseTexts(Selected(), *container))
-    {
-        close.push_back(Narrow(text));
-    }
-    return Json{{"container", Brief(*container)},
-                {"count", items.size()},
-                {"items", std::move(items)},
-                {"backpack", Backpack()},
-                {"buttons", Json::array({Json{{"label", kLootButtons[0]},
-                                              {"sends", Json::array({Narrow(TakeAllText(*container))})},
-                                              {"then", "Close, unless items are left and the backpack is full"}},
-                                         Json{{"label", kLootButtons[1]},
-                                              {"sets", {{"GUIInventory.ShowContainer", false}}},
-                                              {"sends", std::move(close)}}})}};
+    return Json{
+        {"container", Brief(*container)},
+        {"count", items.size()},
+        {"items", std::move(items)},
+        {"backpack", Backpack()},
+        {"buttons", Json::array({Json{{"label", kLootButtons[0]},
+                                      {"does", "takes every item into the backpack, then closes the panel, unless "
+                                               "the backpack filled with items left"}},
+                                 Json{{"label", kLootButtons[1]}, {"does", "closes the panel, taking nothing"}}})}};
 }
 
 Json PressLootButton(Bench &bench, std::size_t index)
@@ -153,11 +109,7 @@ Json PressLootButton(Bench &bench, std::size_t index)
     // What follows a press is on the bus from here: the game may start a
     // conversation or a plot's step as a container closes.
     answer["cursor"] = bench.Events().Next();
-    Json sent = Json::array();
-    const auto send = [&sent](const std::wstring &text) {
-        sent.push_back(Json{{"text", Narrow(text)}, {"sent", dao::messages::SendText(text)}});
-    };
-    bool close = index == 1;
+    dao::loot::Result result = dao::loot::Result::NotShown;
     if (index == 0)
     {
         // The items in brief before they move: one that joins a stack in
@@ -167,10 +119,9 @@ Json PressLootButton(Bench &bench, std::size_t index)
         {
             before.emplace(item, ItemJson(item, false));
         }
-        send(TakeAllText(*container));
-        const auto after = ItemsIn(*container);
+        result = dao::loot::TakeAll();
         Json left = Json::array();
-        for (const ObjectId item : after)
+        for (const ObjectId item : ItemsIn(*container))
         {
             left.push_back(ItemJson(item, false));
             before.erase(item);
@@ -180,31 +131,19 @@ Json PressLootButton(Bench &bench, std::size_t index)
         {
             taken.push_back(std::move(json));
         }
-        const auto size = dao::data::Number(L"Party.BackpackSize").value_or(0);
-        const auto most = dao::data::Number(L"Party.BackpackMaxSize").value_or(0);
-        const bool full = !after.empty() && most > 0 && size >= most;
         answer["taken"] = std::move(taken);
         answer["left"] = std::move(left);
-        answer["full"] = full;
+        answer["full"] = result == dao::loot::Result::BackpackFull;
         answer["backpack"] = Backpack();
-        close = !full;
     }
-    if (close)
+    else
     {
-        if (auto *shown = dao::data::Find(L"GUIInventory.ShowContainer"); shown != nullptr)
-        {
-            shown->Set(false);
-        }
-        // The ids from the tree, as the movie reads them; but read before
-        // the first message rather than after it, so that one which lets
-        // the container go from the tree leaves the use its id.
-        const ObjectId still = TreeId(L"Container.ID").value_or(*container);
-        for (const auto &text : CloseTexts(Selected(), still))
-        {
-            send(text);
-        }
+        result = dao::loot::Close();
     }
-    answer["sent"] = std::move(sent);
+    if (result == dao::loot::Result::NotShown)
+    {
+        throw ToolError("press: the loot panel was gone before its button was pressed; gui says what is up");
+    }
     answer["panel"] = LootPanelJson();
     return answer;
 }
@@ -228,7 +167,7 @@ void AddGui(Bench &bench, const Watch &watch)
              "here when a load or an order was accepted but nothing happened.\n"
              "- `loot`: the loot panel a container opens (a chest, remains, a pile of bones), part of the "
              "Inventory screen: its `container`, the `items` in it, the `backpack`'s item count and limit, "
-             "and its `buttons`, Take All and Close, with what each sends.\n"
+             "and its `buttons`, Take All and Close, with what each does.\n"
              "- `store`: with a merchant's Store screen open, the `stock` with each item's `price`, your "
              "`pack` with what each item `sellsFor`, the `money` (in copper) and the markups.\n\n"
              "To act on these: `press` presses a message box or loot panel button; `loot` walks to a "
@@ -238,7 +177,7 @@ void AddGui(Bench &bench, const Watch &watch)
             // DAOLib's ShownScreens and CurrentFullScreen (0dd22bb, #2): a
             // screen is shown while its movie is drawn, and the full-screen
             // one is the last the GUI system pushed. The loot panel is the
-            // Inventory screen; GUIInventory.ShowContainer tells them apart.
+            // Inventory screen; dao::loot::Container tells them apart (#181).
             Json screens = Json::array();
             std::vector<std::wstring> shown;
             for (const auto &screen : dao::gui::ShownScreens())
