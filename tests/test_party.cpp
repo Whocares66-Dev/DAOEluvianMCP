@@ -1,15 +1,8 @@
-// The party tool over stand-ins for the picker: health's mode, the data
-// tree's chosen and hovered names, the view, the cursor held at a pixel, and
-// the messages a player's clicks send.
 #include "core/Party.h"
-
-#include "Reads.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <algorithm>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -19,159 +12,157 @@ using Catch::Matchers::ContainsSubstring;
 namespace
 {
 
-struct Follower
-{
-    std::string name;
-    std::string tag;
-    // Where the follower shows, in the view's pixels.
-    int left = 0;
-    int right = 0;
-    int y = 0;
-};
-
-struct Picker
+// The party picker as DAOLib's dao::partypicker answers it (#182): its
+// entries, a choice and a release refused as the picker refuses the click,
+// Remove All and Accept; the party the scripts make after.
+struct Camp
 {
     Bench bench{BenchOptions{std::chrono::milliseconds(2000)}};
+    struct Member
+    {
+        std::string id;
+        std::string name;
+        std::string tag;
+        std::string state; // chosen, available, unavailable, suspended, lockedActive
+        int slot;
+        bool hero;
+    };
+    std::vector<Member> members = {{"0x82", "Lyna", "player", "chosen", 0, true},
+                                   {"0x10d", "Alistair", "gen00fl_alistair", "chosen", 1, false},
+                                   {"0x110", "Morrigan", "gen00fl_morrigan", "available", -1, false},
+                                   {"0x111", "Dog", "gen00fl_dog", "available", -1, false},
+                                   {"0x112", "Sten", "gen00fl_sten", "unavailable", -1, false}};
     std::string mode = "partypicker";
-    std::vector<Follower> scene = {{"Leliana", "gen00fl_leliana", 360, 440, 450},
-                                   {"Morrigan", "gen00fl_morrigan", 460, 540, 450},
-                                   {"Lyna", "player", 760, 840, 450},
-                                   {"Dog", "gen00fl_dog", 860, 940, 450},
-                                   {"Alistair", "gen00fl_alistair", 960, 1040, 450},
-                                   {"Sten", "gen00fl_sten", 650, 750, 600}};
-    std::vector<Follower> chosen = {scene[2], scene[1], scene[4]}; // Lyna, Morrigan, Alistair
-    std::string hovered;                                           // PartyPicker.MouseOverName
-    bool sticky = false;      // whether the name stays when the cursor leaves a follower
-    std::vector<int> pointed; // the last pixel held, empty when released
-    int settling = 0;         // reads of the party after Accept that still show the hero alone
-    int status = 2;           // GetPartyPickerGUIStatus: PP_GUI_STATUS_USE, the party changeable
-    std::string kept;         // one the story keeps: unchoosing them takes no one out
-    std::vector<std::string> sent;
+    int status = 2;     // GetPartyPickerGUIStatus: USE
+    int emptyReads = 0; // entries read empty before the picker is done showing
+    bool closes = true; // whether Accept closes the picker
+    std::vector<std::string> party = {"Lyna", "Alistair"};
+    std::vector<std::string> accepted; // the party the scripts make after Accept
+    int lag = 0;                       // state's reads after Accept before it has it
+    std::vector<std::string> calls;    // the picker's steps, in order
 
-    Picker()
+    Camp()
     {
         bench.Tools().Add(ToolSpec{"health", "", {}, Thread::Listener},
                           [this](const Json &) -> ToolResult { return Json{{"mode", mode}}; });
-        AddReads(bench, [this](const Json &args) -> ToolResult { return FakeInspect(args); });
         bench.Tools().Add(ToolSpec{"script", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakeScript(args); });
-        bench.Tools().Add(ToolSpec{"screen", "", {}, Thread::Listener}, [](const Json &) -> ToolResult {
-            return Json{{"view", {{"width", 1600}, {"height", 1000}}}};
+                          [this](const Json &) -> ToolResult { return Json{{"value", status}}; });
+        bench.Tools().Add(ToolSpec{"state", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
+            if (!accepted.empty() && lag-- <= 0)
+            {
+                party = accepted;
+                accepted.clear();
+            }
+            Json listed = Json::array();
+            for (const auto &name : party)
+            {
+                listed.push_back(Json{{"name", name}});
+            }
+            return Json{{"party", listed}};
         });
-        bench.Tools().Add(ToolSpec{"pointer", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakePointer(args); });
-        bench.Tools().Add(ToolSpec{"input", "", {}, Thread::Listener},
-                          [this](const Json &args) -> ToolResult { return FakeInput(args); });
-        AddPartyTool(bench, std::chrono::milliseconds(0));
+        bench.Tools().Add(ToolSpec{"party.entries", "", {}, Thread::Listener},
+                          [this](const Json &) -> ToolResult { return Entries(); });
+        for (const char *step : {"party.choose", "party.release", "party.release_all", "party.accept"})
+        {
+            bench.Tools().Add(ToolSpec{step, "", {}, Thread::Listener},
+                              [this, step = std::string(step)](const Json &args) -> ToolResult {
+                                  calls.push_back(step + (args.contains("id") ? " " + args.at("id").get<std::string>()
+                                                                              : std::string()));
+                                  return Step(step, args.value("id", ""));
+                              });
+        }
+        AddPartyTool(bench);
     }
 
-    // The stand-in's inspect.
-    ToolResult FakeInspect(const Json &args)
+    Json Entries()
     {
-        if (args.value("kind", "") == "game")
+        Json entries = Json::array();
+        if (emptyReads > 0)
         {
-            Json party = Json::array();
-            for (const auto &member : chosen)
+            --emptyReads;
+            return Json{{"entries", entries}};
+        }
+        for (const auto &member : members)
+        {
+            entries.push_back(Json{{"id", member.id},
+                                   {"name", member.name},
+                                   {"tag", member.tag},
+                                   {"state", member.state},
+                                   {"slot", member.slot},
+                                   {"hero", member.hero}});
+        }
+        return Json{{"entries", entries}};
+    }
+
+    static Json Refused(const char *refusal)
+    {
+        return Json{{"taken", false}, {"refusal", refusal}};
+    }
+
+    int Chosen() const
+    {
+        int count = 0;
+        for (const auto &member : members)
+        {
+            count += member.slot >= 0 ? 1 : 0;
+        }
+        return count;
+    }
+
+    Json Step(const std::string &step, const std::string &id)
+    {
+        if (step == "party.accept")
+        {
+            for (const auto &member : members)
             {
-                party.push_back(Json{{"name", member.name}, {"tag", member.tag}});
-                if (settling > 0)
+                if (member.slot >= 0)
                 {
-                    break; // the hero alone until the game settles
+                    accepted.push_back(member.name);
                 }
             }
-            settling = std::max(0, settling - 1);
-            return Json{{"party", party}};
+            mode = closes ? "explore" : mode;
+            return Json{{"taken", true}};
         }
-        Json values = Json::array();
-        for (const auto &path : args.at("paths"))
+        if (step == "party.release_all")
         {
-            values.push_back(Read(path.get<std::string>()));
-        }
-        return Json{{"values", values}};
-    }
-
-    // The stand-in's script.
-    ToolResult FakeScript(const Json & /*args*/)
-    {
-        if (status < 0)
-        {
-            throw ToolError("script: not now"); // the status unread
-        }
-        return Json{{"value", status}}; // GetPartyPickerGUIStatus
-    }
-
-    // The stand-in's pointer.
-    ToolResult FakePointer(const Json &args)
-    {
-        if (args.value("release", false))
-        {
-            pointed.clear();
-            return Json{{"released", true}};
-        }
-        pointed = args.at("pixel").get<std::vector<int>>();
-        const Follower *under = nullptr;
-        for (const auto &follower : scene)
-        {
-            if (pointed[0] >= follower.left && pointed[0] <= follower.right && std::abs(pointed[1] - follower.y) <= 40)
+            for (auto &member : members)
             {
-                under = &follower;
-            }
-        }
-        if (under != nullptr || !sticky)
-        {
-            hovered = under != nullptr ? under->name : "";
-        }
-        return Json{{"held", true}};
-    }
-
-    // The stand-in's input.
-    ToolResult FakeInput(const Json &args)
-    {
-        const std::string text = args.value("message", args.value("binding", ""));
-        sent.push_back(text);
-        if (text == "SelectPartyMemberUnderCursorMessage" && !pointed.empty() && chosen.size() < 4)
-        {
-            for (const auto &follower : scene)
-            {
-                if (follower.name == hovered)
+                if (member.slot >= 0 && !member.hero && member.state != "lockedActive")
                 {
-                    chosen.push_back(follower);
+                    member.slot = -1;
+                    member.state = "available";
                 }
             }
+            return Json{{"taken", true}};
         }
-        else if (text.starts_with("GameModeController.UnselectPartyMember "))
+        for (auto &member : members)
         {
-            const auto at = chosen.begin() + std::stoi(text.substr(text.rfind(' ') + 1));
-            if (at->name != kept)
+            if (member.id == id)
             {
-                chosen.erase(at);
+                return Click(step == "party.choose", member);
             }
         }
-        else if (text == "GameModeController.SubmitPartyChanges")
-        {
-            mode = "explore";
-        }
-        else if (text == "GameModeController.ClearPartyPicker")
-        {
-            chosen.resize(1); // the hero stays
-        }
-        return Json{{"sent", true}};
+        return Refused("not offered");
     }
 
-    Json Read(const std::string &path) const
+    // A click on a follower: chosen, or let go.
+    Json Click(bool choose, Member &member) const
     {
-        if (path == "PartyPicker.MouseOverName")
+        if (member.hero || member.state == "lockedActive" || member.state == "unavailable")
         {
-            return Json{{"path", path}, {"found", true}, {"text", hovered}};
+            return Refused("locked");
         }
-        const std::string prefix = "PartyPicker.SelectedPartyMember.";
-        const auto slot = static_cast<std::size_t>(path[prefix.size()] - '0');
-        if (slot >= chosen.size())
+        if (choose == (member.slot >= 0))
         {
-            return Json{{"path", path}, {"found", false}};
+            return Refused("already so");
         }
-        const bool name = path.ends_with(".Name");
-        return Json{{"path", path}, {"found", true}, {"text", name ? chosen[slot].name : chosen[slot].tag}};
+        if (choose && Chosen() >= 4)
+        {
+            return Refused("party full");
+        }
+        member.slot = choose ? Chosen() : -1;
+        member.state = choose ? "chosen" : "available";
+        return Json{{"taken", true}};
     }
 
     Json Party(const Json &args)
@@ -182,148 +173,123 @@ struct Picker
 
 } // namespace
 
-TEST_CASE("a picker not open to change the party refuses choose, unchoose and clear, saying how", "[party]")
+TEST_CASE("look says who is chosen, slot by slot, and everyone the picker offers with their state", "[party]")
 {
-    Picker picker;
-    picker.status = 0; // shown by ShowPartyPickerGUI alone
-    for (const Json &args : {Json{{"action", "choose"}, {"name", "Leliana"}},
-                             Json{{"action", "unchoose"}, {"name", "Morrigan"}}, Json{{"action", "clear"}}})
-    {
-        CHECK_THROWS_WITH(picker.Party(args), ContainsSubstring("status \"noUse\" (GetPartyPickerGUIStatus 0)"));
-    }
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "clear"}}), ContainsSubstring("SetPartyPickerGUIStatus [2]"));
-    CHECK(picker.sent.empty());
-    // A look is answered, its status said.
-    CHECK(picker.Party(Json{{"action", "look"}})["status"] == "noUse");
-    picker.status = 1;
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "clear"}}), ContainsSubstring("status \"readOnly\""));
-}
-
-TEST_CASE("a picker whose status cannot be read is worked as before", "[party]")
-{
-    Picker picker;
-    picker.status = -1;
-    const auto answer = picker.Party(Json{{"action", "unchoose"}, {"name", "Morrigan"}});
-    CHECK(answer["chosen"].size() == 2);
-    CHECK(answer["status"] == -1);
-}
-
-TEST_CASE("an unchoose the picker does not take is said, not answered as done", "[party]")
-{
-    Picker picker;
-    picker.kept = "Morrigan";
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "unchoose"}, {"name", "Morrigan"}}),
-                      ContainsSubstring("Morrigan was not taken out"));
-}
-
-TEST_CASE("a clear that takes no one out says so", "[party]")
-{
-    Picker picker;
-    picker.chosen.resize(1); // the hero alone, whom the story keeps
-    const auto answer = picker.Party(Json{{"action", "clear"}});
-    CHECK_THAT(answer["note"].get<std::string>(), ContainsSubstring("clear took no one out"));
-    picker.chosen.push_back(picker.scene[0]);
-    CHECK_FALSE(picker.Party(Json{{"action", "clear"}}).contains("note"));
-}
-
-TEST_CASE("look says who is chosen, slot by slot", "[party]")
-{
-    Picker picker;
-    const auto answer = picker.Party(Json{{"action", "look"}});
-    REQUIRE(answer["chosen"].size() == 3);
-    CHECK(answer["chosen"][0]["name"] == "Lyna");
-    CHECK(answer["chosen"][2]["slot"] == 2);
-    CHECK(answer["chosen"][2]["tag"] == "gen00fl_alistair");
+    Camp camp;
+    const auto answer = camp.Party(Json{{"action", "look"}});
+    CHECK(answer["status"] == "use");
+    REQUIRE(answer["chosen"].size() == 2);
+    CHECK(answer["chosen"][1] == Json{{"slot", 1}, {"id", "0x10d"}, {"name", "Alistair"}, {"tag", "gen00fl_alistair"}});
+    REQUIRE(answer["offered"].size() == 5);
+    CHECK(answer["offered"][4]["state"] == "unavailable");
     CHECK_FALSE(answer.contains("before"));
+    CHECK(camp.calls.empty());
 }
 
-TEST_CASE("choose finds a follower in the scene by the name under the cursor, and clicks there", "[party]")
+TEST_CASE("look waits for the picker to be done showing", "[party]")
 {
-    Picker picker;
-    const auto answer = picker.Party(Json{{"action", "choose"}, {"name", "sten"}});
-    REQUIRE(answer["chosen"].size() == 4);
-    CHECK(answer["chosen"][3]["name"] == "Sten");
-    const auto pixel = answer["pixel"].get<std::vector<int>>();
-    CHECK(pixel[0] >= 650);
-    CHECK(pixel[0] <= 750);
-    CHECK(pixel[1] == 600);
-    CHECK(picker.sent == std::vector<std::string>{"SelectPartyMemberUnderCursorMessage"});
-    CHECK(picker.pointed.empty()); // the cursor given back
-    CHECK(answer["before"].size() == 3);
-}
-
-TEST_CASE("a name left from before is no hit: the pixel is where it turns to theirs", "[party]")
-{
-    Picker picker;
-    picker.sticky = true;
-    picker.hovered = "Sten"; // read from before the sweep, the cursor elsewhere
-    const auto answer = picker.Party(Json{{"action", "choose"}, {"name", "Sten"}});
-    CHECK(answer["chosen"].size() == 4);
-    CHECK(answer["pixel"][1] == 600);
-}
-
-TEST_CASE("a fifth is refused by the game, and said so", "[party]")
-{
-    Picker picker;
-    picker.chosen.push_back(picker.scene[3]); // Dog: four
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "choose"}, {"name", "Sten"}}), ContainsSubstring("four"));
-    CHECK(picker.pointed.empty());
-}
-
-TEST_CASE("one not in the scene is refused, with who was seen there", "[party]")
-{
-    Picker picker;
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "choose"}, {"name", "Zevran"}}),
-                      ContainsSubstring("seen there: Leliana, Morrigan, Lyna, Dog, Alistair, Sten"));
-    CHECK(picker.pointed.empty());
-    CHECK(picker.sent.empty());
-}
-
-TEST_CASE("one chosen already is not chosen again", "[party]")
-{
-    Picker picker;
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "choose"}, {"name", "Morrigan"}}),
-                      ContainsSubstring("chosen already"));
-}
-
-TEST_CASE("unchoose clicks the portrait of their slot", "[party]")
-{
-    Picker picker;
-    const auto answer = picker.Party(Json{{"action", "unchoose"}, {"name", "Alistair"}});
-    CHECK(picker.sent == std::vector<std::string>{"GameModeController.UnselectPartyMember 2"});
+    Camp camp;
+    camp.emptyReads = 3;
+    const auto answer = camp.Party(Json{{"action", "look"}});
     CHECK(answer["chosen"].size() == 2);
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "unchoose"}, {"name", "Sten"}}), ContainsSubstring("not chosen"));
 }
 
-TEST_CASE("accept waits for the picker to close and answers the party", "[party]")
+TEST_CASE("a picker that shows no one is said", "[party]")
 {
-    Picker picker;
-    const auto answer = picker.Party(Json{{"action", "accept"}});
+    Camp camp;
+    camp.emptyReads = 1000;
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "look"}}), ContainsSubstring("showed no one after 5 s"));
+}
+
+TEST_CASE("choose picks a follower by name in any case, as a click on them does", "[party]")
+{
+    Camp camp;
+    const auto answer = camp.Party(Json{{"action", "choose"}, {"name", "dog"}});
+    CHECK(camp.calls == std::vector<std::string>{"party.choose 0x111"});
+    REQUIRE(answer["chosen"].size() == 3);
+    CHECK(answer["chosen"][2]["name"] == "Dog");
+    CHECK(answer["before"].size() == 2);
+}
+
+TEST_CASE("choose and unchoose take a tag or an id as well as a name", "[party]")
+{
+    Camp camp;
+    camp.Party(Json{{"action", "choose"}, {"name", "gen00fl_morrigan"}});
+    camp.Party(Json{{"action", "unchoose"}, {"name", "0x10d"}});
+    CHECK(camp.calls == std::vector<std::string>{"party.choose 0x110", "party.release 0x10d"});
+}
+
+TEST_CASE("a follower the picker does not show is refused, naming those it does", "[party]")
+{
+    Camp camp;
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "choose"}, {"name", "Zevran"}}),
+                      ContainsSubstring("shows no one named Zevran; it shows Lyna (chosen), Alistair (chosen)"));
+    CHECK(camp.calls.empty());
+}
+
+TEST_CASE("each refusal of the picker's is said in words", "[party]")
+{
+    Camp camp;
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "choose"}, {"name", "Alistair"}}),
+                      ContainsSubstring("Alistair was not chosen: chosen already"));
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "choose"}, {"name", "Sten"}}),
+                      ContainsSubstring("Sten was not chosen: the story keeps them where they are"));
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "unchoose"}, {"name", "Morrigan"}}),
+                      ContainsSubstring("Morrigan was not taken out: not chosen"));
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "unchoose"}, {"name", "Lyna"}}),
+                      ContainsSubstring("Lyna was not taken out: the story keeps them"));
+    camp.Party(Json{{"action", "choose"}, {"name", "Morrigan"}});
+    camp.Party(Json{{"action", "choose"}, {"name", "Dog"}});
+    camp.members[4].state = "available";
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "choose"}, {"name", "Sten"}}),
+                      ContainsSubstring("Sten was not chosen: four are chosen: unchoose one first"));
+}
+
+TEST_CASE("clear lets go all but the hero and those the story keeps, and says when it took no one", "[party]")
+{
+    Camp camp;
+    camp.members[2].slot = 2;
+    camp.members[2].state = "lockedActive";
+    auto answer = camp.Party(Json{{"action", "clear"}});
+    REQUIRE(answer["chosen"].size() == 2);
+    CHECK(answer["chosen"][1]["name"] == "Morrigan");
+    CHECK_FALSE(answer.contains("note"));
+    answer = camp.Party(Json{{"action", "clear"}});
+    CHECK_THAT(answer["note"].get<std::string>(), ContainsSubstring("took no one out"));
+}
+
+TEST_CASE("accept waits for the party to hold everyone chosen", "[party]")
+{
+    Camp camp;
+    camp.lag = 2; // the scripts change it a frame or more after Accept
+    camp.Party(Json{{"action", "choose"}, {"name", "Dog"}});
+    const auto answer = camp.Party(Json{{"action", "accept"}});
     CHECK(answer["accepted"] == true);
     CHECK(answer["mode"] == "explore");
     CHECK(answer["party"].size() == 3);
 }
 
-TEST_CASE("accept answers the party once it holds everyone chosen", "[party]")
+TEST_CASE("a picker still up after Accept is said", "[party]")
 {
-    Picker picker;
-    picker.settling = 2;
-    const auto answer = picker.Party(Json{{"action", "accept"}});
-    CHECK(answer["party"].size() == 3);
+    Camp camp;
+    camp.closes = false;
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "accept"}}), ContainsSubstring("still up 5 s after Accept"));
 }
 
-TEST_CASE("clear sends the picker's Clear", "[party]")
+TEST_CASE("a picker only to look at refuses choices, saying how to open it to change the party", "[party]")
 {
-    Picker picker;
-    const auto answer = picker.Party(Json{{"action", "clear"}});
-    CHECK(picker.sent == std::vector<std::string>{"GameModeController.ClearPartyPicker"});
-    CHECK(answer["chosen"].size() == 1);
+    Camp camp;
+    camp.status = 1;
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "choose"}, {"name", "Dog"}}),
+                      ContainsSubstring("SetPartyPickerGUIStatus [2]"));
+    CHECK(camp.Party(Json{{"action", "look"}})["status"] == "readOnly");
+    CHECK(camp.calls.empty());
 }
 
-TEST_CASE("the party tool is refused away from the picker, and choose wants a name", "[party]")
+TEST_CASE("party refuses with the picker not up, or a choice with no name", "[party]")
 {
-    Picker picker;
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "choose"}}), ContainsSubstring("`name`"));
-    picker.mode = "explore";
-    CHECK_THROWS_WITH(picker.Party(Json{{"action", "look"}}), ContainsSubstring("not up"));
+    Camp camp;
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "choose"}}), ContainsSubstring("needs `name`"));
+    camp.mode = "explore";
+    CHECK_THROWS_WITH(camp.Party(Json{{"action", "look"}}), ContainsSubstring("not up (the game is in mode explore)"));
 }

@@ -6,11 +6,11 @@
 #include <array>
 #include <cctype>
 #include <chrono>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace eluvian
 {
@@ -21,13 +21,9 @@ namespace
 using Clock = std::chrono::steady_clock;
 using std::chrono::milliseconds;
 
-constexpr int kSlots = 4;
-// Rows of the view to look along, as fractions of its height, the likeliest
-// first: the five at 0.45 and Sten alone at 0.6 at his recruitment.
-constexpr std::array kRows = {0.45, 0.6, 0.5, 0.4, 0.55, 0.65, 0.35, 0.7};
-// Across a row, a twenty-fourth of the width at a time: 67 pixels of 1600,
-// where the followers stood 100 apart. Some seconds a row at 0.3 s a pixel.
-constexpr int kAcross = 24;
+// How long the picker may take to be done showing: its entries are none
+// until then, a few frames after the mode enters (lib-agent-3, 2026-10-24).
+constexpr milliseconds kShowWait{5000};
 // How long the picker may take to close after Accept.
 constexpr milliseconds kCloseWait{5000};
 // How long the party may take to hold everyone chosen once the picker closed.
@@ -38,6 +34,8 @@ constexpr milliseconds kSettleWait{3000};
 // can the party be changed in it.
 constexpr std::array<std::string_view, 3> kStatusNames = {"noUse", "readOnly", "use"};
 constexpr int kUse = 2;
+constexpr const char *kStatusAdvice = "The game opens it to change the party with status use: script "
+                                      "SetPartyPickerGUIStatus [2], then ShowPartyPickerGUI again";
 
 std::string Lower(std::string text)
 {
@@ -48,9 +46,9 @@ std::string Lower(std::string text)
 class Picker
 {
   public:
-    Picker(Bench &bench, const Args &args, milliseconds settle)
+    Picker(Bench &bench, const Args &args)
         : bench_(bench), action_(args.Choice("action", {"look", "choose", "unchoose", "accept", "clear"})),
-          name_(args.String("name", "")), settle_(settle)
+          name_(args.String("name", ""))
     {
         answer_["cursor"] = bench_.Events().Next();
         if ((action_ == "choose" || action_ == "unchoose") && name_.empty())
@@ -69,9 +67,8 @@ class Picker
                             "); the game opens it after a follower joins, and at camp");
         }
         // Opened by ShowPartyPickerGUI alone it came up with status 0, and
-        // no one could be chosen or taken out, the calls answering as if
-        // done (turn-based-agent, 2026-10-05, #62); the game's own callers
-        // set USE first.
+        // no one could be chosen or taken out (turn-based-agent, 2026-10-05,
+        // #62); the game's own callers set USE first.
         const int status = Status();
         answer_["status"] = status >= 0 && std::cmp_less(status, kStatusNames.size())
                                 ? Json(std::string(kStatusNames[static_cast<std::size_t>(status)]))
@@ -80,32 +77,35 @@ class Picker
         {
             throw ToolError("party: the picker is up with status " + answer_["status"].dump() +
                             " (GetPartyPickerGUIStatus " + std::to_string(status) +
-                            "), in which no one can be chosen or taken out. The game opens it to change the party "
-                            "with status use: script SetPartyPickerGUIStatus [2], then ShowPartyPickerGUI again");
+                            "), in which no one can be chosen or taken out. " + kStatusAdvice);
         }
-        answer_["before"] = Chosen();
+        const Json entries = Shown();
+        answer_["before"] = Chosen(entries);
         if (action_ == "choose")
         {
-            Choose();
+            const Json entry = Entry(entries);
+            Take("party.choose", entry, entry.value("name", name_) + " was not chosen");
         }
         else if (action_ == "unchoose")
         {
-            Unchoose();
+            const Json entry = Entry(entries);
+            Take("party.release", entry, entry.value("name", name_) + " was not taken out");
         }
         else if (action_ == "clear")
         {
-            Send("GameModeController.ClearPartyPicker");
-            std::this_thread::sleep_for(settle_);
-            if (Chosen() == answer_.at("before"))
-            {
-                answer_["note"] = "clear took no one out: those chosen are the ones the story keeps in the party";
-            }
+            Take("party.release_all", Json(), "no one was taken out");
         }
         else if (action_ == "accept")
         {
             return Accept();
         }
-        answer_["chosen"] = Chosen();
+        const Json after = Entries();
+        answer_["chosen"] = Chosen(after);
+        answer_["offered"] = after;
+        if (action_ == "clear" && answer_.at("chosen") == answer_.at("before"))
+        {
+            answer_["note"] = "clear took no one out: those chosen are the ones the story keeps in the party";
+        }
         if (action_ == "look")
         {
             answer_.erase("before");
@@ -114,160 +114,105 @@ class Picker
     }
 
   private:
+    Json Entries()
+    {
+        return bench_.Invoke("party.entries", Json::object()).data.value("entries", Json::array());
+    }
+
+    // The entries once the picker is done showing.
+    Json Shown()
+    {
+        const auto until = Clock::now() + kShowWait;
+        while (true)
+        {
+            Json entries = Entries();
+            if (!entries.empty())
+            {
+                return entries;
+            }
+            if (Clock::now() >= until)
+            {
+                throw ToolError("party: the picker showed no one after 5 s");
+            }
+            std::this_thread::sleep_for(milliseconds(100));
+        }
+    }
+
     // The chosen, slot by slot, as the portraits show them.
-    Json Chosen()
+    static Json Chosen(const Json &entries)
     {
-        Json paths = Json::array();
-        for (int slot = 0; slot < kSlots; ++slot)
+        std::vector<Json> chosen;
+        for (const auto &entry : entries)
         {
-            paths.push_back("PartyPicker.SelectedPartyMember." + std::to_string(slot) + ".Name");
-            paths.push_back("PartyPicker.SelectedPartyMember." + std::to_string(slot) + ".Tag");
-        }
-        const Json values = Read(paths);
-        Json chosen = Json::array();
-        for (int slot = 0; slot < kSlots; ++slot)
-        {
-            const Json &name = values.at(2 * slot);
-            if (name.value("found", false))
+            if (entry.value("slot", -1) >= 0)
             {
-                chosen.push_back(Json{{"slot", slot},
-                                      {"name", name.value("text", std::string())},
-                                      {"tag", values.at((2 * slot) + 1).value("text", std::string())}});
+                chosen.push_back(Json{{"slot", entry.at("slot")},
+                                      {"id", entry.value("id", Json())},
+                                      {"name", entry.value("name", std::string())},
+                                      {"tag", entry.value("tag", std::string())}});
             }
         }
-        return chosen;
-    }
-
-    Json Read(const Json &paths)
-    {
-        return bench_.Invoke("data", Json{{"paths", paths}}).data.value("values", Json::array());
-    }
-
-    std::string Hovered()
-    {
-        const Json values = Read(Json::array({"PartyPicker.MouseOverName"}));
-        return values.empty() ? std::string() : values.at(0).value("text", std::string());
-    }
-
-    std::optional<int> SlotOf(const Json &chosen) const
-    {
-        for (const auto &member : chosen)
+        std::ranges::sort(chosen, {}, [](const Json &member) { return member.value("slot", -1); });
+        Json slots = Json::array();
+        for (auto &member : chosen)
         {
-            if (Lower(member.value("name", std::string())) == Lower(name_) || member.value("tag", "") == name_)
+            slots.push_back(std::move(member));
+        }
+        return slots;
+    }
+
+    // The entry `name` names: its name in any case, its tag or its id.
+    Json Entry(const Json &entries) const
+    {
+        for (const auto &entry : entries)
+        {
+            if (Lower(entry.value("name", std::string())) == Lower(name_) || entry.value("tag", "") == name_ ||
+                entry.value("id", "") == name_)
             {
-                return member.value("slot", -1);
+                return entry;
             }
         }
-        return std::nullopt;
+        std::string names;
+        for (const auto &entry : entries)
+        {
+            names += (names.empty() ? "" : ", ") + entry.value("name", std::string()) + " (" +
+                     entry.value("state", std::string()) + ")";
+        }
+        throw ToolError("party: the picker shows no one named " + name_ + "; it shows " + names);
     }
 
-    void Send(const std::string &message)
+    // A step of the picker's; refused with the picker's reason said.
+    void Take(std::string_view tool, const Json &entry, const std::string &undone)
     {
-        const Json sent = bench_.Invoke("input", Json{{"message", message}}).data;
-        if (!sent.value("sent", false))
+        const Json args = entry.is_null() ? Json::object() : Json{{"id", entry.at("id")}};
+        const Json took = bench_.Invoke(tool, args).data;
+        if (took.value("taken", false))
         {
-            throw ToolError("party: the game took no \"" + message + "\"");
+            return;
         }
-    }
-
-    // A follower chosen in by a click on them in the scene: their pixel
-    // found by holding the cursor across the view until the name under it is
-    // theirs, then the click's binding there.
-    void Choose()
-    {
-        if (SlotOf(answer_.at("before")))
+        const std::string refusal = took.value("refusal", std::string("refused"));
+        std::string why = refusal;
+        if (refusal == "party full")
         {
-            throw ToolError("party: " + name_ + " is chosen already");
+            why = "four are chosen: unchoose one first";
         }
-        const Json screen = bench_.Invoke("screen", Json::object()).data;
-        const double width = screen.value(Json::json_pointer("/view/width"), 0.0);
-        const double height = screen.value(Json::json_pointer("/view/height"), 0.0);
-        if (width <= 0 || height <= 0)
+        else if (refusal == "already so")
         {
-            throw ToolError("party: the game gave no view to look across");
+            why = tool == "party.choose" ? "chosen already" : "not chosen";
         }
-        // Whether the name clears when the cursor leaves a follower is not
-        // known: a pixel is taken as theirs only where the name turns to
-        // theirs, so one read there from before is no hit.
-        std::string last = Hovered();
-        const auto pixel = Find(width, height, last);
-        if (!pixel)
+        else if (refusal == "locked")
         {
-            Release();
-            throw ToolError("party: no follower named " + name_ + " was found in the picker's scene" +
-                            (seen_.empty() ? std::string() : "; seen there: " + seen_));
+            why = "the story keeps them where they are (the hero, or one it keeps in or out of the party)";
         }
-        answer_["pixel"] = *pixel;
-        const Json sent = bench_.Invoke("input", Json{{"binding", "SelectPartyMemberUnderCursorMessage"}}).data;
-        Release(); // the cursor the mouse's again once the click is sent
-        if (!sent.value("sent", false))
+        else if (refusal == "read only")
         {
-            throw ToolError("party: the game took no SelectPartyMemberUnderCursorMessage");
+            why = std::string("the picker is only to look at. ") + kStatusAdvice;
         }
-        std::this_thread::sleep_for(settle_);
-        if (!SlotOf(Chosen()))
+        else if (refusal == "not shown")
         {
-            throw ToolError("party: " + name_ + " was under the cursor at " + pixel->dump() +
-                            " and the click chose nobody: four may be chosen already (unchoose one first)");
+            why = "the picker is not up, or is still showing or leaving";
         }
-    }
-
-    std::optional<Json> Find(double width, double height, std::string &last)
-    {
-        for (const double row : kRows)
-        {
-            for (int step = 1; step < kAcross; ++step)
-            {
-                const Json pixel =
-                    Json::array({static_cast<int>(width * step / kAcross), static_cast<int>(height * row)});
-                bench_.Invoke("pointer", Json{{"pixel", pixel}});
-                std::this_thread::sleep_for(settle_);
-                const std::string name = Hovered();
-                if (name != last && !name.empty() && seen_.find(name) == std::string::npos)
-                {
-                    seen_ += (seen_.empty() ? "" : ", ") + name;
-                }
-                const bool turned = name != last;
-                last = name;
-                if (turned && Lower(name) == Lower(name_))
-                {
-                    return std::make_optional(pixel);
-                }
-            }
-        }
-        return std::nullopt;
-    }
-
-    void Release()
-    {
-        try
-        {
-            bench_.Invoke("pointer", Json{{"release", true}});
-        }
-        catch (const std::exception &e)
-        {
-            // Said, not thrown: the cursor goes back to the mouse at its next
-            // move anyway.
-            answer_["pointer"] = std::string("not given back: ") + e.what();
-        }
-    }
-
-    // One taken out by a click on their portrait, by its slot.
-    void Unchoose()
-    {
-        const auto slot = SlotOf(answer_.at("before"));
-        if (!slot)
-        {
-            throw ToolError("party: " + name_ + " is not chosen; the chosen: " + answer_.at("before").dump());
-        }
-        Send("GameModeController.UnselectPartyMember " + std::to_string(*slot));
-        std::this_thread::sleep_for(settle_);
-        if (SlotOf(Chosen()))
-        {
-            throw ToolError("party: " + name_ +
-                            " was not taken out: the picker keeps them, as it keeps those the "
-                            "story wants in the party");
-        }
+        throw ToolError("party: " + undone + ": " + why);
     }
 
     // The picker's status (GetPartyPickerGUIStatus); -1 if it cannot be
@@ -289,7 +234,7 @@ class Picker
     // Accept, and the party it made once the picker has closed.
     Json Accept()
     {
-        Send("GameModeController.SubmitPartyChanges");
+        Take("party.accept", Json(), "the party was not accepted");
         const auto until = Clock::now() + kCloseWait;
         std::string mode = "partypicker";
         while (mode == "partypicker" && Clock::now() < until)
@@ -305,7 +250,8 @@ class Picker
         answer_["accepted"] = true;
         // The party read once it holds everyone chosen: read as the picker
         // closed it answered two where four were chosen and four were in the
-        // party a moment later (turn-based-agent, 2026-10-03).
+        // party a moment later (turn-based-agent, 2026-10-03); the scripts
+        // change it a frame or more after Accept (DAOLib #259).
         const std::size_t chosen = answer_.at("before").size();
         const auto settle = Clock::now() + kSettleWait;
         Json party = nullptr;
@@ -332,32 +278,31 @@ class Picker
     Bench &bench_;
     std::string action_;
     std::string name_;
-    milliseconds settle_;
-    std::string seen_; // the names met under the cursor, for a follower not found
     Json answer_ = Json::object();
 };
 
 } // namespace
 
-void AddPartyTool(Bench &bench, std::chrono::milliseconds settle)
+void AddPartyTool(Bench &bench)
 {
     bench.Tools().Add(
         ToolSpec{"party",
-                 "Works the party picker, the screen the game shows after a follower joins and at camp, the way a "
-                 "player does. It refuses when the picker is not open (`health` reports mode `partypicker` when "
-                 "it is).\n\n"
+                 "Works the party picker, the screen the game shows after a follower joins and at camp, as a "
+                 "player's clicks do. It refuses when the picker is not open (`health` reports mode `partypicker` "
+                 "when it is).\n\n"
                  "`action`:\n"
-                 "- `look`: returns who is `chosen` (each slot's name and tag).\n"
-                 "- `choose`: picks the follower `name`, who must be standing in the picker's scene. The tool "
-                 "sweeps the cursor across the view until the name under it matches (a few seconds), then clicks "
-                 "them.\n"
+                 "- `look`: returns who is `chosen` (each slot's id, name and tag), and everyone the picker "
+                 "`offered`, each with its `state`: chosen, available, unavailable, suspended or lockedActive (kept "
+                 "in the party by the story).\n"
+                 "- `choose`: picks the follower `name`, as a click on them does.\n"
                  "- `unchoose`: removes the chosen follower `name`, like clicking their portrait.\n"
-                 "- `clear`: removes everyone except those the story keeps.\n"
+                 "- `clear`: removes everyone except the hero and those the story keeps.\n"
                  "- `accept`: confirms the party as chosen, and returns the `party` once the picker has closed.\n\n"
-                 "Up to four can be chosen: unchoose one before choosing a fifth. `choose`, `unchoose` and "
-                 "`clear` refuse when the picker's `status` is not `use`, meaning the picker is only for viewing. "
-                 "A picker you open yourself with the script command ShowPartyPickerGUI may be view-only: call "
-                 "SetPartyPickerGUIStatus with 2 through `script` before opening it, so it can change the party.",
+                 "Up to four can be chosen: unchoose one before choosing a fifth. A choice the picker refuses is "
+                 "an error saying why. `choose`, `unchoose` and `clear` refuse when the picker's `status` is not "
+                 "`use`, meaning the picker is only for viewing. A picker you open yourself with the script "
+                 "command ShowPartyPickerGUI may be view-only: call SetPartyPickerGUIStatus with 2 through "
+                 "`script` before opening it, so it can change the party.",
                  Json{{"type", "object"},
                       {"properties",
                        {{"action",
@@ -367,12 +312,12 @@ void AddPartyTool(Bench &bench, std::chrono::milliseconds settle)
                         {"name",
                          {{"type", "string"},
                           {"description", "With `choose` or `unchoose`: a follower's name as the picker shows it, "
-                                          "or their tag."}}}}},
+                                          "their tag, or their id."}}}}},
                       {"required", {"action"}}},
                  Thread::Listener},
-        [&bench, settle](const Json &raw) -> ToolResult {
+        [&bench](const Json &raw) -> ToolResult {
             const Args args(raw, "party");
-            return Picker(bench, args, settle).Run();
+            return Picker(bench, args).Run();
         });
 }
 

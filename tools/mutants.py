@@ -1378,50 +1378,74 @@ MUTANTS = [
         "if (steppedBack || !StepBack(exit))",
         "if (steppedBack)",
     ),
-    # #25: the party picker; a follower found where the name under the cursor
-    # turns to theirs, in any case; the cursor given back; their slot
-    # unchosen; Accept waited out; a click that chose nobody said.
+    # party (#25, #182): the picker's steps by dao::partypicker, each refusal
+    # said in words; a follower by name in any case; the chosen by slot; the
+    # party read once it holds everyone chosen; a view-only picker refused.
     Mutant(
-        "party takes a name read from before for a hit",
+        "party lets a picker only to look at be changed",
         PARTY,
-        "const bool turned = name != last;",
-        "const bool turned = !name.empty();",
+        "status >= 0 && status != kUse && action_",
+        "status >= 0 && status == kUse && action_",
     ),
     Mutant(
-        "party names a follower only in their own case",
+        "party's clear says it took no one out when it took some",
         PARTY,
-        "if (turned && Lower(name) == Lower(name_))",
-        "if (turned && name == name_)",
+        'answer_.at("chosen") == answer_.at("before")',
+        'answer_.at("chosen") != answer_.at("before")',
     ),
     Mutant(
-        "party leaves the cursor held after a click",
+        "party's look keeps the before",
         PARTY,
-        "Release(); // the cursor the mouse's again once the click is sent",
-        "// no release",
+        '            answer_.erase("before");',
+        '            answer_.erase("cursor");',
     ),
     Mutant(
-        "party unchooses the slot after theirs",
+        "party reads the picker before it is done showing",
         PARTY,
-        'Send("GameModeController.UnselectPartyMember " + std::to_string(*slot));',
-        'Send("GameModeController.UnselectPartyMember " + std::to_string(*slot + 1));',
+        "if (!entries.empty())",
+        "if (!entries.is_null())",
     ),
     Mutant(
-        "party answers Accept before the picker closes",
+        "party counts everyone offered as chosen",
         PARTY,
-        'while (mode == "partypicker" && Clock::now() < until)',
-        "while (false)",
+        'if (entry.value("slot", -1) >= 0)',
+        'if (entry.value("slot", -1) >= -1)',
     ),
     Mutant(
-        "party says nothing of a click that chose nobody",
+        "party leaves the chosen in the picker's order, not their slots'",
         PARTY,
-        "if (!SlotOf(Chosen()))",
-        "if (false)",
+        'std::ranges::sort(chosen, {}, [](const Json &member) { return member.value("slot", -1); });',
+        'std::ranges::sort(chosen, {}, [](const Json &member) { return member.value("name", std::string()); });',
     ),
     Mutant(
-        "party answers Accept before the party holds everyone chosen",
+        "party matches a follower's name in its own case",
         PARTY,
-        "party.size() >= chosen)",
-        "party.size() + chosen >= chosen)",
+        'if (Lower(entry.value("name", std::string())) == Lower(name_) ||',
+        'if (entry.value("name", std::string()) == name_ ||',
+    ),
+    Mutant(
+        "party takes a refused step for one taken",
+        PARTY,
+        'if (took.value("taken", false))',
+        'if (took.contains("taken"))',
+    ),
+    Mutant(
+        "party says a full party as the picker's word",
+        PARTY,
+        'if (refusal == "party full")',
+        'if (refusal == "party is full")',
+    ),
+    Mutant(
+        "party says a choice of one chosen as not chosen",
+        PARTY,
+        'why = tool == "party.choose" ? "chosen already" : "not chosen";',
+        'why = tool == "party.release" ? "chosen already" : "not chosen";',
+    ),
+    Mutant(
+        "party reads the party as the picker closes",
+        PARTY,
+        'const std::size_t chosen = answer_.at("before").size();',
+        "const std::size_t chosen = 0;",
     ),
     # #27: an exit the walk cannot reach is used from where the walk stopped.
     Mutant(
@@ -1892,49 +1916,6 @@ MUTANTS = [
         LOOT,
         'if (answer_["closed"].get<bool>())',
         'if (!answer_["closed"].get<bool>())',
-    ),
-    # the party picker's status, and an unchoose or clear that changed nothing (#62)
-    Mutant(
-        "party changes the party in any picker status",
-        PARTY,
-        "status != kUse &&",
-        "status == 99 &&",
-    ),
-    Mutant(
-        "party refuses a look outside the choosing status",
-        PARTY,
-        'action_ != "look" && action_ != "accept"',
-        'action_ != "never" && action_ != "accept"',
-    ),
-    Mutant(
-        "party refuses where the status could not be read",
-        PARTY,
-        "status >= 0 && status != kUse",
-        "status != kUse",
-    ),
-    Mutant(
-        "party answers an unchoose the picker kept as done",
-        PARTY,
-        "if (SlotOf(Chosen()))",
-        "if (false)",
-    ),
-    Mutant(
-        "party says nothing of a clear that took no one out",
-        PARTY,
-        'if (Chosen() == answer_.at("before"))',
-        "if (false)",
-    ),
-    Mutant(
-        "party says a clear took no one out when it did",
-        PARTY,
-        'if (Chosen() == answer_.at("before"))',
-        "if (true)",
-    ),
-    Mutant(
-        "party names the picker's statuses wrongly",
-        PARTY,
-        '{"noUse", "readOnly", "use"}',
-        '{"readOnly", "noUse", "use"}',
     ),
     # events from now (#66)
     Mutant(

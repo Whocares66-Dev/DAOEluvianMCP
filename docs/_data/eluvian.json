@@ -903,7 +903,7 @@
   },
   {
    "name": "party",
-   "description": "Works the party picker, the screen the game shows after a follower joins and at camp, the way a player does. It refuses when the picker is not open (`health` reports mode `partypicker` when it is).\n\n`action`:\n- `look`: returns who is `chosen` (each slot's name and tag).\n- `choose`: picks the follower `name`, who must be standing in the picker's scene. The tool sweeps the cursor across the view until the name under it matches (a few seconds), then clicks them.\n- `unchoose`: removes the chosen follower `name`, like clicking their portrait.\n- `clear`: removes everyone except those the story keeps.\n- `accept`: confirms the party as chosen, and returns the `party` once the picker has closed.\n\nUp to four can be chosen: unchoose one before choosing a fifth. `choose`, `unchoose` and `clear` refuse when the picker's `status` is not `use`, meaning the picker is only for viewing. A picker you open yourself with the script command ShowPartyPickerGUI may be view-only: call SetPartyPickerGUIStatus with 2 through `script` before opening it, so it can change the party.",
+   "description": "Works the party picker, the screen the game shows after a follower joins and at camp, as a player's clicks do. It refuses when the picker is not open (`health` reports mode `partypicker` when it is).\n\n`action`:\n- `look`: returns who is `chosen` (each slot's id, name and tag), and everyone the picker `offered`, each with its `state`: chosen, available, unavailable, suspended or lockedActive (kept in the party by the story).\n- `choose`: picks the follower `name`, as a click on them does.\n- `unchoose`: removes the chosen follower `name`, like clicking their portrait.\n- `clear`: removes everyone except the hero and those the story keeps.\n- `accept`: confirms the party as chosen, and returns the `party` once the picker has closed.\n\nUp to four can be chosen: unchoose one before choosing a fifth. A choice the picker refuses is an error saying why. `choose`, `unchoose` and `clear` refuse when the picker's `status` is not `use`, meaning the picker is only for viewing. A picker you open yourself with the script command ShowPartyPickerGUI may be view-only: call SetPartyPickerGUIStatus with 2 through `script` before opening it, so it can change the party.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -920,7 +920,7 @@
      },
      "name": {
       "type": "string",
-      "description": "With `choose` or `unchoose`: a follower's name as the picker shows it, or their tag."
+      "description": "With `choose` or `unchoose`: a follower's name as the picker shows it, their tag, or their id."
      }
     },
     "required": [

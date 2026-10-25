@@ -60,6 +60,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddTactics(bench, watch);
     AddBoard(bench, watch);
     AddLevelUp(bench, watch);
+    AddPartyPicker(bench);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);

@@ -284,6 +284,7 @@ add_library(
     src/game/Input.cpp
     src/game/Inspect.cpp
     src/game/LevelUp.cpp
+    src/game/PartyPicker.cpp
     src/game/Order.cpp
     src/game/Resources.cpp
     src/game/Screen.cpp
