@@ -9,6 +9,7 @@
 #include "core/Requirements.h"
 
 #include "dao/Data.h"
+#include "dao/Tactics.h"
 
 #include <cctype>
 
@@ -428,45 +429,44 @@ ToolResult KindTactics(const Watch &watch, const Json &raw)
     RequireWorld(watch, "tactics");
     const Args args(raw, "tactics");
     const ObjectId id = CreatureOrControlled(args);
-    constexpr std::int32_t kMostSlots = 64;
-    constexpr std::int32_t kCommandUseAbility = 4;
-    constexpr std::int32_t kCommandUseItem = 7;
     constexpr std::int32_t kPropertyBehaviour = 18;
-    const std::int32_t slots = api::GetNumTactics(id);
+    // DAOLib's Slots (#259, #188): the AI off too, where the scripts'
+    // GetNumTactics read 0 and look listed no slots.
+    const auto slots = dao::tactics::Slots(id);
     Json tactics = Json::array();
-    for (std::int32_t slot = 1; slot <= slots && slot <= kMostSlots; ++slot)
+    for (const dao::tactics::Slot &slot : slots)
     {
-        Json entry = {{"slot", slot}, {"enabled", api::IsTacticEnabled(id, slot) != 0}};
-        const std::int32_t command = api::GetTacticCommand(id, slot);
-        if (command == 0)
+        Json entry = {{"slot", slot.index}, {"enabled", slot.on}};
+        if (slot.command == 0)
         {
             entry["empty"] = true;
             tactics.push_back(std::move(entry));
             continue;
         }
-        entry["target"] = Rule(k::TABLE_AI_TACTICS_TARGET_TYPE, api::GetTacticTargetType(id, slot));
-        entry["condition"] = Rule(k::TABLE_TACTICS_CONDITIONS, api::GetTacticCondition(id, slot));
-        entry["command"] = Rule(k::TABLE_COMMAND_TYPES, command);
-        const std::int32_t param = api::GetTacticCommandParam(id, slot);
-        if (command >= kCommandUseAbility && command <= kCommandUseItem && param != 0)
+        entry["target"] = Rule(k::TABLE_AI_TACTICS_TARGET_TYPE, slot.target);
+        entry["condition"] = Rule(k::TABLE_TACTICS_CONDITIONS, slot.condition);
+        entry["command"] = Rule(k::TABLE_COMMAND_TYPES, slot.command);
+        const bool ability = slot.command == dao::tactics::kUseAbility || slot.command == dao::tactics::kActivateMode ||
+                             slot.command == dao::tactics::kDeactivateMode;
+        if (ability && slot.parameter != 0)
         {
-            entry["ability"] = AbilityJson(param);
+            entry["ability"] = AbilityJson(slot.parameter);
         }
-        else if (param != 0)
+        else if (slot.parameter != 0)
         {
-            entry["param"] = param;
+            entry["param"] = slot.parameter;
         }
-        if (auto tag = Narrow(api::GetTacticCommandItemTag(id, slot)); !tag.empty())
+        if (slot.item != kInvalidObject && slot.item != 0) // an empty one reads 0
         {
-            entry["item"] = std::move(tag);
+            entry["item"] = Brief(slot.item);
         }
-        if (const ObjectId object = api::GetTacticTargetObject(id, slot); api::IsObjectValid(object) != 0)
+        if (slot.targetObject != kInvalidObject && slot.targetObject != 0) // an empty one reads 0
         {
-            entry["targetObject"] = Brief(object);
+            entry["targetObject"] = Brief(slot.targetObject);
         }
-        if (const ObjectId object = api::GetTacticConditionObject(id, slot); api::IsObjectValid(object) != 0)
+        if (slot.conditionObject != kInvalidObject && slot.conditionObject != 0) // an empty one reads 0
         {
-            entry["conditionObject"] = Brief(object);
+            entry["conditionObject"] = Brief(slot.conditionObject);
         }
         tactics.push_back(std::move(entry));
     }
@@ -476,7 +476,8 @@ ToolResult KindTactics(const Watch &watch, const Json &raw)
     // hand or by the creature's template (a follower read 0 in play).
     const std::int32_t preset = api::GetTacticPresetID(id);
     return Json{{"of", Brief(id)},
-                {"slots", slots},
+                {"slots", slots.size()},
+                {"ai", dao::tactics::AiOn(id).value_or(false)},
                 {"preset", preset > 0 ? Rule(k::TABLE_TACTICS_USER_PRESETS, preset) : Json(nullptr)},
                 {"behaviour", Rule(k::TABLE_AI_BEHAVIORS, behaviour)},
                 {"tactics", std::move(tactics)}};

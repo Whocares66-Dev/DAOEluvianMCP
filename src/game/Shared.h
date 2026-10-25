@@ -267,34 +267,6 @@ struct ExternalAnswer
 };
 std::optional<ExternalAnswer> ExternalCommand(std::string_view command, std::span<const dao::gui::Value> args);
 
-// Another party member made the one the interface has selected, for a
-// screen that acts on GUI.SelectedChar (the inventory, the tactics), and the
-// one before selected again as the call ends, a refusal too. Since #187 by
-// DAOLib's dao::party::SetScreenCharacter, the screens' own Next arrow,
-// control left where it is; until then control was handed to the member
-// and back (#86).
-class SelectedFor
-{
-  public:
-    SelectedFor(ObjectId who, ObjectId selected, std::string_view tool);
-    SelectedFor(const SelectedFor &) = delete;
-    SelectedFor &operator=(const SelectedFor &) = delete;
-    SelectedFor(SelectedFor &&) = delete;
-    SelectedFor &operator=(SelectedFor &&) = delete;
-    ~SelectedFor();
-
-    // Says the hand-over in the answer, if there was one.
-    void Say(Json &answer) const;
-
-  private:
-    ObjectId before_;
-    bool chosen_ = false;
-};
-
-// The character the interface has selected (GUI.SelectedChar.ID), or the
-// one controlled where the tree has none.
-ObjectId SelectedCharacter();
-
 DeathWatch &Deaths();
 
 // A tool on the frame thread with its own arguments, the ones it needs

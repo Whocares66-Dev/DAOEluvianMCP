@@ -1706,7 +1706,7 @@
   },
   {
    "name": "tactics",
-   "description": "Reads and sets a party member's tactics (what they do on their own in a fight), the way the tactics screen does. If `id` is not the party member selected in the interface, it is selected for the call and the one before selected again afterwards (`selectedFirst`), control staying where it is.\n\n`action` is one of:\n- look: returns `slots` (how many there are), `preset` (null when none is chosen), `behaviour`, and `tactics`: each slot in order with `enabled`, `target`, `condition`, `command` and the `ability` or `item` it uses. An unset slot is `empty`.\n- choices: returns what the screen offers this party member: the `targets`; with `target`, its `baseConditions`; with `baseCondition` as well, the `conditions`, `actions`, `abilities` and `items`.\n- set: sets slot `slot` to `target`, `condition` and `command`, each by number, label or name from what choices offers, with `ability` or `item` for the command and `enabled`. Returns the slot as the game reads it back and whether the change `took`.\n- clear: empties slot `slot` and returns whether it is `cleared`. Use it to put a party member's tactics back as you found them.\n- preset: loads preset `preset` of type `presetType` and returns the slots.",
+   "description": "Reads and sets a party member's tactics (what they do on their own in a fight), the way the tactics screen does, with no screen open and nobody selected.\n\n`action` is one of:\n- look: returns `slots` (how many there are), `ai` (whether the follower's tactics run), `preset` (null when none is chosen), `behaviour`, and `tactics`: each slot in order with `enabled`, `target`, `condition`, `command` and the `ability` or `item` it uses. An unset slot is `empty`.\n- choices: returns what the screen offers this party member: the `targets`; with `target`, its `baseConditions`; with `baseCondition` as well, the `conditions`, `actions`, `abilities` and `items`.\n- set: sets slot `slot` to `target`, `condition` and `command`, each by number, label or name from what choices offers, with `ability` or `item` for the command and `enabled`. Returns the slot as the game reads it back and whether the change `took`; one the screen would not offer is refused, saying which part.\n- clear: empties slot `slot` and returns whether it is `cleared`. Use it to put a party member's tactics back as you found them.\n- preset: loads preset `preset` of type `presetType` (0 the AI off, 1 a custom slot, 2 one of the game's, the default) and returns the slots.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1723,7 +1723,7 @@
      },
      "id": {
       "type": "string",
-      "description": "The party member, by creature id. Default: the one selected in the interface (for look, the creature you control)."
+      "description": "The party member, by creature id. Default: the creature you control."
      },
      "slot": {
       "type": "integer",
@@ -1744,7 +1744,7 @@
      },
      "ability": {
       "type": "integer",
-      "description": "For set: the id of the ability the action uses."
+      "description": "For set: the id of the ability the action uses, or the slot a jump goes to."
      },
      "item": {
       "type": "string",
@@ -1756,11 +1756,11 @@
      },
      "preset": {
       "type": "integer",
-      "description": "For preset: the preset's number. Default 0."
+      "description": "For preset: the custom slot or the place among the game's presets, from 0. Default 0."
      },
      "presetType": {
       "type": "integer",
-      "description": "For preset: the preset's type. Default 0."
+      "description": "For preset: 0 the AI off, 1 a custom slot, 2 one of the game's. Default 2."
      }
     },
     "required": [

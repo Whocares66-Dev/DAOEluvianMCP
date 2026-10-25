@@ -426,46 +426,6 @@ Json Rule(std::int32_t table, std::int32_t row)
     return rule;
 }
 
-ObjectId SelectedCharacter()
-{
-    const ObjectId selected = dao::party::ScreenCharacter();
-    return selected != kInvalidObject ? selected : api::GetMainControlled();
-}
-
-SelectedFor::SelectedFor(ObjectId who, ObjectId selected, std::string_view tool) : before_(selected)
-{
-    if (who == selected)
-    {
-        return;
-    }
-    if (!dao::party::SetScreenCharacter(who))
-    {
-        throw ToolError(std::format("{}: {} is not a party member the screens can select (state lists the party; "
-                                    "at camp, only those there); nothing was done",
-                                    tool, FormatId(who)));
-    }
-    chosen_ = true;
-}
-
-SelectedFor::~SelectedFor()
-{
-    if (chosen_ && before_ != kInvalidObject)
-    {
-        dao::party::SetScreenCharacter(before_);
-    }
-}
-
-void SelectedFor::Say(Json &answer) const
-{
-    if (chosen_)
-    {
-        answer["selectedFirst"] = true;
-        answer["selectedBefore"] = Brief(before_);
-        answer["note"] = "the screens' character set to the creature for the call and back after; control stayed "
-                         "where it was";
-    }
-}
-
 std::optional<ExternalAnswer> ExternalCommand(std::string_view command, std::span<const dao::gui::Value> args)
 {
     const std::string method = "DAExternalCommands." + std::string(command);

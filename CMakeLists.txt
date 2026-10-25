@@ -165,7 +165,6 @@ add_library(
     src/core/FrameCapture.cpp
     src/core/Behind.cpp
     src/core/PictureSize.cpp
-    src/core/GfxList.cpp
     src/core/Gift.cpp
     src/core/Placeables.cpp
     src/core/Ready.cpp

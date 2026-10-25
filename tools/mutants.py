@@ -153,7 +153,6 @@ CHARGEN = "src/core/CharGen.cpp"
 CRAFT = "src/core/Craft.cpp"
 CONVERSATION = "src/core/Conversation.cpp"
 PLACEABLES = "src/core/Placeables.cpp"
-GFXLIST = "src/core/GfxList.cpp"
 GIFT = "src/core/Gift.cpp"
 REQUIREMENTS = "src/core/Requirements.cpp"
 PICTURE_SIZE = "src/core/PictureSize.cpp"
@@ -1746,8 +1745,8 @@ MUTANTS = [
     Mutant(
         "craft counts a refused make as made",
         CRAFT,
-        "if (took.value(\"taken\", false))",
-        "if (took.contains(\"taken\"))",
+        'if (took.value("taken", false))',
+        'if (took.contains("taken"))',
     ),
     Mutant(
         "craft makes one fewer than asked",
@@ -1764,20 +1763,20 @@ MUTANTS = [
     Mutant(
         "craft says a missing rank as something else",
         CRAFT,
-        "if (refusal == \"no rank\")",
-        "if (refusal == \"no ranks\")",
+        'if (refusal == "no rank")',
+        'if (refusal == "no ranks")',
     ),
     Mutant(
         "craft says short ingredients as something else",
         CRAFT,
-        "if (refusal == \"no ingredients\")",
-        "if (refusal == \"no ingredient\")",
+        'if (refusal == "no ingredients")',
+        'if (refusal == "no ingredient")',
     ),
     Mutant(
         "craft takes the next recipe for an id",
         CRAFT,
-        "if (recipe.value(\"id\", 0) == recipe_.get<int>())",
-        "if (recipe.value(\"id\", 0) == recipe_.get<int>() + 1)",
+        'if (recipe.value("id", 0) == recipe_.get<int>())',
+        'if (recipe.value("id", 0) == recipe_.get<int>() + 1)',
     ),
     Mutant(
         "craft takes the first of several a part of a name names",
@@ -1788,8 +1787,8 @@ MUTANTS = [
     Mutant(
         "craft says a stop after some made as nothing done",
         CRAFT,
-        "return End(made > 0, (made > 0 ? std::to_string(made) + \" made, then \" : std::string()) + stopped);",
-        "return End(false, (made > 0 ? std::to_string(made) + \" made, then \" : std::string()) + stopped);",
+        'return End(made > 0, (made > 0 ? std::to_string(made) + " made, then " : std::string()) + stopped);',
+        'return End(false, (made > 0 ? std::to_string(made) + " made, then " : std::string()) + stopped);',
     ),
     # an item's requirements, as the screens split the engine's answer (#31)
     Mutant(
@@ -2188,31 +2187,6 @@ MUTANTS = [
         TRAVEL,
         "            if (*upTo_ <= 0)",
         "            if (*upTo_ < 0)",
-    ),
-    # a movie's list, comma-joined (#89)
-    Mutant(
-        "a movie's list keeps a blank before an element",
-        GFXLIST,
-        "        while (!element.empty() && element.front() == ' ')",
-        "        while (!element.empty() && element.front() == 'x')",
-    ),
-    Mutant(
-        "a movie's list keeps a blank after an element",
-        GFXLIST,
-        "        while (!element.empty() && element.back() == ' ')",
-        "        while (!element.empty() && element.back() == 'x')",
-    ),
-    Mutant(
-        "a movie's list takes a number with something after it",
-        GFXLIST,
-        "        if (error == std::errc() && end == element.data() + element.size() && !element.empty())",
-        "        if (error == std::errc() && !element.empty())",
-    ),
-    Mutant(
-        "a movie's list stops at its first comma",
-        GFXLIST,
-        "        joined = comma == std::string_view::npos ? std::string_view() : joined.substr(comma + 1);",
-        "        joined = std::string_view();",
     ),
     # a crossing's load waited through; as near as the walk goes, near only (#99, #100)
     Mutant(
