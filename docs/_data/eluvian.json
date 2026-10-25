@@ -1661,7 +1661,7 @@
   },
   {
    "name": "store",
-   "description": "Buys or sells an item at the store screen that is open. Open a store by talking to a merchant and asking to see the wares.\n\nWhile a store is open, `gui` reports `fullScreen` Store, and its `store` lists the `stock` with each item's `price`, your `pack` with what each item `sellsFor`, and your `money`, all in copper.\n\n`action` is one of:\n- buy: buys `item` from the stock.\n- sell: sells `item` from your pack.\n\nThe tool sends what the screen's own button sends, and the game does the rest; it refuses a purchase you cannot afford. The answer includes the price of one (`each`), the `money` before and after, and `taken`, which is false when the money did not change. To close the store, call `input` with {\"message\": \"GUI.HideFullScreenGUI\"}.",
+   "description": "Buys or sells an item at the store screen that is open, or closes it. Open a store by talking to a merchant and asking to see the wares.\n\nWhile a store is open, `gui` reports `fullScreen` Store, and its `store` lists the `stock` with each item's `price`, your `pack` with what each item `sellsFor`, and your `money`, all in copper, as the store itself reckons them.\n\n`action` is one of:\n- buy: buys `item` from the stock.\n- sell: sells `item` from your pack.\n- close: closes the store, as its screen's close does. An item sold can be bought back at what was paid for it only until then.\n\nA buy or sale goes as the screen's own does, and one the screen or the store refuses is an error saying why: not in the stock or pack, a plot item, not enough money, a full backpack, or a store that will not buy it. The answer includes what the `count` cost or fetched (`total`), and the `money` before and after.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1669,13 +1669,14 @@
       "type": "string",
       "enum": [
        "buy",
-       "sell"
+       "sell",
+       "close"
       ],
-      "description": "Buy or sell."
+      "description": "Buy, sell, or close the store."
      },
      "item": {
       "type": "string",
-      "description": "The item, by its id from the `stock` or `pack` that `gui` lists."
+      "description": "With buy or sell: the item, by its id from the `stock` or `pack` that `gui` lists."
      },
      "count": {
       "type": "integer",
@@ -1684,8 +1685,7 @@
      }
     },
     "required": [
-     "action",
-     "item"
+     "action"
     ]
    }
   },
