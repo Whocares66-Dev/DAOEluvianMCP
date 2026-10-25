@@ -180,7 +180,7 @@
   },
   {
    "name": "craft",
-   "description": "Makes poisons, potions and traps through the game's crafting screen, so the game's own rules apply. `kind` picks the skill: poison, herbalism or traps. The maker is `id`, a party member (default: the creature you control).\n\n- Without `recipe`, lists the recipes the screen offers the maker and makes nothing. Each has its `id`, `name`, `product`, whether it `canMake` now, the `skill` rank it needs and whether the maker has it (`skillHeld`), and its `ingredients` with how many it needs and how many the pack has.\n- With `recipe` (an id or a name from that list), makes it `count` times, one at a time, like the screen's Create button, for as long as the screen allows.\n\nThe answer includes `made`, the recipe's `ingredients` afterwards, `done`, and `reason`: what ran short or which skill rank was missing, if it stopped. The screen opens for the creature you control, so another maker is given control first and control is handed back afterwards (`controlBack`). It refuses a maker without the skill. Recipes are bought from merchants.",
+   "description": "Makes poisons, potions, traps and runes as the game's crafting screen does, so the game's own rules apply. `kind` picks the craft: poison, herbalism, traps or runes (Awakening's). The maker is `id`, a party member (default: the creature you control); no screen is opened and control stays where it is.\n\n- Without `recipe`, lists the party's known recipes of the craft, as the screen shows them to the maker, and makes nothing. Each has its `id`, `name`, `product`, whether it `canMake` now, the `skill` rank it needs and whether the maker has it (`skillHeld`), and its `ingredients` with how many it needs and how many the pack has.\n- With `recipe` (an id or a name from that list), makes it `count` times, one at a time, like the screen's Create button, for as long as the game allows.\n\nThe answer includes `made`, the recipe's `ingredients` afterwards, `done`, and `reason`: what ran short or which skill rank was missing, if it stopped. Recipes are bought from merchants.",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -189,9 +189,10 @@
       "enum": [
        "poison",
        "herbalism",
-       "traps"
+       "traps",
+       "runes"
       ],
-      "description": "The crafting skill whose recipes to use."
+      "description": "The craft whose recipes to use."
      },
      "id": {
       "type": "string",
@@ -205,12 +206,6 @@
       "minimum": 1,
       "maximum": 99,
       "description": "How many to make. Default 1."
-     },
-     "showMs": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 10000,
-      "description": "How long to linger on the screen, in milliseconds, so whoever watches sees it. Default 1000; 0 for none."
      }
     },
     "required": [

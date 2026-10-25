@@ -61,6 +61,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddBoard(bench, watch);
     AddLevelUp(bench, watch);
     AddPartyPicker(bench);
+    AddCrafting(bench, watch);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);

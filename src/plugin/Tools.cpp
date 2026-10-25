@@ -36,7 +36,7 @@ void RegisterTools(Bench &bench, const game::Watch &watch, const ToolSetup &setu
     // whoever watches sees it (the user, 2026-10-03, #14).
     AddLootTool(bench, std::chrono::seconds(1));
     AddLevelUpTool(bench, std::chrono::seconds(1));
-    AddCraftTool(bench, std::chrono::seconds(1));
+    AddCraftTool(bench);
     AddCharGenTool(bench);
     AddPartyTool(bench);
     game::AddHealthTool(bench, watch, setup.health);

@@ -350,7 +350,8 @@ void AddStore(Bench &bench, const Watch &watch);
 void AddWorldMap(Bench &bench, const Watch &watch); // worldmap
 void AddTactics(Bench &bench, const Watch &watch);
 void AddBoard(Bench &bench, const Watch &watch);
-void AddPartyPicker(Bench &bench);                 // party.*, which core's party asks (#182)
-void AddLevelUp(Bench &bench, const Watch &watch); // levelup.*, which core's levelup asks (#180)
+void AddPartyPicker(Bench &bench);                  // party.*, which core's party asks (#182)
+void AddLevelUp(Bench &bench, const Watch &watch);  // levelup.*, which core's levelup asks (#180)
+void AddCrafting(Bench &bench, const Watch &watch); // craft.*, which core's craft asks (#186)
 
 } // namespace eluvian::game

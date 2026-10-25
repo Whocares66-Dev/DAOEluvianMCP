@@ -276,6 +276,7 @@ add_library(
     src/game/Board.cpp
     src/game/Character.cpp
     src/game/Convert.cpp
+    src/game/Crafting.cpp
     src/game/Dialogue.cpp
     src/game/Game.cpp
     src/game/GameTools.cpp
