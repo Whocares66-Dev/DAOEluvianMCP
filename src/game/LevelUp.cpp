@@ -32,10 +32,10 @@ ObjectId Creature(const Args &args)
 
 // The states as levelup has always named them: an ability's "not yet" is a
 // level, an attribute or the one before it in its chain.
-Json Offered(ObjectId id, levelup::Kind kind)
+Json Offered(ObjectId id, levelup::Kind kind, levelup::Mode mode)
 {
     Json listed = Json::array();
-    for (const levelup::Offer &offer : levelup::Offers(id, kind))
+    for (const levelup::Offer &offer : levelup::Offers(id, kind, mode))
     {
         listed.push_back(Json{{"id", offer.ability},
                               {"name", AbilityJson(offer.ability).value("name", std::string())},
@@ -68,6 +68,14 @@ ToolSpec Step(std::string name, std::string description, Json properties, const 
 }
 
 const Json kIdProperty = {{"type", "string"}, {"description", "The creature, by id."}};
+// The creation screen's, where its hero's abilities are offered and taken as
+// its pages do (#189); the level-up screen's otherwise.
+const Json kChargenProperty = {{"type", "boolean"}, {"description", "As the creation screen does."}};
+
+levelup::Mode ModeOf(const Args &args)
+{
+    return args.Bool("chargen", false) ? levelup::Mode::CharGen : levelup::Mode::LevelUp;
+}
 
 } // namespace
 
@@ -78,8 +86,9 @@ void AddLevelUp(Bench &bench, const Watch &watch)
              "What the level-up screen would offer a creature, with no screen: its `points` to spend, and its "
              "`talents`, `spells` and `skills`, each with `id`, `name` and `state` (has, learnable, not yet), and "
              "its `specializations` (has, learnable, locked, no point to spend). A class has talents or spells, "
-             "not both: `abilityPage` names the one it is offered.",
-             Json{{"id", kIdProperty}}, {"id"}, false),
+             "not both: `abilityPage` names the one it is offered. With `chargen`, as the creation screen "
+             "offers them to its hero.",
+             Json{{"id", kIdProperty}, {"chargen", kChargenProperty}}, {"id"}, false),
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "levelup.offers");
             const Args args(raw, "levelup.offers");
@@ -95,9 +104,9 @@ void AddLevelUp(Bench &bench, const Watch &watch)
                              {"skills", points->skills},
                              {"talentsOrSpells", points->talentsOrSpells},
                              {"specializations", points->specializations}}},
-                           {"talents", Offered(id, levelup::Kind::Talents)},
-                           {"spells", Offered(id, levelup::Kind::Spells)},
-                           {"skills", Offered(id, levelup::Kind::Skills)}};
+                           {"talents", Offered(id, levelup::Kind::Talents, ModeOf(args))},
+                           {"spells", Offered(id, levelup::Kind::Spells, ModeOf(args))},
+                           {"skills", Offered(id, levelup::Kind::Skills, ModeOf(args))}};
             // The states as the screen's icons had them (#64): its grey one,
             // with no point left, said so.
             Json specializations = Json::array();
@@ -138,7 +147,8 @@ void AddLevelUp(Bench &bench, const Watch &watch)
              "spend.",
              Json{{"id", kIdProperty},
                   {"ability", {{"type", "integer"}, {"description", "The ability's id."}}},
-                  {"specialization", {{"type", "boolean"}, {"description", "It is a specialization."}}}},
+                  {"specialization", {{"type", "boolean"}, {"description", "It is a specialization."}}},
+                  {"chargen", kChargenProperty}},
              {"id", "ability"}),
         [&watch](const Json &raw) -> ToolResult {
             RequireWorld(watch, "levelup.take");
@@ -146,7 +156,7 @@ void AddLevelUp(Bench &bench, const Watch &watch)
             const ObjectId id = Creature(args);
             const auto ability = static_cast<std::int32_t>(args.Integer("ability", 0, 1, INT32_MAX));
             return Refused(args.Bool("specialization", false) ? levelup::TakeSpecialization(id, ability)
-                                                              : levelup::Take(id, ability));
+                                                              : levelup::Take(id, ability, ModeOf(args)));
         });
 
     bench.Tools().Add(

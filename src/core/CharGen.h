@@ -4,15 +4,18 @@
 // sends the party to the origin's start (lib-agent's reading, DAOLib's
 // dev/CHARGEN.md; asked for at the user's request, 2026-10-18, #153).
 //
-// The screen's messages, read from chargen.gfx (patch003's) by a subagent
-// and seen in play 2026-10-18 in instance eluvian-test: GUICharGen's
-// CharGenStart, CharGenSelectGender, Race, Class and Background ("<creature>
-// <old> <new> 1"), CharGenSelectAppearanceAndSoundSet, CharGenAssignAttribute
-// and CharGenAssignAbility, the name in GUICharGen.TempCharName with
-// CharGenSelectName, and the end as the movie ends it. It decides over other
-// tools' answers alone (`input` sends, `movie` drives the screen's script,
-// `data` and `character` read the hero, `script` the game's tables), so it
-// lives here and is tested with stand-ins, as levelup is.
+// Since #189 each step is DAOLib's dao::chargen (DAOLib #259): what the
+// screen offers and each choice made as its buttons make it, refused where it
+// greys it out, through the unlisted chargen.offers, chargen.select,
+// chargen.name and chargen.finish; the points by levelup.raise and
+// levelup.take in the creation screen's mode. Until then it sent the screen's
+// GUICharGen messages itself (read from chargen.gfx, patch003's, and seen in
+// play 2026-10-18), read the game's tables by script, named the hero through
+// the movie's SetValueUnicode and ended the movie by setting its exit state,
+// with two workarounds DAOLib's run found unneeded: the movie's first
+// CharGenStart sent again with the hero, and the background box closed by
+// press. It decides over other tools' answers alone (those, `character` and
+// `gui`), so it lives here and is tested with stand-ins, as levelup is.
 #pragma once
 
 #include "core/Bench.h"

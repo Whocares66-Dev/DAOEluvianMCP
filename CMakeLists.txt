@@ -273,6 +273,7 @@ add_library(
     src/game/Camera.cpp
     src/game/Capture.cpp
     src/game/Board.cpp
+    src/game/CharGen.cpp
     src/game/Character.cpp
     src/game/Convert.cpp
     src/game/Crafting.cpp

@@ -99,12 +99,12 @@
   },
   {
    "name": "chargen",
-   "description": "Builds the hero on the game's character creation screen, as a player's clicks do, so the game's own rules and scripts apply; then ends the screen, and the origin starts. The screen must be up (`gui` shows CharGen, mode chargen): `game_new` starts a new game and brings it up. Pass `race`, `class` and `background` (and optionally `gender`, `voice`, `name`, `difficulty`), and either both `attributes` and `abilities` spending every point, or neither, and the game spends them as the screen's Quick Play does. A background must suit the race and class, as the screen allows: `offers`: true lists which. Choices are checked before anything is sent.\n\nWith `finish`: false the choices are made and the screen stays up; `offers` then also lists the skills and the talents or spells to choose from, and a later call (with every choice again) finishes. The answer has the `hero`, what it `chose`, the `exit` (full or quick play), the hero `after` (attributes, points left, ability count), the `origin` (its row of the origins table and its `startArea`), whether it `finished`, every message `sent`, and a `cursor`. The origin's opening follows: a cutscene, then a conversation.",
+   "description": "Builds the hero on the game's character creation screen, as a player's clicks do, so the game's own rules and scripts apply; then ends the screen, and the origin starts. The screen must be up (`gui` shows CharGen, mode chargen): `game_new` starts a new game and brings it up. Pass `race`, `class` and `background` (and optionally `gender`, `voice`, `name`, `difficulty`), and either both `attributes` and `abilities` spending every point, or neither, and the game spends them as the screen's Quick Play does. Each choice is made as the screen makes it, from what it offers then: a background must suit the race and class, and one the screen greys out is refused, naming those it offers. `offers`: true lists what it offers now.\n\nWith `finish`: false the choices are made and the screen stays up; `offers` then also lists the skills and the talents or spells to choose from, and a later call (with every choice again) finishes. The answer has the `hero`, what it `chose`, the `exit` (full or quick play), the hero `after` (attributes, points left, ability count), the `origin` (its row of the origins table and its `startArea`), whether it `finished`, and a `cursor`. The origin's opening follows: a cutscene, then a conversation.",
    "inputSchema": {
     "type": "object",
     "properties": {
      "race": {
-      "description": "human, elf or dwarf (or the race's id)."
+      "description": "human, elf or dwarf, as the screen names them (or the race's id)."
      },
      "class": {
       "description": "warrior, mage or rogue (or the class's id)."
@@ -117,11 +117,11 @@
      },
      "voice": {
       "type": "string",
-      "description": "The sound set: a name from the game's player sound sets (ss_pc_mhuman_wise), or its last word for the hero's race and gender (wise, cocky, exp, mystic, sultry, suave, smart, violent; not every one for every race). Default wise, the screen's own."
+      "description": "The voice: its sound set (ss_pc_mhuman_wise), its name, or its sound set's last word (wise, cocky ...), from those `offers` lists for the hero's race and gender. Default the screen's own, the first."
      },
      "name": {
       "type": "string",
-      "description": "The hero's name. Default the origin's own (Aedan for a human noble man), as the screen offers it."
+      "description": "The hero's name, 1 to 10 letters. Default the origin's own (Aedan for a human noble man), as the screen offers it."
      },
      "attributes": {
       "type": "object",
@@ -141,7 +141,7 @@
      },
      "offers": {
       "type": "boolean",
-      "description": "List the backgrounds with the races and classes each takes, and, once a class is chosen, the hero's points and abilities to choose from. Sends nothing but the screen's own ability lookups."
+      "description": "List what the screen offers now (genders, races, classes, backgrounds, voices, each enabled or not), and, once a class is chosen, the hero's points and the abilities to choose from. Chooses nothing."
      }
     }
    }
