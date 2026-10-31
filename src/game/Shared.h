@@ -326,5 +326,6 @@ void AddPartyPicker(Bench &bench);                  // party.*, which core's par
 void AddLevelUp(Bench &bench, const Watch &watch);  // levelup.*, which core's levelup asks (#180)
 void AddCrafting(Bench &bench, const Watch &watch); // craft.*, which core's craft asks (#186)
 void AddCharGen(Bench &bench);                      // chargen.*, which core's chargen asks (#189)
+void AddOptions(Bench &bench);                      // options.*, which core's options asks (#190)
 
 } // namespace eluvian::game

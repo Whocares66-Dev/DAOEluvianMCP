@@ -6,6 +6,7 @@
 #include "core/Gift.h"
 #include "core/LevelUp.h"
 #include "core/Loot.h"
+#include "core/Options.h"
 #include "core/Party.h"
 #include "core/Ready.h"
 #include "core/Scenario.h"
@@ -38,6 +39,7 @@ void RegisterTools(Bench &bench, const game::Watch &watch, const ToolSetup &setu
     AddLevelUpTool(bench, std::chrono::seconds(1));
     AddCraftTool(bench);
     AddCharGenTool(bench);
+    AddOptionsTool(bench);
     AddPartyTool(bench);
     game::AddHealthTool(bench, watch, setup.health);
     game::AddGameTools(bench, watch);

@@ -63,6 +63,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddPartyPicker(bench);
     AddCrafting(bench, watch);
     AddCharGen(bench);
+    AddOptions(bench);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);

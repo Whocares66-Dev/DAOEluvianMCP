@@ -160,6 +160,7 @@ PEEK = "src/core/Peek.cpp"
 SNAPSHOT = "src/core/Snapshot.cpp"
 FRAME = "src/core/FrameCapture.cpp"
 BEHIND = "src/core/Behind.cpp"
+OPTIONS = "src/core/Options.cpp"
 SIGHT = "src/core/Sight.cpp"
 WARP = "src/core/Warp.cpp"
 STDIO = "src/core/Stdio.cpp"
@@ -2753,6 +2754,74 @@ MUTANTS = [
         "return std::clamp(pitch, 0.0F, kPi);",
     ),
     # The hero built on the creation screen (#153).
+    # options (#190): the options screen's steps by dao::options, waited on
+    # as they land; a shown tab or an open screen no refusal; a set read back.
+    Mutant(
+        "options takes a refused step for one taken",
+        OPTIONS,
+        'if (took.value("taken", false) || (already && refusal == "already so"))',
+        'if (took.value("taken", false) || (already || refusal == "already so"))',
+    ),
+    Mutant(
+        "options refuses a tab shown already",
+        OPTIONS,
+        'Step("options.tab", Json{{"tab", args_.String("tab")}}, true);',
+        'Step("options.tab", Json{{"tab", args_.String("tab")}}, false);',
+    ),
+    Mutant(
+        "options refuses to open a screen open already",
+        OPTIONS,
+        'if (!took.value("taken", false) && refusal != "already so")',
+        'if (!took.value("taken", false))',
+    ),
+    Mutant(
+        "options answers open before the screen is up",
+        OPTIONS,
+        '        if (state.value("open", false))\n            {\n                return Look',
+        '        if (state.value("tab", Json()).is_null() || state.value("open", false))\n            {\n                return Look',
+    ),
+    Mutant(
+        "options steps on a closed screen",
+        OPTIONS,
+        'if (!state.value("open", false))',
+        'if (state.value("open", true) && false)',
+    ),
+    Mutant(
+        "options sets a checkbox the other way",
+        OPTIONS,
+        "return asked.get<bool>() ? 1 : 0;",
+        "return asked.get<bool>() ? 0 : 1;",
+    ),
+    Mutant(
+        "options takes a choice's value only in its own case",
+        OPTIONS,
+        "if (Lower(values[i].get<std::string>()) == Lower(asked.get<std::string>()))",
+        "if (values[i].get<std::string>() == asked.get<std::string>())",
+    ),
+    Mutant(
+        "options finds no control by its label",
+        OPTIONS,
+        'Lower(entry.value("label", std::string())) == Lower(asked))',
+        'entry.value("label", std::string()) == "")',
+    ),
+    Mutant(
+        "options answers a set before the plugin took it",
+        OPTIONS,
+        "if (took || Clock::now() >= until)",
+        "if (took || Clock::now() < until)",
+    ),
+    Mutant(
+        "options says nothing of the menu up again after it closed",
+        OPTIONS,
+        "if (back.is_string() && !back.get<std::string>().empty())",
+        "if (back.is_array())",
+    ),
+    Mutant(
+        "options says the screen closed while a confirmation is up",
+        OPTIONS,
+        "if (popup.is_object())",
+        "if (popup.is_array())",
+    ),
     # chargen (#153, #189): each choice by dao::chargen from what the screen
     # offers then, refused where it greys it out; every point or none; the end.
     Mutant(

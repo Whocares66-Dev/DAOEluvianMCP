@@ -839,6 +839,48 @@
    }
   },
   {
+   "name": "options",
+   "description": "Works the game's options screen as a player does, through its own buttons. `action`:\n- open: opens it from the start menu, or from Escape's menu in the game, with that menu's panel, and answers once it is up (refused in a conversation, a cutscene, a load or another full screen).\n- look: whether it is `open`, its `tabs` (tab, name, enabled, current), the `tab` shown, and its controls (`entries`), the game's own and the plugins': name (a game control's is its option, as AudioOptions.MusicVolume), label, kind (toggle, choice, slider or button), value, a choice's `values` or a slider's `least` and `most`, whether it is `enabled`, and whether it is the `game`'s.\n- tab: shows `tab` (game, video, online, controls or audio) as a click on its button does.\n- set: sets the control `name` (its name or label) on the tab shown to `value`: true or false for a checkbox, an index or a value's name for a choice, a number for a slider, nothing for a plugin's button, which it presses; answers whether it `took`. A control not `enabled` is refused. A change of resolution or full screen asks its confirmation at ok.\n- ok: keeps the changes and closes it; cancel: closes it and gives each plugin's control back the value it had when the screen opened. A change the game asks to confirm answers with its `popup`, which press answers.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "action": {
+      "type": "string",
+      "enum": [
+       "look",
+       "open",
+       "tab",
+       "set",
+       "ok",
+       "cancel"
+      ],
+      "description": "What to do."
+     },
+     "tab": {
+      "type": "string",
+      "enum": [
+       "game",
+       "video",
+       "online",
+       "controls",
+       "audio"
+      ],
+      "description": "For tab: the tab to show."
+     },
+     "name": {
+      "type": "string",
+      "description": "For set: the control, by its name or label."
+     },
+     "value": {
+      "description": "For set: true or false, a choice's index or the name of one of its values."
+     }
+    },
+    "required": [
+     "action"
+    ]
+   }
+  },
+  {
    "name": "order",
    "description": "Gives an order to a creature by id, as the player would. `action`:\n\n- `attack`: attack `target`.\n- `move`: walk to `point`. Only the creature you control can be moved this way, so another party member `id` is given control first and keeps it (the answer says `controlled` and `before`). Creatures outside the party cannot be moved.\n- `ability`: use `ability` (an id from `abilities`) on `target` or at `point`. For an item's ability, such as a potion's, also pass `item` or `itemTag`. An area ability with a range (such as Fireball; `abilities` gives each one's `aoe` and `range`) aimed at a creature is aimed at the ground under it (`aimedAt`), unless `atCreature` is true. An ability used on oneself alone (`targetType` 1 in `abilities`, such as a sustained mode) needs no `target`: by command it is aimed at the creature itself, which turns a mode on or off.\n- `use`: use the object `target`, such as a door, chest or lever. Using a door toggles it; `doorWas` says whether it was open.\n\nHow the order is sent (`via`):\n- `command`: through the engine's own order functions. The order counts as the player's, and anything watching the command queue sees it. Any creature can obey. A use by command does `objectAction`.\n- `click`: as if the player clicked, so anything hooked to clicks also runs (for example a mod that asks for an ability's target when none is given). Only the creature you control can click, only in explore or combat mode, and a move cannot be clicked. An attack or use by click is carried out by every party member selected in the party bar (`selected`), and the answer cannot say who obeyed: check the events from `cursor`.\n\n`via` defaults to `command`, except: a use without `objectAction` by the creature you control goes by click, since a click picks the object's own action (a plain use by command can leave a chest or door shut). Out of combat, an item's ability by the creature you control also goes by click, since by command it does nothing there. Out of combat, when `id` is another party member, control is handed to it first for these, as for a move, and stays with it.\n\nThe answer says the order was `given` and includes a `cursor`; `wait_for` from it shows what happened (eluvian.command.started and eluvian.command.ended, and a mod's own events).",
    "inputSchema": {

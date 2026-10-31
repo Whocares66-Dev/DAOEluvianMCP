@@ -34,6 +34,7 @@ add_executable(
     test_levelup.cpp
     test_log_tail.cpp
     test_loot.cpp
+    test_options.cpp
     test_party.cpp
     test_gift.cpp
     test_placeables.cpp

@@ -176,6 +176,8 @@ The game pauses itself about half a second into every real-time fight if the pla
 
 ## A screen's own controls
 
+For the Options screen, use `options` instead: it opens the screen as the player does, with its menu's panel, shows a tab by its own button (so the strip and Restore Defaults follow), and sets the game's and the plugins' controls as their clicks do (`options {"action": "look"}` lists them). What follows is for the screens it does not cover.
+
 Some parts of a screen, such as tabs, lists and sliders, are run by the screen's own Flash (ActionScript) code, which `input` messages cannot reach. `movie` with `screen` (a shown screen's name, as `gui` lists it) calls a function in that code, sets a variable, or reads a number or true/false value back. For example, to show the Options screen's Controls tab scrolled to the bottom of the key bindings:
 
 | Call | What it does |

@@ -159,6 +159,7 @@ add_library(
     src/core/Loot.cpp
     src/core/Mcp.cpp
     src/core/Origin.cpp
+    src/core/Options.cpp
     src/core/Party.cpp
     src/core/Peek.cpp
     src/core/Snapshot.cpp
@@ -286,6 +287,7 @@ add_library(
     src/game/Inspect.cpp
     src/game/LevelUp.cpp
     src/game/PartyPicker.cpp
+    src/game/Options.cpp
     src/game/Order.cpp
     src/game/Resources.cpp
     src/game/Screen.cpp
