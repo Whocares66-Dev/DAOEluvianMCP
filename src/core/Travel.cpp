@@ -268,7 +268,10 @@ class Journey
         answer_["pin"] = *pin;
         const std::string name = pin->value("name", std::string());
         const std::string state = pin->value("state", std::string());
-        if (state != "active")
+        // The Fade's map travels to a completed pin too, as its own click does
+        // (DAOLib #276, #191).
+        const bool fade = map->value("map", std::string("world")) == "fade";
+        if (state != "active" && !(fade && state == "completed"))
         {
             return End(false,
                        name + " is " + state + " on the world map, not a place to go now; the active ones: " + others);
@@ -300,9 +303,17 @@ class Journey
         if (!other.empty() && !swapped_)
         {
             swapped_ = true;
-            if (!Ask("input", Json{{"message", "WorldMap.WorldMapSwapMaps"}}))
+            // As the map's toggle does, DAOLib's worldmap::SwapMaps since #191,
+            // where the WorldMap.WorldMapSwapMaps text went.
+            const auto swapped = Ask("worldmap.swap", Json::object());
+            if (!swapped)
             {
                 return End(false, *stopped_);
+            }
+            if (!swapped->value("taken", false))
+            {
+                return End(false, "the map's toggle to the " + other +
+                                      " map was refused: " + swapped->value("refusal", std::string("refused")));
             }
             steps_.push_back(Json{{"did", "swap to the " + other + " map"}, {"result", "asked"}});
             const auto swapUntil = Clock::now() + std::min(Left(), milliseconds(3000));
@@ -468,44 +479,28 @@ class Journey
     // times of four from camp to the area it was entered from; with it, all
     // four arrived (turn-based-agent's reading and trial, 2026-10-03, #30).
     // The world's map is clicked by DAOLib's dao::worldmap::Travel since
-    // #184, which takes those steps and refuses as PinClicked does.
+    // #184, which takes those steps and refuses as PinClicked does; and the
+    // Fade's own map (fademap.gfx, whose pin sets the index and sends the
+    // transition with no mark, #34) by the same since #191 (DAOLib #276),
+    // which reads the Fade's map while it is shown.
     std::optional<Json> ClickPin(const Json &map, const Json &pin, const std::string &name)
     {
         const int index = pin.value("index", 0);
-        if (map.value("map", std::string("world")) != "fade")
+        const std::string which = map.value("map", std::string("world")) == "fade" ? "Fade's" : "world";
+        const auto took = Ask("worldmap.travel", Json{{"index", index}});
+        if (!took)
         {
-            const auto took = Ask("worldmap.travel", Json{{"index", index}});
-            if (!took)
-            {
-                return End(false, "the world map's pin " + name + " was not clicked: " + stopped_.value_or(""));
-            }
-            if (!took->value("taken", false))
-            {
-                const std::string refusal = took->value("refusal", std::string("refused"));
-                return End(false,
-                           "the world map refused its pin " + name + ": " + refusal +
-                               (refusal == "read only" ? " (shown only to look at, or the party is travelling already)"
-                                                       : std::string()));
-            }
-            steps_.push_back(Json{{"did", "the world map's pin " + name}, {"result", "asked"}});
-            return std::nullopt;
+            return End(false, "the " + which + " map's pin " + name + " was not clicked: " + stopped_.value_or(""));
         }
-        // The Fade's own map (fademap.gfx), whose pin sets the index and
-        // sends the transition with no mark (#34), DAOLib's not yet.
-        const std::string screen = map.value("screen", Json("FadeMap")).is_string()
-                                       ? map.value("screen", std::string("FadeMap"))
-                                       : std::string("FadeMap");
-        Ask("movie", Json{{"screen", screen},
-                          {"call", "ExternalCommands.SetValue"},
-                          {"args", Json::array({"WorldMap.LastClickedPinIndex", index})}});
-        const std::string click =
-            "GameModeController.AreaTransition " + map.value("at", std::string()) + " " + std::to_string(index);
-        const auto sent = Ask("input", Json{{"message", click}});
-        if (!sent || !sent->value("sent", false))
+        if (!took->value("taken", false))
         {
-            return End(false, "the game took no " + click + (stopped_ ? ": " + *stopped_ : std::string()));
+            const std::string refusal = took->value("refusal", std::string("refused"));
+            return End(false,
+                       "the " + which + " map refused its pin " + name + ": " + refusal +
+                           (refusal == "read only" ? " (shown only to look at, or the party is travelling already)"
+                                                   : std::string()));
         }
-        steps_.push_back(Json{{"did", "the world map's pin " + name}, {"result", "asked"}});
+        steps_.push_back(Json{{"did", "the " + which + " map's pin " + name}, {"result", "asked"}});
         return std::nullopt;
     }
 

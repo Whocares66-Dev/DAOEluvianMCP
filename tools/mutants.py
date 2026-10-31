@@ -1473,8 +1473,8 @@ MUTANTS = [
     Mutant(
         "travel to clicks a pin that is not active",
         TRAVEL,
-        'if (state != "active")',
-        "if (false)",
+        'if (state != "active" && !(fade && state == "completed"))',
+        'if (fade && state == "never")',
     ),
     Mutant(
         "travel to does not wait for the map its exit opens",
@@ -1494,11 +1494,18 @@ MUTANTS = [
         'if (area == pin.value("area", std::string()))',
         'if (area == pin.value("area", std::string()) || !area.empty())',
     ),
+    # #34, #42, #191: the Fade's map and a city's swap by DAOLib's worldmap.
     Mutant(
-        "travel to clicks from nowhere",
+        "travel to takes a completed pin of the Fade's map only as active",
         TRAVEL,
-        '"GameModeController.AreaTransition " + map.value("at", std::string()) + " " + std::to_string(index);',
-        '"GameModeController.AreaTransition " + std::string("x") + " " + std::to_string(index);',
+        'if (state != "active" && !(fade && state == "completed"))',
+        'if (state != "active" && !(fade && state == "active"))',
+    ),
+    Mutant(
+        "travel to goes on past a swap the map refused",
+        TRAVEL,
+        'if (!swapped->value("taken", false))',
+        'if (swapped->contains("never"))',
     ),
     Mutant(
         "travel to takes the last pin of a name, active or not",
@@ -1509,23 +1516,10 @@ MUTANTS = [
     # #30, #184: the world's map clicked by DAOLib's worldmap::Travel, which
     # marks it closed by travel; its refusal said.
     Mutant(
-        "travel to clicks the world's map as the Fade's",
-        TRAVEL,
-        'if (map.value("map", std::string("world")) != "fade")',
-        'if (map.value("map", std::string("world")) == "fade")',
-    ),
-    Mutant(
         "travel to goes on past a pin the world map refused",
         TRAVEL,
         'if (!took->value("taken", false))',
         'if (took->contains("never"))',
-    ),
-    # #34: the Fade's own map is clicked as its pin does, with no mark.
-    Mutant(
-        "travel to marks the Fade's map as if it were the world's",
-        TRAVEL,
-        'if (map.value("map", std::string("world")) != "fade")',
-        "if (true)",
     ),
     # #32: a text blocker is never a way out.
     Mutant(

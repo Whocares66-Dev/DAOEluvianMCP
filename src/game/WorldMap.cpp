@@ -19,7 +19,9 @@
 // A pin of the world's map is travelled to by DAOLib's dao::worldmap::Travel
 // since #184 (DAOLib #259, f9754a7, lib-agent-3): the click's own steps, its
 // closed-by-travel mark, the index and the transition, refused as
-// PinClicked refuses, through the unlisted worldmap.travel.
+// PinClicked refuses, through the unlisted worldmap.travel; and since #191
+// (DAOLib #276, ecaa084) the Fade's map too, while it is shown, and a city's
+// two maps swapped as the map's toggle does, through worldmap.swap.
 #include "game/Shared.h"
 
 #include "dao/Data.h"
@@ -270,7 +272,25 @@ void AddWorldMap(Bench &bench, const Watch &watch)
                     {"refusal", Label(refusal, {{dao::worldmap::Refusal::NotShown, "not shown"},
                                                 {dao::worldmap::Refusal::ReadOnly, "read only"},
                                                 {dao::worldmap::Refusal::NoPin, "no pin"},
-                                                {dao::worldmap::Refusal::NotActive, "not active"}})}};
+                                                {dao::worldmap::Refusal::NotActive, "not active"},
+                                                {dao::worldmap::Refusal::NoOther, "no other map"}})}};
+    });
+
+    ToolSpec swap = Spec("worldmap.swap",
+                         "Swaps a city's two maps as the map's toggle does: `taken`, or the `refusal` (not shown, no "
+                         "other map).",
+                         Json::object(), {});
+    swap.listed = false;
+    bench.Tools().Add(std::move(swap), [&watch](const Json &) -> ToolResult {
+        RequireWorld(watch, "worldmap.swap");
+        const auto refusal = dao::worldmap::SwapMaps();
+        if (refusal == dao::worldmap::Refusal::None)
+        {
+            return Json{{"taken", true}};
+        }
+        return Json{{"taken", false},
+                    {"refusal", Label(refusal, {{dao::worldmap::Refusal::NotShown, "not shown"},
+                                                {dao::worldmap::Refusal::NoOther, "no other map"}})}};
     });
 }
 

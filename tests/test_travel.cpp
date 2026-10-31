@@ -95,6 +95,7 @@ struct World
     bool partyKept = false;            // whether the party went with the hero
     bool fadeMap = false;              // whether the map up is the Fade's own
     std::string travelRefusal;         // worldmap.travel's refusal, if it refuses
+    std::string swapRefusal;           // worldmap.swap's, if it refuses
     std::string shownMap = "Ferelden"; // the map shown, of a city's two
     std::string otherMap;              // the other, its toggle's, if any
     Json otherPins = Json::array();    // the other map's pins
@@ -125,10 +126,25 @@ struct World
                               {
                                   return Json{{"taken", false}, {"refusal", travelRefusal}};
                               }
-                              closedByTravel = true;
+                              closedByTravel = !fadeMap; // the Fade's map has no mark
                               Click(index);
                               return Json{{"taken", true}};
                           });
+        // DAOLib's worldmap::SwapMaps (#191): the map's toggle.
+        bench.Tools().Add(ToolSpec{"worldmap.swap", "", {}, Thread::Listener}, [this](const Json &) -> ToolResult {
+            messages.emplace_back("worldmap.swap");
+            if (!swapRefusal.empty())
+            {
+                return Json{{"taken", false}, {"refusal", swapRefusal}};
+            }
+            if (otherMap.empty())
+            {
+                return Json{{"taken", false}, {"refusal", "no other map"}};
+            }
+            std::swap(shownMap, otherMap);
+            std::swap(pins, otherPins);
+            return Json{{"taken", true}};
+        });
         AddTravelTool(bench);
     }
 
@@ -513,7 +529,7 @@ struct World
         }
         const std::string message = args.value("message", "");
         messages.push_back(message);
-        if (message == "WorldMap.WorldMapSwapMaps" && !otherMap.empty())
+        if (message == "WorldMap.WorldMapSwapMaps" && !otherMap.empty()) // the text, before #191
         {
             std::swap(shownMap, otherMap);
             std::swap(pins, otherPins);
@@ -537,13 +553,14 @@ struct World
             return;
         }
         const Json &pin = pins.at(index);
-        if (pin.value("state", "") == "active" && pin.value("area", "") == area)
+        const bool goes = pin.value("state", "") == "active" || (fadeMap && pin.value("state", "") == "completed");
+        if (goes && pin.value("area", "") == area)
         {
             // The pin of the area the party is in: the map closes, nothing
             // loads (#95).
             mapUp = false;
         }
-        else if (pin.value("state", "") == "active")
+        else if (goes)
         {
             // At camp, a map closed not by travel sends the followers home
             // and the hero goes alone.
@@ -1024,7 +1041,7 @@ TEST_CASE("a pin on the other of a city's two maps is swapped to and travelled t
     CHECK(answer["arrived"] == true);
     CHECK(answer["swapped"] == true);
     REQUIRE(world.messages.size() == 2);
-    CHECK(world.messages[0] == "WorldMap.WorldMapSwapMaps");
+    CHECK(world.messages[0] == "worldmap.swap"); // DAOLib's SwapMaps, the map's toggle (#191)
     CHECK(world.messages[1] == "worldmap.travel 1");
 }
 
@@ -1051,7 +1068,7 @@ TEST_CASE("a pin on neither of a city's maps is said of both, swapped once", "[t
     const auto answer = world.bench.Invoke("travel", Json{{"to", "Orzammar"}, {"budgetMs", 5000}}).data;
     CHECK(answer["arrived"] == false);
     CHECK_THAT(answer["reason"].get<std::string>(), ContainsSubstring("on the Ferelden map or the other"));
-    CHECK(world.messages == std::vector<std::string>{"WorldMap.WorldMapSwapMaps"}); // once, not back and forth
+    CHECK(world.messages == std::vector<std::string>{"worldmap.swap"}); // once, not back and forth
 }
 
 TEST_CASE("of two pins of one name the active one is taken", "[travel]")
@@ -1082,18 +1099,44 @@ TEST_CASE("of two pins of one name the active one is taken", "[travel]")
     }
 }
 
-TEST_CASE("on the Fade's own map a pin is clicked as its pin does, with no mark", "[travel]")
+TEST_CASE("on the Fade's own map a pin is clicked by DAOLib's Travel as on the world's", "[travel]")
 {
     World world;
     world.mapUp = true;
     world.fadeMap = true;
     const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
     CHECK(answer["arrived"] == true);
-    REQUIRE(world.screenCalls.size() == 1); // the index only: the Fade's map has no closed-by-travel mark
-    CHECK(world.screenCalls[0]["screen"] == "FadeMap");
-    CHECK(world.screenCalls[0]["call"] == "ExternalCommands.SetValue");
-    // Its own path still, DAOLib's Travel being the world's map's (#184).
-    CHECK(world.messages == std::vector<std::string>{"GameModeController.AreaTransition ruins 1"});
+    CHECK(world.messages == std::vector<std::string>{"worldmap.travel 1"}); // #191, DAOLib #276
+    CHECK(world.screenCalls.empty());
+}
+
+TEST_CASE("the Fade's map travels to a completed pin, as its own click does; the world's does not", "[travel]")
+{
+    for (const bool fade : {true, false})
+    {
+        World world;
+        world.mapUp = true;
+        world.fadeMap = fade;
+        world.pins[1]["state"] = "completed";
+        const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+        CHECK(answer["arrived"] == fade);
+        CHECK(world.messages.size() == (fade ? 1U : 0U));
+    }
+}
+
+TEST_CASE("a swap the map refuses is said with its reason", "[travel]")
+{
+    World world;
+    world.mapUp = true;
+    world.shownMap = "Denerim";
+    world.otherMap = "Ferelden";
+    world.otherPins = world.pins;
+    world.pins = Json::array({Json{{"index", 0}, {"name", "Market"}, {"area", "den200ar"}, {"state", "active"}}});
+    world.swapRefusal = "not shown";
+    const auto answer = world.bench.Invoke("travel", Json{{"to", "Lothering"}, {"budgetMs", 5000}}).data;
+    CHECK(answer["arrived"] == false);
+    CHECK_THAT(answer["reason"].get<std::string>(),
+               ContainsSubstring("toggle to the Ferelden map was refused: not shown"));
 }
 
 TEST_CASE("a pin is named by its tag or its index too", "[travel]")
