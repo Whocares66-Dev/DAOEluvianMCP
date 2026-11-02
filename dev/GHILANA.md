@@ -113,7 +113,7 @@ Arguments, each optional where it can be found:
 - `packages\core\data\*.erf`: the core's archives (`2da.erf` holds 749 data tables, `designercreatures.erf` the templates, `modelmeshdata.erf` is 425 MiB, `shaders.erf`, ...). `packages\core\override\` and `packages\core\data\talktables\*.tlk` (1,501 talk tables, all version 0.2).
 - `modules\single player\...`: the campaign's own archives, and nearly 10,000 `.rim` files, a level's rooms and an area's resources among them.
 - `Addins\<name>\`: the DLC and promotional add-ins the Ultimate Edition installs (`dao_prc_cp_*`, `dao_prc_drk`, `dao_ep1_promo_*`, `PC_GAMER_TALE`, Awakening...); their `.erf` files are ERF V2.2, 377 of them, enciphered but for Awakening's. `Offers\` beside it.
-- In Documents (`C:\Users\tianx\OneDrive\Documents\BioWare\Dragon Age` here): `Settings\AddIns.xml` and `offers.xml` (which add-ins are installed and enabled), `AddIns\` (add-ins a player installed from a `.dazip`), `packages\core\override\` (a player's loose overrides), `Settings\DAModmanager_Override.xml` (the community mod manager's).
+- In Documents (`Documents\BioWare\Dragon Age`): `Settings\AddIns.xml` and `offers.xml` (which add-ins are installed and enabled), `AddIns\` (add-ins a player installed from a `.dazip`), `packages\core\override\` (a player's loose overrides), `Settings\DAModmanager_Override.xml` (the community mod manager's).
 - DAOLib's plugins: `bin_ship\daolib\plugins\<name>\override\`, which DAOLib makes a source of the game's resources like `packages\core\override` (DAOLib #43).
 - Kinds by count in the install (2026-10-12): 10,009 `.rim`, 9,052 `.fsb` and 9,020 `.fev` (FMOD audio, out of scope), 2,049 `.mao`, 1,501 `.tlk`, 643 `.erf`, 555 `.dds`, 216 `.arl`.
 
