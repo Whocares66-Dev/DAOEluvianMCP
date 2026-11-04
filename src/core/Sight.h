@@ -23,7 +23,7 @@ namespace eluvian
 
 using Point = std::array<float, 3>; // x, y, z, in the world's metres
 
-// The camera's two angles, in radians, as dao::SceneCamera measures them.
+// The camera's two angles, in radians, as dao::CameraRig measures them.
 struct Sight
 {
     float yaw = 0;

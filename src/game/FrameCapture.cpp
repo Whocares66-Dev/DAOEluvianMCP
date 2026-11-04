@@ -8,6 +8,13 @@
 // listener's, so the frame thread is never held, and a frame the game does
 // not draw (a minimised fullscreen game, #148) is a time run out, not a
 // stall.
+//
+// Since DAOLib #319 the watch hooks the device's methods, both Presents
+// among them, through their vtable entries. Before that it placed inline
+// detours, and an overlay that hooked d3d9 first (RTSS) erased them when it
+// let the game go, because it wrote back d3d9's bytes (DAOElgaraShaders #73,
+// 2026-11-04; #193). The frame pump does not depend on Direct3D: it is
+// dao::OnFrame, on the engine's own update.
 #include "core/FrameCapture.h"
 #include "game/Capture.h"
 #include "game/GameTools.h"

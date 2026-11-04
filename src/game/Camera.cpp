@@ -27,7 +27,7 @@ Json CameraJson(const dao::CameraController &camera)
                    {"tactical", camera.Tactical()},
                    {"zoom", camera.Zoom()},
                    {"zoomSetting", camera.ZoomSetting()}};
-    if (const auto *scene = camera.Scene())
+    if (const auto *scene = camera.Rig())
     {
         answer["position"] = VectorJson(scene->Position());
         answer["facingDegrees"] = FacingDegrees(scene->Yaw());
@@ -66,7 +66,7 @@ struct Aim
 };
 
 // The angles `turn` asks for: either or both.
-Aim TurnOf(const Args &args, const dao::SceneCamera &scene)
+Aim TurnOf(const Args &args, const dao::CameraRig &scene)
 {
     if (!args.Has("facingDegrees") && !args.Has("pitchDegrees"))
     {
@@ -93,7 +93,7 @@ Aim TurnOf(const Args &args, const dao::SceneCamera &scene)
 // as it was before #117: a creature faced keeps the tilt the player set.
 // With it both, from the pivot the camera looks at, so the point is in the
 // middle of the picture and not only ahead on the ground.
-Aim FaceOf(const Args &args, const dao::CameraController &camera, const dao::SceneCamera &scene)
+Aim FaceOf(const Args &args, const dao::CameraController &camera, const dao::CameraRig &scene)
 {
     const auto target = args.OptionalId("target", kCreatureHint);
     if (!target && !args.Has("point"))
@@ -130,9 +130,9 @@ namespace
 
 constexpr std::string_view kNextFrame = "the view is as asked from the next frame: screenshot after this call";
 
-dao::SceneCamera &SceneOf(const dao::CameraController &camera)
+dao::CameraRig &SceneOf(const dao::CameraController &camera)
 {
-    auto *scene = camera.Scene();
+    auto *scene = camera.Rig();
     if (scene == nullptr)
     {
         throw ToolError("camera: the game has no scene camera to turn now");
