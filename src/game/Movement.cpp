@@ -6,7 +6,10 @@
 // (paragon-agent-2, DAOParagonEngine #429): the path alone (`creature`'s
 // `path`) did not say why a walker stood, waited or gave up. The move
 // update says it: its answer, how long the creature has stood, and what the
-// creature-in-the-way pass listed and did.
+// creature-in-the-way pass listed and did. Since #195 (DAOLib #327) also
+// the answer to the update's own path request, the held stretch's points,
+// and what lets the standing count run: a brought wolf stood 0.6 to 1 s at
+// standingMs 0, result 0 and motion run (paragon-agent-2).
 //
 // The watch is armed on the frame thread, where DAOLib places its detours
 // at the first watch, and only for the call's span: with no watch alive an
@@ -18,6 +21,7 @@
 #include "game/Shared.h"
 
 #include <dao/Movement.h>
+#include <dao/World.h>
 
 #include <condition_variable>
 #include <memory>
@@ -87,6 +91,31 @@ const char *ResultName(std::int32_t result)
     }
 }
 
+// The answer to the update's own path request in words, by DAOLib's
+// dao::world::path codes (DAOLib #327). 2, 3 and 7 are walked as found is.
+const char *PathAnswerName(std::int32_t answer)
+{
+    namespace path = dao::world::path;
+    switch (answer)
+    {
+    case path::kFound:
+    case 2:
+    case 3:
+    case 7:
+        return "found";
+    case path::kSearching:
+        return "searching";
+    case path::kNoPath:
+        return "no path";
+    case path::kActionRequired:
+        return "a door in the way";
+    case path::kNoWalkmesh:
+        return "no walkmesh";
+    default:
+        return "unknown";
+    }
+}
+
 Json RecordJson(const movement::Record &record)
 {
     return {{"state", RecordName(record.state)}, {"code", record.state}, {"timerMs", record.timerMs}};
@@ -142,6 +171,18 @@ Json SampleJson(const movement::MoveUpdate &update, std::uint64_t frame, double 
                    {"says", ResultName(update.result)},
                    {"standingMs", update.standingMs},
                    {"walker", WalkerJson(update.walker)}};
+    // The update's own path request, read as it answered, never asked by
+    // us: a probe of ours left a stale path behind in the turn-based mod
+    // (turn-based-agent, #195). Null where the update asked none.
+    sample["path"] = update.pathAnswer
+                         ? Json{{"answer", *update.pathAnswer}, {"says", PathAnswerName(*update.pathAnswer)}}
+                         : Json(nullptr);
+    // The held stretch: a walker asks its path a stretch at a time, so this
+    // is the next point or two, not the route.
+    sample["stretch"] = {{"points", update.waypoints}, {"at", update.waypoint}};
+    // standingMs adds only while all of these let it (DAOLib #327); a walker
+    // that stands with them off stands at 0.
+    sample["counter"] = {{"counting", update.counting}, {"aiLevel", update.aiLevel}, {"updateMs", update.updateMs}};
     sample["inTheWay"] = update.inTheWay ? InTheWayJson(*update.inTheWay) : Json(nullptr);
     return sample;
 }
@@ -248,7 +289,13 @@ void AddMovement(Bench &bench, const Watch &watch)
              "say. Each sample has the `frame`, `ms` since the call, the running sub-action's type "
              "(`subAction`), the update's `result` (1 arrived, 0 going, negative a failure: -4 stuck or no "
              "path, -8 done while waiting, -9 a door in the way) and `says` it in words, `standingMs` (how long "
-             "it has stood while it should walk; past 1000 in combat or 2000 out of it the move fails), the "
+             "it has stood while it should walk; past 1000 in combat or 2000 out of it the move fails), "
+             "`counter` (whether that count runs: it adds only while `counting` is true, `aiLevel` is over 1 "
+             "and `updateMs` is under 300, so a walker standing with any of them off shows standingMs 0), "
+             "`path` (the answer to the update's own path request, null where it asked none: `answer` 1 found, "
+             "4 searching, which stands the walker that update, 5 no path, 6 a door in the way, 8 no walkmesh, "
+             "and `says` it), `stretch` (the held stretch's `points` and the one walked to, `at`: a walker "
+             "asks its path a stretch at a time, so this is not the whole route), the "
              "`walker` after the update (`motion`: idle, walk, run, stopping or turning; `record`: clear, "
              "repath, settling or waiting, with its timer) and `inTheWay` where the update ran that pass: the "
              "creatures `listed` in the way, the pass's `answer` (0 none blocks, 1 one does, 2 the walk stops "
