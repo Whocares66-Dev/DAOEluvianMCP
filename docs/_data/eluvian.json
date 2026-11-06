@@ -215,7 +215,7 @@
   },
   {
    "name": "creature",
-   "description": "Returns one creature in full: the summary `creatures` gives (including the `command` it is carrying out), plus:\n\n- `facingDegrees`, the way it looks: 0 along -y, -90 along +x, 90 along -x, 180 along +y, as `camera` and `stage_spawn` take it. And `appearance`.\n- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, out of how many).\n- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n- `effects`: every effect on it, with its type (an EFFECT_TYPE_* name), creator, ability (id and name) and time left in seconds (null for effects that do not expire).",
+   "description": "Returns one creature in full: the summary `creatures` gives (including the `command` it is carrying out), plus:\n\n- `facingDegrees`, the way it looks: 0 along -y, -90 along +x, 90 along -x, 180 along +y, as `camera` and `stage_spawn` take it. And `appearance`.\n- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, out of how many).\n- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n- `walker`: its `motion` now (idle, walk, run, stopping or turning) and its movement `record` (clear, repath, settling or waiting for a creature in its way, with the timer); `move_trace` follows them through a walk.\n- `effects`: every effect on it, with its type (an EFFECT_TYPE_* name), creator, ability (id and name) and time left in seconds (null for effects that do not expire).",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -793,6 +793,34 @@
      "argument": "budgetMs",
      "defaultMs": 300000
     }
+   }
+  },
+  {
+   "name": "move_trace",
+   "description": "Records one creature's move updates as the engine runs them, one sample a frame while it walks, for a span: why a walker stands, waits, re-paths or gives up, which `creature`'s `path` does not say. Each sample has the `frame`, `ms` since the call, the running sub-action's type (`subAction`), the update's `result` (1 arrived, 0 going, negative a failure: -4 stuck or no path, -8 done while waiting, -9 a door in the way) and `says` it in words, `standingMs` (how long it has stood while it should walk; past 1000 in combat or 2000 out of it the move fails), the `walker` after the update (`motion`: idle, walk, run, stopping or turning; `record`: clear, repath, settling or waiting, with its timer) and `inTheWay` where the update ran that pass: the creatures `listed` in the way, the pass's `answer` (0 none blocks, 1 one does, 2 the walk stops for the controlled creature), whether the reaction ran (`reacted`) and the record `before` and `after` it; `combat` for the in-combat pass. Order the walk first (`order`), then call this at once: it waits `ms` (3000) and ends early when the move ends (`toEnd`) or at `most` samples. `ended` says which: move, most or time. A creature standing still is mostly walked around by the path search, so the pass lists someone mainly where walkers cross.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "description": "The creature, by id. Default: the creature you control."
+     },
+     "ms": {
+      "type": "integer",
+      "description": "Milliseconds to record for, 100 to 30000. Default 3000."
+     },
+     "toEnd": {
+      "type": "boolean",
+      "description": "End at the first update that arrives or fails. Default true."
+     },
+     "most": {
+      "type": "integer",
+      "description": "Samples to keep at most, 1 to 5000. Default 600."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true
    }
   },
   {

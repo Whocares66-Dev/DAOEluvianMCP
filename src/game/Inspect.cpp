@@ -967,6 +967,7 @@ ToolResult KindCreature(const Watch &watch, const Json &raw)
     creature["effects"] = Effects(id);
     creature["abilities"] = Abilities(id);
     creature["path"] = PathNow(id, api::GetPosition(id), false);
+    creature["walker"] = WalkerNow(id);
     return creature;
 }
 
@@ -1392,6 +1393,9 @@ void AddInspect(Bench &bench, const Watch &watch)
              "- `abilities`: those on its quickbar and in its tactics, each with its cooldown (seconds left, "
              "out of how many).\n"
              "- `path`: its current movement path; `beingWalked` says whether it is walking it now.\n"
+             "- `walker`: its `motion` now (idle, walk, run, stopping or turning) and its movement `record` "
+             "(clear, repath, settling or waiting for a creature in its way, with the timer); `move_trace` "
+             "follows them through a walk.\n"
              "- `effects`: every effect on it, with its type (an EFFECT_TYPE_* name), creator, ability (id "
              "and name) and time left in seconds (null for effects that do not expire).",
              Json{{"id",

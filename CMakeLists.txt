@@ -300,6 +300,7 @@ add_library(
     src/game/Peek.cpp
     src/game/Snapshot.cpp
     src/game/FrameCapture.cpp
+    src/game/Movement.cpp
     src/game/Behind.cpp
     src/game/Warp.cpp
     src/game/WorldMap.cpp

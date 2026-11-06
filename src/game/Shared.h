@@ -118,6 +118,9 @@ std::string_view EquipSlotName(std::int32_t slot);
 Json PathJson(const dao::world::WalkPath &path, const dao::Vector &from, bool waypoints);
 const dao::Command *CurrentCommand(ObjectId id);
 Json CommandJson(ObjectId id);
+// The creature's walker as dao::movement reads it (Movement.cpp): its motion
+// and its movement record; null if it is not a creature.
+Json WalkerNow(ObjectId id);
 bool IsMove(dao::core::CommandType type);
 Json PathNow(ObjectId id, const dao::Vector &from, bool waypoints);
 
@@ -327,5 +330,6 @@ void AddLevelUp(Bench &bench, const Watch &watch);  // levelup.*, which core's l
 void AddCrafting(Bench &bench, const Watch &watch); // craft.*, which core's craft asks (#186)
 void AddCharGen(Bench &bench);                      // chargen.*, which core's chargen asks (#189)
 void AddOptions(Bench &bench);                      // options.*, which core's options asks (#190)
+void AddMovement(Bench &bench, const Watch &watch); // move_trace, a listener tool over dao::movement (#194)
 
 } // namespace eluvian::game
