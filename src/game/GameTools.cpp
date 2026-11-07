@@ -64,6 +64,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddCrafting(bench, watch);
     AddCharGen(bench);
     AddOptions(bench);
+    AddSafeLocation(bench, watch);
     AddScript(bench, watch);
     AddOrder(bench, watch);
     AddStage(bench, watch);

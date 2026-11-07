@@ -1225,6 +1225,28 @@
    }
   },
   {
+   "name": "safe_location",
+   "description": "Asks the game whether a point is a safe place to stand and where the nearest one is, as the scripts do: `safe` is IsLocationSafe's answer for the point, and `result` the location GetSafeLocation gives for it (its area and point), with `moved` its distance from the point. Pass `point`, {x, y, z} or [x, y, z], and optionally `area`, an area's id (default the hero's). The command gives back the point itself when its search found a safe spot (the spot found is not handed to the script), and zeros or the point at the ground's height when it found none, so `result` says whether a search found something, not where. IsLocationSafe counts creatures: a point a creature stands on is not safe. Off the walk grid it answers safe.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "point": {
+      "description": "The point: {x, y, z} or [x, y, z]."
+     },
+     "area": {
+      "type": "string",
+      "description": "The area, by id. Default: the hero's."
+     }
+    },
+    "required": [
+     "point"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   }
+  },
+  {
    "name": "saves",
    "description": "Lists, loads and makes the game's saves. `action`:\n\n- `list`: the saves of `character` (or of every character), each with its area, name, time played and level, as the load screen shows them.\n- `load`: loads the save picked by `character`, `kind` and `number`, from the main menu or in the world. Refused during a conversation.\n- `force_load`: presses the game's Force Load after a load it answered with \"requires the following content\" (`gui` shows that message). The game loads without that content, and such a game is never saved.\n- `save`: makes a new manual save in the next free slot, named `name`. This is what a test should do, since it overwrites nothing.\n\nSaving into a slot `number` that already holds a save, or with `kind` quick (the player's quicksave), is refused unless `overwrite` is true. The game also refuses to save in combat or a cutscene.\n\nA load or save only asks the game: the answer includes a `cursor`, and `wait_for` eluvian.game.loaded or eluvian.game.saved from it says when it is done. If no load event comes, the game may be showing a message box; `gui` reads it.",
    "inputSchema": {

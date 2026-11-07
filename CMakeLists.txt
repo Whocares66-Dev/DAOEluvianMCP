@@ -290,6 +290,7 @@ add_library(
     src/game/Options.cpp
     src/game/Order.cpp
     src/game/Resources.cpp
+    src/game/SafeLocation.cpp
     src/game/Screen.cpp
     src/game/Screenshot.cpp
     src/game/Script.cpp
