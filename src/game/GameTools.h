@@ -40,13 +40,16 @@ void WatchDraws();
 void KeepBehind();
 
 // What a copy kept behind was kept from: SetForegroundWindow calls refused,
-// ShowWindow and SetWindowPos calls made not to activate; none in a copy
+// ShowWindow and SetWindowPos calls made not to activate, and the times it
+// reached the front all the same and gave it back (#179); none in a copy
 // not kept behind.
 struct BehindCounts
 {
     std::uint32_t refused = 0;
     std::uint32_t shown = 0;
     std::uint32_t placed = 0;
+    std::uint32_t givenBack = 0;
+    std::uint32_t reached = 0; // times its window came to the front, each logged
 };
 std::optional<BehindCounts> KeptBehind();
 

@@ -345,6 +345,12 @@ class BridgeTest(unittest.TestCase):
             {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}, self.sent
         )
 
+    def test_a_game_the_user_plays_in_is_launched_not_kept_behind(self) -> None:
+        self.processes.pids.clear()
+        result = self.call("game_launch", {"behind": False})
+        self.assertFalse(result["isError"])
+        self.assertNotIn("ELUVIAN_BEHIND", self.processes.environment)
+
     def refused_game(self) -> None:
         """A game whose loader is of another plugin API than Eluvian: both logs say so."""
         (self.folder / "loader.log").write_text(

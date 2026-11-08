@@ -41,4 +41,11 @@ std::uint32_t BehindPositionFlags(std::uint32_t flags)
     return flags | kNoActivate | kNoZOrder;
 }
 
+bool BehindGivesFrontBack(std::uint64_t msSinceUserInput, std::uint32_t givenBackThisMinute)
+{
+    constexpr std::uint64_t kUsersMoment = 500;
+    constexpr std::uint32_t kMostAMinute = 5; // the window it gives to may hand it straight back
+    return msSinceUserInput >= kUsersMoment && givenBackThisMinute < kMostAMinute;
+}
+
 } // namespace eluvian

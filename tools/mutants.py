@@ -2680,6 +2680,18 @@ MUTANTS = [
         "return flags | kNoZOrder;",
     ),
     Mutant(
+        "behind: the front is kept where the user's input brought it",
+        BEHIND,
+        "return msSinceUserInput >= kUsersMoment && givenBackThisMinute < kMostAMinute;",
+        "return msSinceUserInput >= kUsersMoment / 2 && givenBackThisMinute < kMostAMinute;",
+    ),
+    Mutant(
+        "behind: the front is given back a few times at most",
+        BEHIND,
+        "return msSinceUserInput >= kUsersMoment && givenBackThisMinute < kMostAMinute;",
+        "return msSinceUserInput >= kUsersMoment && givenBackThisMinute <= kMostAMinute;",
+    ),
+    Mutant(
         "behind: SetWindowPos never raises the window",
         BEHIND,
         "return flags | kNoActivate | kNoZOrder;",

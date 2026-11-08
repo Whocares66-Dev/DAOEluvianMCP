@@ -530,7 +530,9 @@ ToolResult KindWindow(const Json & /*args*/)
     {
         answer["keptBehind"] = {{"foregroundRefused", kept->refused},
                                 {"showNotActivating", kept->shown},
-                                {"placeNotRaising", kept->placed}};
+                                {"placeNotRaising", kept->placed},
+                                {"frontGivenBack", kept->givenBack},
+                                {"frontReached", kept->reached}};
     }
     if (place.minimised)
     {
@@ -1198,7 +1200,9 @@ void AddInspect(Bench &bench, const Watch &watch)
              "`width` and `height`, and whether the window is `minimised` or the `foreground` window (the "
              "one that gets mouse and keyboard input). A copy game_launch started is kept behind the window in "
              "front: `keptBehind` counts the game's own calls that would have brought it forward and were made "
-             "not to.\n\n"
+             "not to, `frontReached` the times its window came to the front all the same (each in eluvian.log, with "
+             "the window it came from), and `frontGivenBack` the times it gave the front back, as it does "
+             "unless a click, Alt or Win brought it there (the user's own).\n\n"
              "To click a spot seen in a screenshot, take its position as a fraction of the picture, multiply "
              "by the size and add the corner. Works in any mode.",
              Json::object(), {}),

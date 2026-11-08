@@ -27,6 +27,20 @@ TEST_CASE("a copy kept behind leaves a command that does not activate as it is",
     }
 }
 
+TEST_CASE("a copy kept behind gives the front back unless the user's input just brought it", "[behind]")
+{
+    CHECK(BehindGivesFrontBack(500, 0));
+    CHECK(BehindGivesFrontBack(3'600'000, 0)); // an hour into the run as in its first minute
+    CHECK_FALSE(BehindGivesFrontBack(499, 0)); // a click, Alt-Tab or Win: the user's own
+    CHECK_FALSE(BehindGivesFrontBack(0, 0));
+}
+
+TEST_CASE("a copy kept behind gives the front back a few times a minute at most", "[behind]")
+{
+    CHECK(BehindGivesFrontBack(1'000, 4));
+    CHECK_FALSE(BehindGivesFrontBack(1'000, 5));
+}
+
 TEST_CASE("a copy kept behind is never activated or raised by its own SetWindowPos", "[behind]")
 {
     // SWP_NOSIZE 0x1, SWP_NOMOVE 0x2, SWP_NOZORDER 0x4, SWP_NOACTIVATE 0x10,

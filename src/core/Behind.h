@@ -25,4 +25,19 @@ int BehindShowCommand(int command);
 // raised above the window in front, whatever it asked.
 std::uint32_t BehindPositionFlags(std::uint32_t flags);
 
+// Whether a copy kept behind, finding its own window in front, gives the
+// front back: unless the user's own input brought it there, a mouse button
+// or Alt or Win pressed in the last half second (a click on the window or
+// the taskbar, Alt-Tab, Win and a number), and at most a few times a
+// minute, so that a window that hands it straight back does not trade it
+// for ever. A copy still reached the front by no call the detours see, once
+// in sixteen launches after a force quit (elgara-agent, 2026-10-24, #179),
+// and once at a menu a minute and a half after its load (2026-10-25), when
+// the give-back was the first minute's only. The user, 2026-10-25, relayed:
+// "If you can't fix the bring to front, just let it do so and close it
+// afterwards."
+// @param msSinceUserInput since a mouse button, Alt or Win was last seen down
+// @param givenBackThisMinute times it gave the front back in the last minute
+bool BehindGivesFrontBack(std::uint64_t msSinceUserInput, std::uint32_t givenBackThisMinute);
+
 } // namespace eluvian
