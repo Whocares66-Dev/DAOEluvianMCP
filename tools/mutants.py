@@ -3446,6 +3446,13 @@ MUTANTS = [
         'asked.at = static_cast<float>(args.Number("at"));',
         "ghilana",
     ),
+    Mutant(
+        "ghilana tools: a file that cannot be read is the tool's refusal",
+        "src/ghilana/Ghilana.cpp",
+        'throw ToolError(name + ": a file of the game\'s could not be read: " + error.what());',
+        "throw std::runtime_error(error.what());",
+        "ghilana",
+    ),
 ]
 
 

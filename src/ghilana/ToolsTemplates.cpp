@@ -286,7 +286,8 @@ void RegisterTemplateTools(Bench &bench, Ghilana &ghilana)
     const Json to = {{"type", "string"},
                      {"description", "The folder to write into, a full path; made if missing. Never inside the game's "
                                      "folder."}};
-    tools.Add(
+    AddTool(
+        tools,
         Spec("table_rows",
              "Writes a table of new rows for one the game merges from every file of its prefix (apr_base and "
              "apr_*, the appearances): each row copied from a row of `table` by its ID, with cells changed. A "
@@ -306,22 +307,23 @@ void RegisterTemplateTools(Bench &bench, Ghilana &ghilana)
               {"to", to}},
              {"table", "rows", "name", "to"}),
         [&ghilana](const Json &args) -> ToolResult { return TableRows(ghilana, args); });
-    tools.Add(Spec("template_edit",
-                   "Writes a template (.utc creature, .uti item, .utp placeable...) under a new name with fields "
-                   "changed: a number, a text (a String or ResRef), or a string reference for a name. A field in a "
-                   "struct is named by its path, \"Appearance Data/Appearance_Type\". `resource` shows a template's "
-                   "fields.",
-                   {{"name", {{"type", "string"}, {"description", "The game's template, \"ogre_default.utc\"."}}},
-                    {"set",
-                     {{"type", "object"},
-                      {"description", "Each field's path and its new value: {\"Tag\": \"red_ogre\", \"Appearance "
-                                      "Data/Appearance_Type\": 7701}."}}},
-                    {"save_as",
-                     {{"type", "string"},
-                      {"description", "The new template's name, \"red_ogre\" (the extension is the original's)."}}},
-                    {"to", to}},
-                   {"name", "set", "save_as", "to"}),
-              [&ghilana](const Json &args) -> ToolResult { return TemplateEdit(ghilana, args); });
+    AddTool(tools,
+            Spec("template_edit",
+                 "Writes a template (.utc creature, .uti item, .utp placeable...) under a new name with fields "
+                 "changed: a number, a text (a String or ResRef), or a string reference for a name. A field in a "
+                 "struct is named by its path, \"Appearance Data/Appearance_Type\". `resource` shows a template's "
+                 "fields.",
+                 {{"name", {{"type", "string"}, {"description", "The game's template, \"ogre_default.utc\"."}}},
+                  {"set",
+                   {{"type", "object"},
+                    {"description", "Each field's path and its new value: {\"Tag\": \"red_ogre\", \"Appearance "
+                                    "Data/Appearance_Type\": 7701}."}}},
+                  {"save_as",
+                   {{"type", "string"},
+                    {"description", "The new template's name, \"red_ogre\" (the extension is the original's)."}}},
+                  {"to", to}},
+                 {"name", "set", "save_as", "to"}),
+            [&ghilana](const Json &args) -> ToolResult { return TemplateEdit(ghilana, args); });
 }
 
 } // namespace eluvian::ghilana::detail

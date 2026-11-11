@@ -313,13 +313,14 @@ void RegisterTextureTools(Bench &bench, Ghilana &ghilana)
     auto &tools = bench.Tools();
     Json exportProperties = kTextureProperties;
     exportProperties["normal"] = kNormalProperty;
-    tools.Add(Spec("texture_export",
-                   "Writes a texture (.dds) as a PNG of its largest picture into a folder of yours, for an image "
-                   "editor: red, green, blue and alpha as the game draws them, and a normal map with x, y, z in red, "
-                   "green and blue as an editor shows one. Answers the PNG's path, the original's format and size, "
-                   "and the game's smaller copies for its farther models. `texture_import` puts it back.",
-                   std::move(exportProperties), {"name", "to"}),
-              [&ghilana](const Json &args) -> ToolResult { return Export(ghilana, args); });
+    AddTool(tools,
+            Spec("texture_export",
+                 "Writes a texture (.dds) as a PNG of its largest picture into a folder of yours, for an image "
+                 "editor: red, green, blue and alpha as the game draws them, and a normal map with x, y, z in red, "
+                 "green and blue as an editor shows one. Answers the PNG's path, the original's format and size, "
+                 "and the game's smaller copies for its farther models. `texture_import` puts it back.",
+                 std::move(exportProperties), {"name", "to"}),
+            [&ghilana](const Json &args) -> ToolResult { return Export(ghilana, args); });
 
     Json importProperties = kTextureProperties;
     importProperties["name"]["description"] = "The texture the PNG replaces, \"cn_bdy_ogra_0d.dds\": its format is "
@@ -333,14 +334,15 @@ void RegisterTextureTools(Bench &bench, Ghilana &ghilana)
     importProperties["far_copies"] = {{"type", "boolean"},
                                       {"description", "Also write the game's smaller copies for its farther models "
                                                       "(..._0dl2, _0dl3), from the picture halved. Default true."}};
-    tools.Add(Spec("texture_import",
-                   "Writes a PNG edited from `texture_export` back as the game's texture (.dds): in the original's "
-                   "format with every halving of the picture down to a pixel, as the game's own are, and the game's "
-                   "smaller copies for its farther models too. The picture's sides must be powers of two. Answers the "
-                   "files written and where to put them for the game to take them. Writes nothing in the game's "
-                   "folders.",
-                   std::move(importProperties), {"name", "png", "to"}),
-              [&ghilana](const Json &args) -> ToolResult { return Import(ghilana, args); });
+    AddTool(tools,
+            Spec("texture_import",
+                 "Writes a PNG edited from `texture_export` back as the game's texture (.dds): in the original's "
+                 "format with every halving of the picture down to a pixel, as the game's own are, and the game's "
+                 "smaller copies for its farther models too. The picture's sides must be powers of two. Answers the "
+                 "files written and where to put them for the game to take them. Writes nothing in the game's "
+                 "folders.",
+                 std::move(importProperties), {"name", "png", "to"}),
+            [&ghilana](const Json &args) -> ToolResult { return Import(ghilana, args); });
 }
 
 } // namespace eluvian::ghilana::detail

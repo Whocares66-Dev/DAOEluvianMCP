@@ -266,6 +266,13 @@ int Call(eluvian::Bench &bench, const Options &options)
         std::fprintf(stderr, "%s\n", e.what());
         return 2;
     }
+    catch (const std::exception &e)
+    {
+        // Said where it went to the log alone, which a --call does not open
+        // (#196).
+        std::fprintf(stderr, "ghilana: %s failed: %s\n", options.call->c_str(), e.what());
+        return 1;
+    }
 }
 
 int Run(const Options &options)

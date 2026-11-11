@@ -2,6 +2,8 @@
 
 #include "ghilana/Text.h"
 
+#include <dao/core/ReadError.h>
+
 namespace eluvian::ghilana
 {
 
@@ -43,7 +45,22 @@ std::string GameFiles::WhyUnreadable(const Copy &copy) const
 
 std::optional<std::vector<std::byte>> GameFiles::Read(const Copy &copy, std::string *why) const
 {
-    auto bytes = index_->Read(copy);
+    // A file that is there and could not be read is passed over as one that
+    // cannot be read, with the system's reason, so a tool reading many goes
+    // on past it (DAOLib b2f1c21's ReadError, #196).
+    std::optional<std::vector<std::byte>> bytes;
+    try
+    {
+        bytes = index_->Read(copy);
+    }
+    catch (const dao::core::ReadError &error)
+    {
+        if (why != nullptr)
+        {
+            *why = error.what();
+        }
+        return std::nullopt;
+    }
     if (!bytes && why != nullptr)
     {
         *why = Readable(copy) ? "it could not be read whole from " + index_->Where(copy) + " (changed since the index?)"

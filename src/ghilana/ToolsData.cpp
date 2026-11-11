@@ -1443,16 +1443,17 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
           {"description", "Also the rows the game drops: a later file's row of an ID an earlier file has, marked "
                           "_dropped. Default false: the table as the game has it."}}}};
     tableProperties.update(PageProperties(100, 10000));
-    tools.Add(Spec("table",
-                   "Reads one of the game's data tables merged the way the game merges it (M2DA). The table is "
-                   "built from every GDA file whose name starts with the table's prefix, from every source (for "
-                   "example the core's abi_base.gda and a mod's abi_*.gda), using the copy of each file the game "
-                   "uses. Files are ordered by source, then by name; when two files give the same ID, the game "
-                   "keeps the row from the first. Each row says which file and source it comes from, and `_over` "
-                   "lists the files whose rows for that ID it replaces. Filter with `id` or `where`; use "
-                   "`overrides_only` to see only what mods and add-ins change; page with `limit`/`offset`.",
-                   std::move(tableProperties), {"table"}),
-              [&ghilana](const Json &args) -> ToolResult { return Table(ghilana, args); });
+    AddTool(tools,
+            Spec("table",
+                 "Reads one of the game's data tables merged the way the game merges it (M2DA). The table is "
+                 "built from every GDA file whose name starts with the table's prefix, from every source (for "
+                 "example the core's abi_base.gda and a mod's abi_*.gda), using the copy of each file the game "
+                 "uses. Files are ordered by source, then by name; when two files give the same ID, the game "
+                 "keeps the row from the first. Each row says which file and source it comes from, and `_over` "
+                 "lists the files whose rows for that ID it replaces. Filter with `id` or `where`; use "
+                 "`overrides_only` to see only what mods and add-ins change; page with `limit`/`offset`.",
+                 std::move(tableProperties), {"table"}),
+            [&ghilana](const Json &args) -> ToolResult { return Table(ghilana, args); });
 
     Json stringsProperties = {
         {"id",
@@ -1467,14 +1468,15 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
           {"description", "Text as a female hero is shown it: the _f tables ahead, the rest behind them. Default "
                           "false."}}}};
     stringsProperties.update(PageProperties(50, 5000));
-    tools.Add(Spec("strings",
-                   "Turns string ids (strrefs, as templates, tables and conversations hold them) into the game's "
-                   "text, and text into string ids, over the talk tables the game searches, in its order: the "
-                   "core's, each enabled add-in's, and the campaign's (the server's --campaign), in the server's "
-                   "--language or en-us where a table has none. An id's `text` is what the game shows; `in` lists "
-                   "every table that has it where more than one does. With neither, lists the tables in that order.",
-                   std::move(stringsProperties)),
-              [&ghilana](const Json &args) -> ToolResult { return Strings(ghilana, args); });
+    AddTool(tools,
+            Spec("strings",
+                 "Turns string ids (strrefs, as templates, tables and conversations hold them) into the game's "
+                 "text, and text into string ids, over the talk tables the game searches, in its order: the "
+                 "core's, each enabled add-in's, and the campaign's (the server's --campaign), in the server's "
+                 "--language or en-us where a table has none. An id's `text` is what the game shows; `in` lists "
+                 "every table that has it where more than one does. With neither, lists the tables in that order.",
+                 std::move(stringsProperties)),
+            [&ghilana](const Json &args) -> ToolResult { return Strings(ghilana, args); });
 
     Json queryProperties = {
         {"type",
@@ -1506,15 +1508,16 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
         {"items",
          {{"type", "integer"}, {"minimum", 1}, {"description", "The most elements of a list read. Default 100."}}}};
     queryProperties.update(PageProperties(50, 5000));
-    tools.Add(Spec("query",
-                   "Searches every resource of a type across the install by its fields: every creature template "
-                   "with Appearance_Type 80, every item of a base type. GFF3 templates (.utc, .uti, .utp, .utt, "
-                   ".are) and GFF4 files (.plo, .dlg, ...) are read: of each resource the copy the game takes, or "
-                   "every copy with `copies` all. Answers the matches with the fields asked and the copy each is "
-                   "in, a count of all, and with `group_by` the counts by a field's value. Copies in enciphered "
-                   "add-in archives are counted, not searched. `resource` on a match shows its every field.",
-                   std::move(queryProperties), {"type"}),
-              [&ghilana](const Json &args) -> ToolResult { return Query(ghilana, args); });
+    AddTool(tools,
+            Spec("query",
+                 "Searches every resource of a type across the install by its fields: every creature template "
+                 "with Appearance_Type 80, every item of a base type. GFF3 templates (.utc, .uti, .utp, .utt, "
+                 ".are) and GFF4 files (.plo, .dlg, ...) are read: of each resource the copy the game takes, or "
+                 "every copy with `copies` all. Answers the matches with the fields asked and the copy each is "
+                 "in, a count of all, and with `group_by` the counts by a field's value. Copies in enciphered "
+                 "add-in archives are counted, not searched. `resource` on a match shows its every field.",
+                 std::move(queryProperties), {"type"}),
+            [&ghilana](const Json &args) -> ToolResult { return Query(ghilana, args); });
 
     Json referencesProperties = {
         {"name", {{"type", "string"}, {"description", "The resource, with its extension: \"ogre_default.utc\"."}}},
@@ -1526,20 +1529,21 @@ void RegisterDataTools(Bench &bench, Ghilana &ghilana)
         {"source", {{"type", "string"}, {"description", "Which copy, by its source."}}},
         {"archive", {{"type", "string"}, {"description", "Which copy, by its archive's path."}}},
         {"limit", {{"type", "integer"}, {"minimum", 1}, {"description", "The most of each list. Default 100."}}}};
-    tools.Add(Spec("references",
-                   "What a resource names and what names it. `uses`: every field of the resource (a template, a "
-                   "conversation, a plot, a data table's cells) whose text is another resource's name, with or "
-                   "without its extension, and the string ids it holds. A data table of a worksheet DAOLib's schema "
-                   "has (`worksheet`) and a template of a kind it has (`schema`: utc) are read by what each field "
-                   "holds: a string id whatever its name, a file of the field's one extension, and `rows`, each a "
-                   "row of another table its field names (a creature's appearance, race, talents) with that "
-                   "table's name for it (`label`, or the column `label_column` says). Other fields are guessed, a "
-                   "string id by a name ending in strref. "
-                   "`used_by`: with `used_by_types`, every "
-                   "file of those types with a field naming this resource. Follows a creature to its "
-                   "conversation and scripts, a table row to its models.",
-                   std::move(referencesProperties), {"name"}),
-              [&ghilana](const Json &args) -> ToolResult { return References(ghilana, args); });
+    AddTool(tools,
+            Spec("references",
+                 "What a resource names and what names it. `uses`: every field of the resource (a template, a "
+                 "conversation, a plot, a data table's cells) whose text is another resource's name, with or "
+                 "without its extension, and the string ids it holds. A data table of a worksheet DAOLib's schema "
+                 "has (`worksheet`) and a template of a kind it has (`schema`: utc) are read by what each field "
+                 "holds: a string id whatever its name, a file of the field's one extension, and `rows`, each a "
+                 "row of another table its field names (a creature's appearance, race, talents) with that "
+                 "table's name for it (`label`, or the column `label_column` says). Other fields are guessed, a "
+                 "string id by a name ending in strref. "
+                 "`used_by`: with `used_by_types`, every "
+                 "file of those types with a field naming this resource. Follows a creature to its "
+                 "conversation and scripts, a table row to its models.",
+                 std::move(referencesProperties), {"name"}),
+            [&ghilana](const Json &args) -> ToolResult { return References(ghilana, args); });
 }
 
 } // namespace eluvian::ghilana::detail

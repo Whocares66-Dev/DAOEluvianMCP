@@ -4,6 +4,8 @@
 
 #include "ghilana/Text.h"
 
+#include <dao/core/ReadError.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -615,4 +617,31 @@ TEST_CASE("every tool's name is a model's and its schema is an object", "[ghilan
         CHECK(tool["inputSchema"]["type"] == "object");
         CHECK(tool["description"].get<std::string>().size() > 80);
     }
+}
+
+TEST_CASE("a file that is there but cannot be read is the tool's refusal, naming the file", "[ghilana][tools]")
+{
+    Bench bench;
+    ToolSpec spec;
+    spec.name = "probe";
+    spec.thread = Thread::Listener;
+    ghilana::detail::AddTool(bench.Tools(), spec, [](const Json &) -> ToolResult {
+        throw dao::core::ReadError("core.erf: the read came up short");
+    });
+    ToolSpec other;
+    other.name = "other";
+    other.thread = Thread::Listener;
+    ghilana::detail::AddTool(bench.Tools(), other, [](const Json &) -> ToolResult { throw std::logic_error("a bug"); });
+
+    try
+    {
+        bench.Invoke("probe", Json::object());
+        FAIL("no refusal");
+    }
+    catch (const ToolError &e)
+    {
+        CHECK_THAT(e.what(), ContainsSubstring("probe: a file of the game's could not be read: core.erf"));
+    }
+    // Anything else stays the failure it was.
+    CHECK_THROWS_AS(bench.Invoke("other", Json::object()), std::logic_error);
 }

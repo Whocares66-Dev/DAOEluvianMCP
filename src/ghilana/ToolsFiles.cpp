@@ -888,21 +888,22 @@ ToolResult Texture(Ghilana &ghilana, const Json &raw)
 void RegisterFileTools(Bench &bench, Ghilana &ghilana)
 {
     auto &tools = bench.Tools();
-    tools.Add(Spec("environment",
-                   "What ghilana is serving: the game install read (and every install found on the machine), the "
-                   "exe's build, the Documents folder and instance, the language, DAOLib and its plugins if "
-                   "installed (`plugins_folder`, the folder read: the game's own, or the staged one ghilana was "
-                   "started with --plugins, as game_launch's `plugins`), and each source of resources (the core, the "
-                   "campaign, every add-in and offer with "
-                   "whether AddIns.xml enables it, the packages a campaign loads ahead of the core such as "
-                   "Awakening's core_ep1, the override folders, DAOLib plugins' overrides) with how many "
-                   "archives and files it holds and how many cannot be read. Call it first. The first call reads "
-                   "every archive's directory (some ten thousand) and says how long that took; later calls are "
-                   "fast.",
-                   Json{{"sources",
-                         {{"type", "boolean"},
-                          {"description", "List every source. Default true; false for the summary alone."}}}}),
-              [&ghilana](const Json &args) -> ToolResult { return Environment(ghilana, args); });
+    AddTool(tools,
+            Spec("environment",
+                 "What ghilana is serving: the game install read (and every install found on the machine), the "
+                 "exe's build, the Documents folder and instance, the language, DAOLib and its plugins if "
+                 "installed (`plugins_folder`, the folder read: the game's own, or the staged one ghilana was "
+                 "started with --plugins, as game_launch's `plugins`), and each source of resources (the core, the "
+                 "campaign, every add-in and offer with "
+                 "whether AddIns.xml enables it, the packages a campaign loads ahead of the core such as "
+                 "Awakening's core_ep1, the override folders, DAOLib plugins' overrides) with how many "
+                 "archives and files it holds and how many cannot be read. Call it first. The first call reads "
+                 "every archive's directory (some ten thousand) and says how long that took; later calls are "
+                 "fast.",
+                 Json{{"sources",
+                       {{"type", "boolean"},
+                        {"description", "List every source. Default true; false for the summary alone."}}}}),
+            [&ghilana](const Json &args) -> ToolResult { return Environment(ghilana, args); });
 
     Json resourcesProperties = {
         {"match",
@@ -915,14 +916,15 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
           {"description", "Only resources with a copy in this source (\"addin:dao_prc_cp_2\"); `environment` lists "
                           "them."}}}};
     resourcesProperties.update(PageProperties(100, 5000));
-    tools.Add(Spec("resources",
-                   "Finds resources by name across every source of the install: core, campaign, add-ins, offers, "
-                   "override folders and DAOLib plugins' overrides. Answers each name with every copy of it (its "
-                   "source, archive or file, size, and whether it can be read), sorted by name, with the count of "
-                   "all matches. Use it to find a name to pass to `resource`, `texture`, `table` or Eluvian's tools "
-                   "(a creature template for stage_spawn).",
-                   std::move(resourcesProperties)),
-              [&ghilana](const Json &args) -> ToolResult { return Resources(ghilana, args); });
+    AddTool(tools,
+            Spec("resources",
+                 "Finds resources by name across every source of the install: core, campaign, add-ins, offers, "
+                 "override folders and DAOLib plugins' overrides. Answers each name with every copy of it (its "
+                 "source, archive or file, size, and whether it can be read), sorted by name, with the count of "
+                 "all matches. Use it to find a name to pass to `resource`, `texture`, `table` or Eluvian's tools "
+                 "(a creature template for stage_spawn).",
+                 std::move(resourcesProperties)),
+            [&ghilana](const Json &args) -> ToolResult { return Resources(ghilana, args); });
 
     Json resourceProperties = {
         {"name", {{"type", "string"}, {"description", "The resource, with its extension: \"ogre_default.utc\"."}}},
@@ -948,7 +950,7 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
             "its first bytes. Of several copies it reads the one the game takes, and says so with the others; "
             "`source` and `archive` name another. A copy in an enciphered add-in archive cannot be read here; the "
             "answer says so.";
-        tools.Add(std::move(spec), [&ghilana](const Json &args) -> ToolResult { return Resource(ghilana, args); });
+        AddTool(tools, std::move(spec), [&ghilana](const Json &args) -> ToolResult { return Resource(ghilana, args); });
     }
 
     Json conflictsProperties = {
@@ -968,15 +970,16 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
           {"description", "Count and list copies the game does not have too (another campaign's, language's or "
                           "texture quality's, a disabled add-in's). Default false."}}}};
     conflictsProperties.update(PageProperties(100, 5000));
-    tools.Add(Spec("conflicts",
-                   "Says which copy of a resource the game takes, and every copy of it in the order the game looks "
-                   "for it (with each copy's priority, and why the game does not have one where it does not), for "
-                   "one resource (`name`) or every resource more than one source has. The order is the game's, read "
-                   "in the exe, for the campaign, language and texture quality ghilana was started with. Use it to "
-                   "see what an add-in or a mod overrides and what overrides it (`source`: `lost` counts those it "
-                   "does not win), or where a resource comes from.",
-                   std::move(conflictsProperties)),
-              [&ghilana](const Json &args) -> ToolResult { return Conflicts(ghilana, args); });
+    AddTool(tools,
+            Spec("conflicts",
+                 "Says which copy of a resource the game takes, and every copy of it in the order the game looks "
+                 "for it (with each copy's priority, and why the game does not have one where it does not), for "
+                 "one resource (`name`) or every resource more than one source has. The order is the game's, read "
+                 "in the exe, for the campaign, language and texture quality ghilana was started with. Use it to "
+                 "see what an add-in or a mod overrides and what overrides it (`source`: `lost` counts those it "
+                 "does not win), or where a resource comes from.",
+                 std::move(conflictsProperties)),
+            [&ghilana](const Json &args) -> ToolResult { return Conflicts(ghilana, args); });
 
     Json extractProperties = {
         {"names",
@@ -1001,7 +1004,7 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
                              "copy). Writes nothing in the game's folders.",
                              std::move(extractProperties), false);
         spec.inputSchema["required"] = Json::array({"to"});
-        tools.Add(std::move(spec), [&ghilana](const Json &args) -> ToolResult { return Extract(ghilana, args); });
+        AddTool(tools, std::move(spec), [&ghilana](const Json &args) -> ToolResult { return Extract(ghilana, args); });
     }
 
     Json textureProperties = {
@@ -1029,7 +1032,7 @@ void RegisterFileTools(Bench &bench, Ghilana &ghilana)
                              "or volume).",
                              std::move(textureProperties));
         spec.inputSchema["required"] = Json::array({"name"});
-        tools.Add(std::move(spec), [&ghilana](const Json &args) { return Texture(ghilana, args); });
+        AddTool(tools, std::move(spec), [&ghilana](const Json &args) { return Texture(ghilana, args); });
     }
 }
 

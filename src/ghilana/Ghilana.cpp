@@ -4,6 +4,8 @@
 
 #include "core/Snapshot.h"
 
+#include <dao/core/ReadError.h>
+
 #include <cstdint>
 #include <fstream>
 
@@ -72,6 +74,24 @@ const std::vector<dao::core::m2da::Worksheet> &Ghilana::Worksheets()
         worksheets_ = ReadWorksheets(files_);
     }
     return *worksheets_;
+}
+
+void detail::AddTool(ToolRegistry &tools, ToolSpec spec, ToolHandler handler)
+{
+    // DAOLib b2f1c21 (2026-11-10, #196): core's readers throw where they
+    // answered nothing, for a file whose open or read failed, so it is no
+    // longer taken for a missing one.
+    std::string name = spec.name;
+    tools.Add(std::move(spec), [name = std::move(name), handler = std::move(handler)](const Json &args) -> ToolResult {
+        try
+        {
+            return handler(args);
+        }
+        catch (const dao::core::ReadError &error)
+        {
+            throw ToolError(name + ": a file of the game's could not be read: " + error.what());
+        }
+    });
 }
 
 void RegisterTools(Bench &bench, Ghilana &ghilana)

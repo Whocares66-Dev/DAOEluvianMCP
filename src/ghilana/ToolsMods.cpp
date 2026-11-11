@@ -210,7 +210,8 @@ Json TalkTable(Ghilana &ghilana, const Json &raw)
 
 void RegisterModTools(Bench &bench, Ghilana &ghilana)
 {
-    bench.Tools().Add(
+    AddTool(
+        bench.Tools(),
         ToolSpec{"talk_table",
                  "Writes a talk table of a mod's own strings, for the names of its creatures and items: "
                  "<uid>_c_<language>.tlk, which the game loads for an enabled add-in of that uid. Pick string ids "
@@ -258,7 +259,8 @@ void RegisterModTools(Bench &bench, Ghilana &ghilana)
     };
     Json schema = {{"type", "object"}, {"properties", std::move(properties)}};
     schema["required"] = {"format", "files", "to"};
-    bench.Tools().Add(
+    AddTool(
+        bench.Tools(),
         ToolSpec{"mod_pack",
                  "Packs files into one for the game: an .erf archive as the game's own, to put in an override folder, "
                  "or a .dazip add-in package that the game's DAUpdater installs as Downloadable Content, listed on its "

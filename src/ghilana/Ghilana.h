@@ -89,6 +89,10 @@ void RegisterTextureTools(Bench &bench, Ghilana &ghilana);
 void RegisterModTools(Bench &bench, Ghilana &ghilana);
 void RegisterTemplateTools(Bench &bench, Ghilana &ghilana);
 void RegisterLevelTools(Bench &bench, Ghilana &ghilana);
+// Adds a ghilana tool. A file that is there but could not be read
+// (dao::core::ReadError, out of the index's build, a table, a worksheet or
+// the talk tables) is the tool's refusal, naming the file, not a failure.
+void AddTool(ToolRegistry &tools, ToolSpec spec, ToolHandler handler);
 // The `limit` and `offset` a paged tool takes, in its schema.
 Json PageProperties(int defaultLimit, int mostLimit);
 

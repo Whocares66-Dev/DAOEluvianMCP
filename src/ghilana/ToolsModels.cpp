@@ -639,27 +639,29 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
     modelProperties["tree"] = {{"type", "boolean"},
                                {"description", "List every node too: its name, kind, parent and bone index. Default "
                                                "false."}};
-    tools.Add(Spec("model",
-                   "Says what a model is made of, from its hierarchy (.mmh) and the mesh file (.msh) it names: its "
-                   "nodes by kind, its bones, and each mesh node's chunk with its material (.mao), vertex and "
-                   "triangle counts, vertex elements, bounds, and whether it is skinned and over how many bones. "
-                   "`tree` lists the nodes. Use `model_export` to open it in Blender.",
-                   std::move(modelProperties), {"name"}),
-              [&ghilana](const Json &args) -> ToolResult { return Model(ghilana, args); });
+    AddTool(tools,
+            Spec("model",
+                 "Says what a model is made of, from its hierarchy (.mmh) and the mesh file (.msh) it names: its "
+                 "nodes by kind, its bones, and each mesh node's chunk with its material (.mao), vertex and "
+                 "triangle counts, vertex elements, bounds, and whether it is skinned and over how many bones. "
+                 "`tree` lists the nodes. Use `model_export` to open it in Blender.",
+                 std::move(modelProperties), {"name"}),
+            [&ghilana](const Json &args) -> ToolResult { return Model(ghilana, args); });
 
     Json exportProperties = kModelProperties;
     exportProperties["to"] = {
         {"type", "string"},
         {"description", "The folder to write into, a full path; made if missing. Never inside the game's folder."}};
-    tools.Add(Spec("model_export",
-                   "Writes a model as glTF 2.0 (<name>.gltf and <name>.bin) into a folder of yours, for Blender's "
-                   "built-in glTF import: its node tree, each mesh with normals, tangents, texture coordinates and "
-                   "colours, and its bones as one skin with each vertex's weights. Z up is made glTF's Y up. The "
-                   "game's names and kinds are kept in each node's and mesh's `extras` (\"dao\"), which Blender keeps "
-                   "as custom properties. Answers the paths, the counts, and `notes` on anything left out. Textures "
-                   "are not written yet. Writes nothing in the game's folders.",
-                   std::move(exportProperties), {"name", "to"}, false),
-              [&ghilana](const Json &args) -> ToolResult { return Export(ghilana, args); });
+    AddTool(tools,
+            Spec("model_export",
+                 "Writes a model as glTF 2.0 (<name>.gltf and <name>.bin) into a folder of yours, for Blender's "
+                 "built-in glTF import: its node tree, each mesh with normals, tangents, texture coordinates and "
+                 "colours, and its bones as one skin with each vertex's weights. Z up is made glTF's Y up. The "
+                 "game's names and kinds are kept in each node's and mesh's `extras` (\"dao\"), which Blender keeps "
+                 "as custom properties. Answers the paths, the counts, and `notes` on anything left out. Textures "
+                 "are not written yet. Writes nothing in the game's folders.",
+                 std::move(exportProperties), {"name", "to"}, false),
+            [&ghilana](const Json &args) -> ToolResult { return Export(ghilana, args); });
 
     Json importProperties = kModelProperties;
     importProperties["name"]["description"] = "The model the glTF was made from, its hierarchy (.mmh): the one "
@@ -673,7 +675,8 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
     importProperties["to"] = {{"type", "string"},
                               {"description", "The folder to write the .msh and .mmh into, a full path; made if "
                                               "missing. Never inside the game's folder."}};
-    tools.Add(
+    AddTool(
+        tools,
         Spec("model_copy",
              "Writes a model under a new name: its hierarchy (.mmh), mesh (.msh) and physics (.phy), and its farther "
              "versions (_2, _3) beside a _0, each naming its own new mesh file, optionally with another "
@@ -696,29 +699,29 @@ void RegisterModelTools(Bench &bench, Ghilana &ghilana)
              {"name", "as", "to"}, false),
         [&ghilana](const Json &args) -> ToolResult { return ModelCopy(ghilana, args); });
 
-    tools.Add(
-        Spec("model_import",
-             "Writes a model edited in Blender back as the game's files: the glTF's meshes put into the "
-             "original .msh in place of their chunks (matched by the custom properties `model_export` wrote, "
-             "else by name), each vertex where the glTF has it at rest, with its normal, tangent and binormal, "
-             "texture coordinates and its bones by name, and the .mmh with each mesh node's bones and material "
-             "made to match and its bounding boxes made again. Vertices and triangles may be added, moved or "
-             "removed. A mesh that is none of the model's chunks, or a copy of one (Blender's duplicate), is "
-             "added as a new chunk under a new mesh node like the one it was copied from (else the first), "
-             "with the glTF's material. A joint that is none of the model's bones is added as a new bone under the "
-             "nearest node above it, where the glTF has it at rest; no animation moves it, so it follows its "
-             "parent. A mesh weighted to more than 67 bones (the "
-             "most the game's skinning shaders take for one chunk) is split into chunks of at most 67, the "
-             "rest under new mesh nodes like its own. "
-             "Blender splits vertices at seams; where the vertices still say their place (_DAO_INDEX) and none "
-             "were added or removed, they are joined back into the chunk's own vertices, order and triangles, "
-             "each value the original's where it is unedited, so a mesh through Blender unedited comes back as "
-             "it was and a head's morphs still fit; otherwise Blender's layout is kept (`notes` says which). "
-             "Bone moves and textures are not taken. Answers each chunk's counts before and after, the files "
-             "written, `notes`, and where to put the files for the game to take them. Writes nothing in the "
-             "game's folders.",
-             std::move(importProperties), {"name", "gltf", "to"}, false),
-        [&ghilana](const Json &args) -> ToolResult { return Import(ghilana, args); });
+    AddTool(tools,
+            Spec("model_import",
+                 "Writes a model edited in Blender back as the game's files: the glTF's meshes put into the "
+                 "original .msh in place of their chunks (matched by the custom properties `model_export` wrote, "
+                 "else by name), each vertex where the glTF has it at rest, with its normal, tangent and binormal, "
+                 "texture coordinates and its bones by name, and the .mmh with each mesh node's bones and material "
+                 "made to match and its bounding boxes made again. Vertices and triangles may be added, moved or "
+                 "removed. A mesh that is none of the model's chunks, or a copy of one (Blender's duplicate), is "
+                 "added as a new chunk under a new mesh node like the one it was copied from (else the first), "
+                 "with the glTF's material. A joint that is none of the model's bones is added as a new bone under the "
+                 "nearest node above it, where the glTF has it at rest; no animation moves it, so it follows its "
+                 "parent. A mesh weighted to more than 67 bones (the "
+                 "most the game's skinning shaders take for one chunk) is split into chunks of at most 67, the "
+                 "rest under new mesh nodes like its own. "
+                 "Blender splits vertices at seams; where the vertices still say their place (_DAO_INDEX) and none "
+                 "were added or removed, they are joined back into the chunk's own vertices, order and triangles, "
+                 "each value the original's where it is unedited, so a mesh through Blender unedited comes back as "
+                 "it was and a head's morphs still fit; otherwise Blender's layout is kept (`notes` says which). "
+                 "Bone moves and textures are not taken. Answers each chunk's counts before and after, the files "
+                 "written, `notes`, and where to put the files for the game to take them. Writes nothing in the "
+                 "game's folders.",
+                 std::move(importProperties), {"name", "gltf", "to"}, false),
+            [&ghilana](const Json &args) -> ToolResult { return Import(ghilana, args); });
 }
 
 } // namespace eluvian::ghilana::detail

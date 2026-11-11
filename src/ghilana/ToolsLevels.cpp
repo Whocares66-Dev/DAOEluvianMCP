@@ -835,7 +835,8 @@ void RegisterLevelTools(Bench &bench, Ghilana &ghilana)
          {{"type", "boolean"},
           {"description", "List the lamps, ambient lights and probes, not only count them. Default false."}}}};
     levelProperties.update(PageProperties(100, 2000));
-    tools.Add(
+    AddTool(
+        tools,
         Spec("level",
              "A level's layout (.arl) and its rooms (.rml): each room's number, bounds, place and the rooms seen from "
              "it; the models the rooms place, each in the level's space (place, turn, scale, its lightmaps' atlases), "
@@ -845,14 +846,16 @@ void RegisterLevelTools(Bench &bench, Ghilana &ghilana)
              "and light probes, each in the level's space. A level's name is an area's layout, \"lak303d\".",
              levelProperties, {"name"}),
         [&ghilana](const Json &args) -> ToolResult { return LevelTool(ghilana, args); });
-    tools.Add(Spec("atmosphere",
-                   "A level's sky as its layout (.arl) has it: the sky dome, the sun (direction, colour, the colour on "
-                   "characters), the atmosphere's scattering, fog and moon and the clouds, each value by its field's "
-                   "name, the frame effects with their parameters (da_bloom, da_hsvmatrix), and the wind. These are "
-                   "the file's, before a script's SetAtmosphere.",
-                   {{"level", {{"type", "string"}, {"description", "The level, \"oth000d\" (its .arl)."}}}}, {"level"}),
-              [&ghilana](const Json &args) -> ToolResult { return AtmosphereTool(ghilana, args); });
-    tools.Add(
+    AddTool(tools,
+            Spec("atmosphere",
+                 "A level's sky as its layout (.arl) has it: the sky dome, the sun (direction, colour, the colour on "
+                 "characters), the atmosphere's scattering, fog and moon and the clouds, each value by its field's "
+                 "name, the frame effects with their parameters (da_bloom, da_hsvmatrix), and the wind. These are "
+                 "the file's, before a script's SetAtmosphere.",
+                 {{"level", {{"type", "string"}, {"description", "The level, \"oth000d\" (its .arl)."}}}}, {"level"}),
+            [&ghilana](const Json &args) -> ToolResult { return AtmosphereTool(ghilana, args); });
+    AddTool(
+        tools,
         Spec("cutscene",
              "A cutscene decoded: its area, length, frames a second, end script, blend tree, stage, and its actors "
              "(model, creature, the area's tag that plays it, origin and final places), each with its actions in "
@@ -875,13 +878,14 @@ void RegisterLevelTools(Bench &bench, Ghilana &ghilana)
                 {"description", "Seconds into the cutscene: every curve's value and every actor's place then."}}}},
              {}),
         [&ghilana](const Json &args) -> ToolResult { return CutsceneTool(ghilana, args); });
-    tools.Add(Spec("stage",
-                   "A stage (.stg) a cutscene or a conversation's line is set on: its places (tag, position, "
-                   "orientation, default camera) and its cameras (position, orientation, field of view, the places in "
-                   "shot, and what it looks from and at, with its LookingAtType), in the stage's own frame.",
-                   {{"name", {{"type", "string"}, {"description", "The stage, \"jowan_attack\" (its .stg)."}}}},
-                   {"name"}),
-              [&ghilana](const Json &args) -> ToolResult { return StageTool(ghilana, args); });
+    AddTool(tools,
+            Spec("stage",
+                 "A stage (.stg) a cutscene or a conversation's line is set on: its places (tag, position, "
+                 "orientation, default camera) and its cameras (position, orientation, field of view, the places in "
+                 "shot, and what it looks from and at, with its LookingAtType), in the stage's own frame.",
+                 {{"name", {{"type", "string"}, {"description", "The stage, \"jowan_attack\" (its .stg)."}}}},
+                 {"name"}),
+            [&ghilana](const Json &args) -> ToolResult { return StageTool(ghilana, args); });
 }
 
 } // namespace eluvian::ghilana::detail
