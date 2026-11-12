@@ -165,6 +165,7 @@ add_library(
     src/core/Snapshot.cpp
     src/core/FrameCapture.cpp
     src/core/Behind.cpp
+    src/core/CallTrace.cpp
     src/core/PictureSize.cpp
     src/core/Gift.cpp
     src/core/Placeables.cpp
@@ -302,6 +303,7 @@ add_library(
     src/game/Snapshot.cpp
     src/game/FrameCapture.cpp
     src/game/Movement.cpp
+    src/game/CallTrace.cpp
     src/game/Behind.cpp
     src/game/Warp.cpp
     src/game/WorldMap.cpp

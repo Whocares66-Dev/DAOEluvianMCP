@@ -80,6 +80,7 @@ void AddGameTools(Bench &bench, const Watch &watch)
     AddSnapshot(bench, watch);
     AddFrameCapture(bench);
     AddMovement(bench, watch);
+    AddCallTrace(bench, watch);
 }
 
 namespace

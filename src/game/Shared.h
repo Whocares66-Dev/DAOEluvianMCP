@@ -332,5 +332,6 @@ void AddCharGen(Bench &bench);                          // chargen.*, which core
 void AddOptions(Bench &bench);                          // options.*, which core's options asks (#190)
 void AddMovement(Bench &bench, const Watch &watch);     // move_trace, a listener tool over dao::movement (#194)
 void AddSafeLocation(Bench &bench, const Watch &watch); // safe_location (#192)
+void AddCallTrace(Bench &bench, const Watch &watch);    // call_trace, call_trace_read (#197)
 
 } // namespace eluvian::game

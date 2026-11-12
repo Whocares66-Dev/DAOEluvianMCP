@@ -160,6 +160,7 @@ PEEK = "src/core/Peek.cpp"
 SNAPSHOT = "src/core/Snapshot.cpp"
 FRAME = "src/core/FrameCapture.cpp"
 BEHIND = "src/core/Behind.cpp"
+CALL_TRACE = "src/core/CallTrace.cpp"
 OPTIONS = "src/core/Options.cpp"
 SIGHT = "src/core/Sight.cpp"
 WARP = "src/core/Warp.cpp"
@@ -2696,6 +2697,31 @@ MUTANTS = [
         BEHIND,
         "return flags | kNoActivate | kNoZOrder;",
         "return flags | kNoActivate;",
+    ),
+    # the call trace's stub (#197)
+    Mutant(
+        "call_trace: the stub calls the recorder",
+        CALL_TRACE,
+        "Word(code, Relative(at + 8, record));",
+        "Word(code, Relative(at + 3, record));",
+    ),
+    Mutant(
+        "call_trace: a thunk jumps to the stub",
+        CALL_TRACE,
+        "Word(code, Relative(at + kThunkSize, common));",
+        "Word(code, Relative(at, common));",
+    ),
+    Mutant(
+        "call_trace: the stub restores the flags",
+        CALL_TRACE,
+        "{0x83, 0xC4, 0x04, 0x61, 0x9D, 0xC3}",
+        "{0x83, 0xC4, 0x04, 0x61, 0xC3}",
+    ),
+    Mutant(
+        "call_trace: no address is zero",
+        CALL_TRACE,
+        "error != std::errc{} || end != text.data() + text.size() || value == 0)",
+        "error != std::errc{} || end != text.data() + text.size())",
     ),
     # what the engine drew (#168)
     Mutant(
